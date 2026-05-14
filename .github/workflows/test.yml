@@ -15,17 +15,17 @@ jobs:
     steps:
       # Шаг 1: Клонируем репозиторий
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      # Шаг 2: Устанавливаем Node.js (версия 16.x)
+      # Шаг 2: Устанавливаем Node.js (версия 20.x)
       - name: Set up Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
-          node-version: '16'
+          node-version: '20'
 
       # Шаг 3: Устанавливаем зависимости
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       # Шаг 4: Запускаем Jest тесты
       - name: Run Jest tests
