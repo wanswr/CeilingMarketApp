@@ -7,8 +7,7 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   Platform,
-  Dimensions,
-  Image
+  Dimensions
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,9 +28,9 @@ const MapScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        let loc = await Location.getCurrentPositionAsync({});
+        const loc = await Location.getCurrentPositionAsync({});
         setLocation(loc);
       }
       setLoading(false);
@@ -92,17 +91,21 @@ const MapScreen = ({ navigation }: any) => {
           />
         )}
         
-        {orders.filter(o => o.status === 'pending').map(order => (
-          <Marker
-            key={order.id}
-            coordinate={order.coordinates}
-            onPress={() => onMarkerPress(order)}
-          >
-            <View style={styles.pinMarker}>
-              <Ionicons name="location" size={32} color={COLORS.primary} />
-            </View>
-          </Marker>
-        ))}
+        {orders.filter(o => o.status === 'new' || o.status === 'pending').map(order => {
+          const coord = order.coordinates || order.location;
+          if (!coord) return null;
+          return (
+            <Marker
+              key={order.id}
+              coordinate={coord}
+              onPress={() => onMarkerPress(order)}
+            >
+              <View style={styles.pinMarker}>
+                <Ionicons name="location" size={32} color={COLORS.primary} />
+              </View>
+            </Marker>
+          );
+        })}
       </MapView>
 
       <SafeAreaView style={styles.controlsContainer}>

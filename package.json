@@ -12,7 +12,8 @@
     "detox:test": "detox test --configuration android.emu.debug",
     "detox:build": "detox build --configuration android.emu.debug",
     "detox:build:ios": "detox build --configuration ios.sim.debug",
-    "detox:test:ios": "detox test --configuration ios.sim.debug"
+    "detox:test:ios": "detox test --configuration ios.sim.debug",
+    "lint": "expo lint"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -22,7 +23,7 @@
     "@react-navigation/native": "^7.2.4",
     "@react-navigation/stack": "^7.9.1",
     "expo": "~54.0.0",
-    "expo-auth-session": "^55.0.16",
+    "expo-auth-session": "~7.0.11",
     "expo-firebase-recaptcha": "^2.3.1",
     "expo-haptics": "~15.0.8",
     "expo-image-picker": "~17.0.11",
@@ -39,7 +40,7 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-swipe-list-view": "^3.2.9",
-    "react-native-webview": "^13.16.1"
+    "react-native-webview": "13.15.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
