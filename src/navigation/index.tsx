@@ -33,7 +33,7 @@ export default function Navigation() {
     });
   }, []);
 
-  if (loading) return <View style={{flex:1, justifyContent:'center'}}><ActivityIndicator size="large" color="#5856D6"/></View>;
+  if (loading) return <View style={{flex:1, justifyContent:"center"}}><ActivityIndicator size="large" color="#5856D6"/></View>;
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
