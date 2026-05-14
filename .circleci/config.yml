@@ -1,0 +1,67 @@
+version: 2.1
+
+executors:
+  node-executor:
+    docker:
+      - image: circleci/node:18  # Expo 52 требует Node.js 18+
+    working_directory: ~/repo
+
+jobs:
+  # 1. Установка зависимостей
+  install:
+    executor: node-executor
+    steps:
+      - checkout
+      - run:
+          name: Установка Expo CLI и зависимостей
+          command: |
+            sudo npm install -g expo-cli
+            npm ci
+      - persist_to_workspace:
+          root: .
+          paths:
+            - node_modules
+
+  # 2. Проверка TypeScript и линтера
+  lint:
+    executor: node-executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/repo
+      - run:
+          name: Проверка TypeScript и ESLint
+          command: |
+            npm run lint || echo "ESLint: Найдены ошибки"
+            npx tsc --noEmit
+
+  # 3. Сборка проекта Expo (Android)
+  build-android:
+    executor: node-executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/repo
+      - run:
+          name: Логин в Expo
+          command: |
+            expo login --username $EXPO_USERNAME --password $EXPO_PASSWORD
+      - run:
+          name: Expo Prebuild
+          command: expo prebuild --platform android
+      - run:
+          name: Сборка Android
+          command: expo build:android --non-interactive
+
+workflows:
+  version: 2
+  ci-pipeline:
+    jobs:
+      - install
+      - lint:
+          requires:
+            - install
+      - build-android:
+          requires:
+            - install
+            - lint

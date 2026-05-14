@@ -1,0 +1,41 @@
+name: Run Tests
+
+on: 
+  push:
+    branches:
+      - main  # Здесь вы можете указать любые ветки, например, 'main' или 'develop'
+  pull_request:
+    branches:
+      - main  # При создании PR на 'main'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Шаг 1: Клонируем репозиторий
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Шаг 2: Устанавливаем Node.js (версия 16.x)
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      # Шаг 3: Устанавливаем зависимости
+      - name: Install dependencies
+        run: npm install
+
+      # Шаг 4: Запускаем Jest тесты
+      - name: Run Jest tests
+        run: npm test
+        continue-on-error: false  # Убедитесь, что тесты не продолжат работу, если есть ошибка
+
+      # Шаг 5: Настройка для Detox (если требуется запуск Detox для iOS или Android)
+      - name: Set up Detox dependencies (optional for Android/iOS simulators)
+        run: |
+          npm install -g detox-cli
+          npm run detox:build  # Строим приложение для тестов Detox
+          npm run detox:test   # Запускаем тесты Detox
+        continue-on-error: false  # Тесты не должны продолжаться, если E2E тесты не прошли
