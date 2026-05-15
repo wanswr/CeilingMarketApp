@@ -5,17 +5,17 @@ jobs:
     steps:
       # Шаг 1: Клонируем репозиторий
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Шаг 2: Устанавливаем Node.js
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       # Шаг 3: Кэшируем зависимости
       - name: Cache node_modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies and EAS CLI
         run: |
           npm install -g expo-cli
-          npm install
+          npm install --legacy-peer-deps
           npm install -g eas-cli  # Установка eas-cli
 
       # Шаг 5: Проверяем переменные окружения
