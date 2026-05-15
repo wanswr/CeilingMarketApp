@@ -1,4 +1,4 @@
-import { collection, addDoc, query, onSnapshot, orderBy, updateDoc, doc } from '@firebase/firestore';
+import { collection, addDoc, query, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { Order, OrderStatus } from '../types';
 

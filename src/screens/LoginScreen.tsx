@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Alert, ActivityIndicator } from 'react-native';
-import { signInWithPhoneNumber } from '@firebase/auth';
+import { signInWithPhoneNumber } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
