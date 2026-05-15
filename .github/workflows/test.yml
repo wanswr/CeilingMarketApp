@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # Шаг 3: Устанавливаем зависимости
       - name: Install dependencies
@@ -32,10 +32,10 @@ jobs:
         run: npm test
         continue-on-error: false  # Убедитесь, что тесты не продолжат работу, если есть ошибка
 
-      # Шаг 5: Настройка для Detox (если требуется запуск Detox для iOS или Android)
-      - name: Set up Detox dependencies (optional for Android/iOS simulators)
-        run: |
-          npm install -g detox-cli
-          npm run detox:build  # Строим приложение для тестов Detox
-          npm run detox:test   # Запускаем тесты Detox
-        continue-on-error: false  # Тесты не должны продолжаться, если E2E тесты не прошли
+      # Шаг 5: Настройка для Detox (пропущено в CI из-за отсутствия окружения)
+      # - name: Set up Detox dependencies (optional for Android/iOS simulators)
+      #   run: |
+      #     npm install -g detox-cli
+      #     npm run detox:build
+      #     npm run detox:test
+      #   continue-on-error: false
