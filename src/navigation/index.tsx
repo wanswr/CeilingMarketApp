@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
 import BottomTabNavigator from './BottomTabNavigator';
@@ -20,10 +18,10 @@ export default function Navigation() {
   const [needsProfile, setNeedsProfile] = useState(false);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
+    return auth.onAuthStateChanged(async (u) => {
       if (u) {
-        const userDoc = await getDoc(doc(db, "users", u.uid));
-        setNeedsProfile(!userDoc.exists());
+        const userDoc = await db.collection("users").doc(u.uid).get();
+        setNeedsProfile(!userDoc.exists);
         setUser(u);
       } else {
         setUser(null);
@@ -33,7 +31,7 @@ export default function Navigation() {
     });
   }, []);
 
-  if (loading) return <View style={{flex:1, justifyContent:"center"}}><ActivityIndicator size="large" color="#5856D6"/></View>;
+  if (loading) return <View style={{flex:1, justifyContent:'center'}}><ActivityIndicator size="large" color="#5856D6"/></View>;
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

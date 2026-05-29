@@ -1,4 +1,3 @@
-import { collection, addDoc, query, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { Order, OrderStatus } from '../types';
 
@@ -8,8 +7,7 @@ class OrderService {
   private currentRole: 'employer' | 'worker' = 'employer';
 
   constructor() {
-    const q = query(collection(db, "orders"), orderBy("timestamp", "desc"));
-    onSnapshot(q, (snapshot) => {
+    db.collection("orders").orderBy("timestamp", "desc").onSnapshot((snapshot) => {
       this.orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Order));
       this.emit('ordersUpdated', this.orders);
     }, (err) => console.error("Firestore Error:", err));
@@ -41,7 +39,7 @@ class OrderService {
 
   async createOrder(data: any) {
     if (!auth.currentUser) throw new Error("Не авторизован");
-    return addDoc(collection(db, "orders"), {
+    return db.collection("orders").add({
       ...data,
       employerId: auth.currentUser.uid,
       status: 'new',
@@ -54,16 +52,14 @@ class OrderService {
   }
 
   async confirmWorker(orderId: string, worker: any) {
-    const orderRef = doc(db, "orders", orderId);
-    return updateDoc(orderRef, {
+    return db.collection("orders").doc(orderId).update({
       workerId: worker.id,
       status: 'accepted'
     });
   }
 
   async updateStatus(orderId: string, status: OrderStatus) {
-    const orderRef = doc(db, "orders", orderId);
-    return updateDoc(orderRef, { status });
+    return db.collection("orders").doc(orderId).update({ status });
   }
 }
 

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, Alert, ActivityIndicator } from 'react-native';
-import { signInWithPhoneNumber } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
@@ -13,13 +12,11 @@ export default function LoginScreen({ navigation }: any) {
     if (phone.length < 12) { Alert.alert("Ошибка", "Введите номер +79991234567"); return; }
     setLoading(true);
     try {
-      // Использование ReCaptcha теперь требует либо нативной настройки Firebase,
-      // либо использования невидимой капчи через веб-интерфейс Firebase JS SDK.
-      // В рамках исправления загрузки мы временно отключаем Modal.
-      const result = await signInWithPhoneNumber(auth, phone, (window as any).recaptchaVerifier);
+      // @ts-ignore - Compat layer uses different method signature than modular
+      const result = await auth.signInWithPhoneNumber(phone);
       navigation.navigate('VerifyCode', { phoneNumber: phone, confirmResult: result });
     } catch (err: any) {
-      Alert.alert("Ошибка", "Для работы входа требуется настройка ReCaptcha. " + err.message);
+      Alert.alert("Ошибка", "Вход по номеру требует настройки ReCaptcha в Firebase Console. " + err.message);
     }
     finally { setLoading(false); }
   };
