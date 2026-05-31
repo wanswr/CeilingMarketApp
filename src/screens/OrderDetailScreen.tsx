@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { orderService, Order } from '../services/OrderService';
 
@@ -31,10 +30,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           </TouchableOpacity>
         )}
 
-        {role === 'employer' && order.status === 'pending' && (order.candidates?.length ?? 0) > 0 && (
+        {role === 'employer' && order.status === 'pending' && order.candidates && order.candidates.length > 0 && (
           <View>
             <Text style={{fontWeight:'bold', marginBottom:10}}>Отклики:</Text>
-            {order.candidates?.map((c, i) => (
+            {order.candidates.map((c, i) => (
               <TouchableOpacity key={i} style={styles.candidate} onPress={() => orderService.confirmWorker(order.id, c)}>
                 <Text>Мастер #{i+1} - Выбрать</Text>
               </TouchableOpacity>

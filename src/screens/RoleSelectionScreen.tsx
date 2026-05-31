@@ -1,10 +1,20 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { db, auth } from '../services/firebase';
 
 const RoleSelectionScreen = ({ navigation }: any) => {
-  const selectRole = (role: string) => {
-    // В будущем здесь будет сохранение роли в базу
-    navigation.replace('MainApp');
+  const selectRole = async (role: 'worker' | 'employer') => {
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        await db.collection("users").doc(user.uid).update({
+          role: role
+        });
+        // Navigation state in navigation/index.tsx will automatically switch to MainApp
+      }
+    } catch (err: any) {
+      Alert.alert("Ошибка", err.message);
+    }
   };
 
   return (

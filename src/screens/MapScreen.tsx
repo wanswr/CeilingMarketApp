@@ -7,7 +7,7 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   Platform,
-  Dimensions
+  Dimensions,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,8 +15,6 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/theme';
 import { orderService, Order } from '../services/OrderService';
-
-const { width } = Dimensions.get('window');
 
 const MapScreen = ({ navigation }: any) => {
   const [showGas, setShowGas] = useState(true);
@@ -28,9 +26,9 @@ const MapScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
+        let loc = await Location.getCurrentPositionAsync({});
         setLocation(loc);
       }
       setLoading(false);
@@ -91,21 +89,19 @@ const MapScreen = ({ navigation }: any) => {
           />
         )}
         
-        {orders.filter(o => o.status === 'new' || o.status === 'pending').map(order => {
-          const coord = order.coordinates || order.location;
-          if (!coord) return null;
-          return (
+        {orders.filter(o => o.status === 'pending').map(order => (
+          order.coordinates && (
             <Marker
               key={order.id}
-              coordinate={coord}
+              coordinate={order.coordinates}
               onPress={() => onMarkerPress(order)}
             >
               <View style={styles.pinMarker}>
                 <Ionicons name="location" size={32} color={COLORS.primary} />
               </View>
             </Marker>
-          );
-        })}
+          )
+        ))}
       </MapView>
 
       <SafeAreaView style={styles.controlsContainer}>

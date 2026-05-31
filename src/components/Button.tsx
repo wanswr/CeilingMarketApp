@@ -5,11 +5,16 @@ interface ButtonProps {
   title: string;
   onPress: () => void;
   style?: any;
+  disabled?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({ title, onPress, style }) => {
+export const Button: React.FC<ButtonProps> = ({ title, onPress, style, disabled }) => {
   return (
-    <TouchableOpacity style={[styles.button, style]} onPress={onPress}>
+    <TouchableOpacity
+      style={[styles.button, style, disabled && styles.disabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
       <Text style={styles.text}>{title}</Text>
     </TouchableOpacity>
   );
@@ -23,6 +28,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10,
+  },
+  disabled: {
+    backgroundColor: '#ccc',
   },
   text: {
     color: '#fff',

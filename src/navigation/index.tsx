@@ -16,19 +16,46 @@ export default function Navigation() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [needsProfile, setNeedsProfile] = useState(false);
+  const [needsRole, setNeedsRole] = useState(false);
 
   useEffect(() => {
-    return auth.onAuthStateChanged(async (u) => {
+    let unsubscribeUserDoc: (() => void) | null = null;
+
+    const unsubscribeAuth = auth.onAuthStateChanged(async (u) => {
+      if (unsubscribeUserDoc) {
+        unsubscribeUserDoc();
+        unsubscribeUserDoc = null;
+      }
+
       if (u) {
-        const userDoc = await db.collection("users").doc(u.uid).get();
-        setNeedsProfile(!userDoc.exists);
-        setUser(u);
+        unsubscribeUserDoc = db.collection("users").doc(u.uid).onSnapshot((doc) => {
+          if (doc.exists) {
+            const data = doc.data();
+            setNeedsProfile(false);
+            setNeedsRole(!data?.role);
+          } else {
+            setNeedsProfile(true);
+            setNeedsRole(false);
+          }
+          setUser(u);
+          setLoading(false);
+        }, (err) => {
+          console.error("User Doc Error:", err);
+          setUser(u);
+          setLoading(false);
+        });
       } else {
         setUser(null);
         setNeedsProfile(false);
+        setNeedsRole(false);
+        setLoading(false);
       }
-      setLoading(false);
     });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeUserDoc) unsubscribeUserDoc();
+    };
   }, []);
 
   if (loading) return <View style={{flex:1, justifyContent:'center'}}><ActivityIndicator size="large" color="#5856D6"/></View>;
@@ -40,10 +67,10 @@ export default function Navigation() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} />
         </>
-      ) : needsProfile ? (
+      ) : (needsProfile || needsRole) ? (
         <>
-          <Stack.Screen name="RegisterDetails" component={RegisterDetailsScreen} />
-          <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
+          {needsProfile && <Stack.Screen name="RegisterDetails" component={RegisterDetailsScreen} />}
+          {needsRole && <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />}
         </>
       ) : (
         <>

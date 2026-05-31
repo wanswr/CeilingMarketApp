@@ -5,12 +5,31 @@ class OrderService {
   private orders: Order[] = [];
   private listeners: { [key: string]: Function[] } = {};
   private currentRole: 'employer' | 'worker' = 'employer';
+  private unsubscribe: (() => void) | null = null;
 
   constructor() {
-    db.collection("orders").orderBy("timestamp", "desc").onSnapshot((snapshot) => {
-      this.orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Order));
-      this.emit('ordersUpdated', this.orders);
-    }, (err) => console.error("Firestore Error:", err));
+    this.init();
+  }
+
+  private init() {
+    auth.onAuthStateChanged((user) => {
+      if (user) {
+        if (this.unsubscribe) this.unsubscribe();
+        this.unsubscribe = db.collection("orders")
+          .orderBy("timestamp", "desc")
+          .onSnapshot((snapshot) => {
+            this.orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Order));
+            this.emit('ordersUpdated', this.orders);
+          }, (err) => console.error("Firestore Error:", err));
+      } else {
+        if (this.unsubscribe) {
+          this.unsubscribe();
+          this.unsubscribe = null;
+        }
+        this.orders = [];
+        this.emit('ordersUpdated', []);
+      }
+    });
   }
 
   on(event: string, cb: Function) {
@@ -30,7 +49,7 @@ class OrderService {
 
   getOrders() { return [...this.orders]; }
 
-  getCurrentRole() { return this.currentRole; }
+  getCurrentRole(): 'employer' | 'worker' { return this.currentRole; }
 
   setRole(role: 'employer' | 'worker') {
     this.currentRole = role;
@@ -42,7 +61,7 @@ class OrderService {
     return db.collection("orders").add({
       ...data,
       employerId: auth.currentUser.uid,
-      status: 'new',
+      status: 'pending',
       timestamp: Date.now()
     });
   }
