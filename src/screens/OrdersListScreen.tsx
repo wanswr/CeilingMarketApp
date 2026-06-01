@@ -1,14 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SwipeListView } from 'react-native-swipe-list-view';
 import { COLORS } from '../constants/theme';
+import { orderService, Order } from '../services/OrderService';
 
 const OrdersListScreen = ({ navigation }: any) => {
-  const [orders] = useState([
-    { id: '1', address: 'Москва, ул. Ленина, д. 5', price: '8500', date: '20.05.2024', status: 'pending' },
-    { id: '2', address: 'Москва, пр. Мира, д. 45', price: '12000', date: '22.05.2024', status: 'started' },
-  ]);
+  const [orders, setOrders] = useState<Order[]>(orderService.getOrders());
+
+  useEffect(() => {
+    const updateOrders = (newOrders: Order[]) => setOrders([...newOrders]);
+    orderService.on('ordersUpdated', updateOrders);
+    return () => { orderService.off('ordersUpdated', updateOrders); };
+  }, []);
 
   const openMap = (address: string) => {
     const url = Platform.select({ ios: `maps:0,0?q=${address}`, android: `geo:0,0?q=${address}` });
@@ -21,9 +25,13 @@ const OrdersListScreen = ({ navigation }: any) => {
         data={orders}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
-          <View style={styles.rowFront}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
+            style={styles.rowFront}
+          >
             <View style={styles.cardHeader}>
-              <Text style={styles.dateText}>{item.date}</Text>
+              <Text style={styles.dateText}>{item.date || new Date(item.timestamp).toLocaleDateString()}</Text>
               <View style={[styles.statusBadge, { backgroundColor: item.status === 'started' ? COLORS.warning : COLORS.primary }]}>
                 <Text style={styles.statusText}>{item.status === 'started' ? 'В работе' : 'Ожидание'}</Text>
               </View>
@@ -36,7 +44,7 @@ const OrdersListScreen = ({ navigation }: any) => {
                 <TouchableOpacity onPress={() => navigation.navigate('Chats')} style={styles.iconBtn}><Ionicons name="chatbubbles-outline" size={26} color={COLORS.secondary} /></TouchableOpacity>
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
         leftOpenValue={75}
         rightOpenValue={-75}
