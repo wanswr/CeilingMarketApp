@@ -1,25 +1,33 @@
-import React from 'react';
-import { TextInput, StyleSheet, TextInputProps, View, Text } from 'react-native';
+import React, { useState } from 'react';
+import { TextInput, StyleSheet, TextInputProps, View, Text, Animated } from 'react-native';
 import { COLORS } from '../constants/theme';
 
 interface AppInputProps extends TextInputProps {
   label?: string;
   error?: string;
+  icon?: React.ReactNode;
 }
 
-export const AppInput = ({ label, error, style, ...props }: AppInputProps) => {
+export const AppInput = ({ label, error, style, icon, ...props }: AppInputProps) => {
+  const [isFocused, setIsFocused] = useState(false);
+
   return (
     <View style={styles.container}>
-      {label ? <Text style={styles.label}>{label}</Text> : null}
-      <TextInput 
-        {...props} 
-        style={[
-          styles.input, 
-          error ? styles.inputError : null,
-          style
-        ]} 
-        placeholderTextColor="#999"
-      />
+      {label ? <Text style={[styles.label, isFocused && {color: COLORS.primary}]}>{label}</Text> : null}
+      <View style={[
+        styles.inputWrapper,
+        isFocused && styles.inputFocused,
+        error ? styles.inputError : null
+      ]}>
+        {icon && <View style={styles.iconWrapper}>{icon}</View>}
+        <TextInput
+          {...props}
+          style={[styles.input, style]}
+          placeholderTextColor={COLORS.gray}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+        />
+      </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
@@ -27,27 +35,47 @@ export const AppInput = ({ label, error, style, ...props }: AppInputProps) => {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 15,
+    marginBottom: 18,
     width: '100%',
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.dark,
-    marginBottom: 6,
+    marginBottom: 8,
+    marginLeft: 4,
   },
-  input: {
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.white,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    fontSize: 16,
-    color: COLORS.dark,
-    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    minHeight: 58,
+    paddingHorizontal: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  inputFocused: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.white,
   },
   inputError: {
     borderColor: COLORS.danger,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: COLORS.dark,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  iconWrapper: {
+    marginRight: 10,
   },
   errorText: {
     color: COLORS.danger,

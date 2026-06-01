@@ -25,7 +25,18 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         <Text style={styles.details}>{order.details}</Text>
         
         {role === 'worker' && order.status === 'pending' && (
-          <TouchableOpacity style={styles.btn} onPress={() => { orderService.applyForOrder(order.id, 'me'); Alert.alert("Успех", "Отклик отправлен"); }}>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={async () => {
+              const hasSub = await orderService.checkSubscription();
+              if (hasSub) {
+                orderService.applyForOrder(order.id, 'me');
+                Alert.alert("Успех", "Отклик отправлен");
+              } else {
+                Alert.alert("Требуется подписка", "Для отклика на заказы необходимо активировать доступ. Ваш пробный период мог истечь.");
+              }
+            }}
+          >
             <Text style={styles.btnText}>ВЗЯТЬ ЗАКАЗ</Text>
           </TouchableOpacity>
         )}
@@ -52,12 +63,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  price: { fontSize: 32, fontWeight: 'bold', color: COLORS.success },
-  address: { fontSize: 20, fontWeight: 'bold', marginVertical: 10 },
-  details: { fontSize: 16, color: '#666', marginBottom: 30 },
-  btn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: 15, alignItems: 'center' },
-  btnText: { color: '#fff', fontWeight: 'bold' },
-  candidate: { padding: 15, backgroundColor: '#f0f0f0', borderRadius: 10, marginBottom: 5 }
+  container: { flex: 1, backgroundColor: COLORS.white },
+  price: { fontSize: 36, fontWeight: '800', color: COLORS.success, marginBottom: 8 },
+  address: { fontSize: 22, fontWeight: '800', color: COLORS.dark, marginBottom: 12 },
+  details: { fontSize: 16, color: COLORS.gray, lineHeight: 24, marginBottom: 32 },
+  btn: { backgroundColor: COLORS.primary, paddingVertical: 18, borderRadius: 18, alignItems: 'center', shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 15, elevation: 5 },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 1 },
+  candidate: { padding: 18, backgroundColor: COLORS.light, borderRadius: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }
 });
 export default OrderDetailScreen;

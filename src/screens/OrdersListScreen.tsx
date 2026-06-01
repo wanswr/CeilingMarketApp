@@ -54,15 +54,33 @@ const OrdersListScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f2f2f7' },
-  rowFront: { backgroundColor: '#FFF', borderRadius: 15, padding: 15, margin: 15, marginBottom: 0, elevation: 2 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  dateText: { color: COLORS.gray },
-  statusBadge: { paddingHorizontal: 10, borderRadius: 10 },
-  statusText: { color: '#fff', fontSize: 11 },
-  addressText: { fontSize: 17, fontWeight: 'bold', marginVertical: 10 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  priceText: { fontSize: 18, color: COLORS.success, fontWeight: 'bold' },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  rowFront: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 18,
+    marginHorizontal: 15,
+    marginTop: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dateText: { color: COLORS.gray, fontSize: 13, fontWeight: '500' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  addressText: { fontSize: 17, fontWeight: '700', color: COLORS.dark, marginVertical: 12 },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 12,
+  },
+  priceText: { fontSize: 20, color: COLORS.success, fontWeight: '800' },
   iconGroup: { flexDirection: 'row' },
   iconBtn: { marginLeft: 15 }
 });

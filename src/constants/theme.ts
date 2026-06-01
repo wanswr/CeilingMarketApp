@@ -1,6 +1,6 @@
 export const COLORS = {
-  primary: '#5856D6',
-  secondary: '#AF52DE',
+  primary: '#007AFF', // Classic iOS Blue
+  secondary: '#5856D6', // Purple
   success: '#34C759',
   danger: '#FF3B30',
   warning: '#FF9500',
@@ -9,13 +9,16 @@ export const COLORS = {
   dark: '#1C1C1E',
   gray: '#8E8E93',
   white: '#FFFFFF',
-  background: '#F5F5F5',
-  bgLight: '#EEF2FF',
+  background: '#F8F9FA',
+  bgLight: '#F2F2F7',
+  border: '#E5E5EA',
+  placeholder: '#A9A9AC',
 };
 
 export const GRADIENTS = {
-  header: ['#5856D6', '#AF52DE'],
-  button: ['#5856D6', '#AF52DE'],
+  header: ['#007AFF', '#5856D6'],
+  button: ['#007AFF', '#5856D6'],
+  success: ['#34C759', '#30B753'],
 };
 
 export const SPACING = {

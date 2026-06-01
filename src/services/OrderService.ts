@@ -60,6 +60,19 @@ class OrderService {
 
   getCurrentRole(): 'employer' | 'worker' { return this.currentRole; }
 
+  async checkSubscription(): Promise<boolean> {
+    if (!auth.currentUser) return false;
+    try {
+      const doc = await db.collection("users").doc(auth.currentUser.uid).get();
+      if (!doc.exists) return false;
+      const data = doc.data();
+      if (!data?.subscriptionUntil) return false;
+      return new Date(data.subscriptionUntil) > new Date();
+    } catch {
+      return false;
+    }
+  }
+
   setRole(role: 'employer' | 'worker') {
     this.currentRole = role;
     this.emit('roleChanged', role);
