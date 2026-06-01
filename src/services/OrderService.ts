@@ -15,12 +15,21 @@ class OrderService {
     auth.onAuthStateChanged((user) => {
       if (user) {
         if (this.unsubscribe) this.unsubscribe();
+
+        // Use a timeout or a check to delay listening if user is still in registration
+        // For now, we handle the error silently to avoid Red Box on the login/onboarding screen
         this.unsubscribe = db.collection("orders")
           .orderBy("timestamp", "desc")
           .onSnapshot((snapshot) => {
             this.orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Order));
             this.emit('ordersUpdated', this.orders);
-          }, (err) => console.error("Firestore Error:", err));
+          }, (err) => {
+            if (err.code === 'permission-denied') {
+              console.warn("Firestore: Waiting for permissions (profile registration in progress)");
+            } else {
+              console.error("Firestore Error:", err);
+            }
+          });
       } else {
         if (this.unsubscribe) {
           this.unsubscribe();
