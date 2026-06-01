@@ -31,11 +31,14 @@ const OrdersListScreen = ({ navigation }: any) => {
             style={styles.rowFront}
           >
             <View style={styles.cardHeader}>
-              <Text style={styles.dateText}>{item.date || new Date(item.timestamp).toLocaleDateString()}</Text>
+              <Text style={styles.dateText}>
+                {item.date ? new Date(item.date).toLocaleDateString() : new Date(item.timestamp).toLocaleDateString()}
+              </Text>
               <View style={[styles.statusBadge, { backgroundColor: item.status === 'started' ? COLORS.warning : COLORS.primary }]}>
                 <Text style={styles.statusText}>{item.status === 'started' ? 'В работе' : 'Ожидание'}</Text>
               </View>
             </View>
+            <Text style={styles.titleText}>{item.title || 'Заказ без названия'}</Text>
             <Text style={styles.addressText}>{item.address}</Text>
             <View style={styles.cardFooter}>
               <Text style={styles.priceText}>{item.price} ₽</Text>
@@ -71,7 +74,8 @@ const styles = StyleSheet.create({
   dateText: { color: COLORS.gray, fontSize: 13, fontWeight: '500' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   statusText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  addressText: { fontSize: 17, fontWeight: '700', color: COLORS.dark, marginVertical: 12 },
+  titleText: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginTop: 12 },
+  addressText: { fontSize: 15, fontWeight: '500', color: COLORS.gray, marginBottom: 12, marginTop: 4 },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',

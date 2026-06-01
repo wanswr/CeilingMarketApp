@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
 import { db, auth } from '../services/firebase';
@@ -37,46 +37,48 @@ const RegisterDetailsScreen = ({ navigation }: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{flex: 1}}
-      >
-        <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Давайте познакомимся</Text>
-            <Text style={styles.subtitle}>Заполните информацию о себе для начала работы</Text>
-          </View>
-
-          <View style={styles.form}>
-            <AppInput
-              label="ФИО"
-              placeholder="Иванов Иван Иванович"
-              value={fio}
-              onChangeText={setFio}
-              icon={<Ionicons name="person-outline" size={20} color={COLORS.gray} />}
-            />
-            <AppInput
-              label="Дата рождения"
-              placeholder="01.01.1990"
-              value={date}
-              onChangeText={setDate}
-              icon={<Ionicons name="calendar-outline" size={20} color={COLORS.gray} />}
-            />
-
-            <View style={styles.infoBox}>
-              <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.success} />
-              <Text style={styles.infoText}>Ваши данные защищены и используются только для верификации внутри платформы</Text>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{flex: 1}}
+        >
+          <ScrollView contentContainerStyle={styles.content}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Давайте познакомимся</Text>
+              <Text style={styles.subtitle}>Заполните информацию о себе для начала работы</Text>
             </View>
 
-            <Button
-              title="Продолжить"
-              onPress={handleNext}
-              loading={loading}
-              disabled={!fio || !date}
-            />
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+            <View style={styles.form}>
+              <AppInput
+                label="ФИО"
+                placeholder="Иванов Иван Иванович"
+                value={fio}
+                onChangeText={setFio}
+                icon={<Ionicons name="person-outline" size={20} color={COLORS.gray} />}
+              />
+              <AppInput
+                label="Дата рождения"
+                placeholder="01.01.1990"
+                value={date}
+                onChangeText={setDate}
+                icon={<Ionicons name="calendar-outline" size={20} color={COLORS.gray} />}
+              />
+
+              <View style={styles.infoBox}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.success} />
+                <Text style={styles.infoText}>Ваши данные защищены и используются только для верификации внутри платформы</Text>
+              </View>
+
+              <Button
+                title="Продолжить"
+                onPress={handleNext}
+                loading={loading}
+                disabled={!fio || !date}
+              />
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 };

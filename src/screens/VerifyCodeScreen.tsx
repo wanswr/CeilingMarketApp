@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Alert, SafeAreaView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, Alert, SafeAreaView, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
 import { COLORS } from '../constants/theme';
@@ -33,57 +33,64 @@ export default function VerifyCodeScreen({ route, navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
-      </TouchableOpacity>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
+          </TouchableOpacity>
 
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Подтверждение</Text>
-          <Text style={styles.subtitle}>
-            Мы отправили SMS с кодом на номер{'\n'}
-            <Text style={styles.phoneText}>{phoneNumber}</Text>
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <AppInput
-            label="Код подтверждения"
-            value={code}
-            onChangeText={(t:any) => {
-              setCode(t);
-              if(t.length === 6) handleVerify();
-            }}
-            keyboardType="number-pad"
-            maxLength={6}
-            autoFocus
-            placeholder="000000"
-            style={styles.codeInput}
-          />
-
-          <Button
-            title="Войти"
-            onPress={handleVerify}
-            loading={loading}
-            disabled={code.length < 6}
-          />
-
-          <View style={styles.resendContainer}>
-            {timer > 0 ? (
-              <Text style={styles.resendText}>
-                Отправить код повторно через {timer} сек.
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Подтверждение</Text>
+              <Text style={styles.subtitle}>
+                Мы отправили SMS с кодом на номер{'\n'}
+                <Text style={styles.phoneText}>{phoneNumber}</Text>
               </Text>
-            ) : (
-              <TouchableOpacity onPress={() => Alert.alert("Инфо", "Код отправлен повторно")}>
-                <Text style={styles.resendLink}>Отправить код еще раз</Text>
-              </TouchableOpacity>
-            )}
+            </View>
+
+            <View style={styles.form}>
+              <AppInput
+                label="Код подтверждения"
+                value={code}
+                onChangeText={(t:any) => {
+                  setCode(t);
+                  if(t.length === 6) handleVerify();
+                }}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoFocus
+                placeholder="000000"
+                style={styles.codeInput}
+              />
+
+              <Button
+                title="Войти"
+                onPress={handleVerify}
+                loading={loading}
+                disabled={code.length < 6}
+              />
+
+              <View style={styles.resendContainer}>
+                {timer > 0 ? (
+                  <Text style={styles.resendText}>
+                    Отправить код повторно через {timer} сек.
+                  </Text>
+                ) : (
+                  <TouchableOpacity onPress={() => Alert.alert("Инфо", "Код отправлен повторно")}>
+                    <Text style={styles.resendLink}>Отправить код еще раз</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
           </View>
-        </View>
-      </View>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 }

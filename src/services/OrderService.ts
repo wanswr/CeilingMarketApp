@@ -1,4 +1,4 @@
-import { db, auth } from './firebase';
+import { db, auth, storage } from './firebase';
 import { Order, OrderStatus } from '../types';
 
 class OrderService {
@@ -78,14 +78,34 @@ class OrderService {
     this.emit('roleChanged', role);
   }
 
+  async uploadImage(uri: string): Promise<string> {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const filename = `orders/${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const ref = storage.ref().child(filename);
+    await ref.put(blob);
+    return await ref.getDownloadURL();
+  }
+
   async createOrder(data: any) {
     if (!auth.currentUser) throw new Error("Не авторизован");
-    return db.collection("orders").add({
+
+    const orderData = {
       ...data,
+      price: data.price ? Number(data.price) : 0,
       employerId: auth.currentUser.uid,
       status: 'pending',
-      timestamp: Date.now()
-    });
+      timestamp: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    try {
+      return await db.collection("orders").add(orderData);
+    } catch (error: any) {
+      console.error("Error creating order in Firestore:", error);
+      throw error;
+    }
   }
 
   async applyForOrder(orderId: string, workerId: string) {

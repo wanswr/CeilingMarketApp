@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { auth } from '../services/firebase';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
@@ -31,43 +31,45 @@ export default function LoginScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.content}
-      >
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaVerifier}
-          firebaseConfig={firebase.app().options}
-          attemptInvisibleRecaptcha={true}
-        />
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.content}
+        >
+          <FirebaseRecaptchaVerifierModal
+            ref={recaptchaVerifier}
+            firebaseConfig={firebase.app().options}
+            attemptInvisibleRecaptcha={true}
+          />
 
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="construct" size={50} color={COLORS.primary} />
+          <View style={styles.header}>
+            <View style={styles.logoContainer}>
+              <Ionicons name="construct" size={50} color={COLORS.primary} />
+            </View>
+            <Text style={styles.title}>Добро пожаловать</Text>
+            <Text style={styles.subtitle}>Войдите, чтобы продолжить работу</Text>
           </View>
-          <Text style={styles.title}>Добро пожаловать</Text>
-          <Text style={styles.subtitle}>Войдите, чтобы продолжить работу</Text>
-        </View>
 
-        <View style={styles.form}>
-          <AppInput
-            label="Номер телефона"
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            placeholder="+7 (___) ___-__-__"
-            icon={<Ionicons name="call-outline" size={20} color={COLORS.gray} />}
-          />
-          <Button
-            title="Получить код"
-            onPress={handleSendCode}
-            loading={loading}
-          />
-          <Text style={styles.footerText}>
-            Нажимая кнопку, вы соглашаетесь с условиями использования и политикой конфиденциальности
-          </Text>
-        </View>
-      </KeyboardAvoidingView>
+          <View style={styles.form}>
+            <AppInput
+              label="Номер телефона"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholder="+7 (___) ___-__-__"
+              icon={<Ionicons name="call-outline" size={20} color={COLORS.gray} />}
+            />
+            <Button
+              title="Получить код"
+              onPress={handleSendCode}
+              loading={loading}
+            />
+            <Text style={styles.footerText}>
+              Нажимая кнопку, вы соглашаетесь с условиями использования и политикой конфиденциальности
+            </Text>
+          </View>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 }
