@@ -67,9 +67,15 @@ export default function CreateOrderScreen({ navigation }: any) {
     setLoading(true);
     try {
       // Upload images first
-      const imageUrls = await Promise.all(
-        images.map(uri => orderService.uploadImage(uri))
-      );
+      let imageUrls: string[] = [];
+      try {
+        imageUrls = await Promise.all(
+          images.map(uri => orderService.uploadImage(uri))
+        );
+      } catch (storageErr) {
+        console.warn("Storage upload failed, proceeding without images:", storageErr);
+        Alert.alert("Предупреждение", "Не удалось загрузить фотографии (проверьте подписку Firebase), заказ будет создан без них.");
+      }
 
       const orderData = {
         ...form,

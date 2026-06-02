@@ -90,10 +90,10 @@ const MapScreen = ({ navigation }: any) => {
         )}
         
         {orders.filter(o => o.status === 'pending').map(order => (
-          order.coordinates && (
+          (order.coordinates || order.location) && (
             <Marker
               key={order.id}
-              coordinate={order.coordinates}
+              coordinate={order.coordinates || order.location}
               onPress={() => onMarkerPress(order)}
             >
               <View style={styles.pinMarker}>
