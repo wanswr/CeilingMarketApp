@@ -176,6 +176,8 @@ export default function CreateOrderScreen({ navigation }: any) {
                       display="spinner"
                       onChange={onDateChange}
                       minimumDate={new Date()}
+                      style={{ height: 216 }}
+                      textColor={COLORS.dark}
                     />
                   </View>
                 </View>

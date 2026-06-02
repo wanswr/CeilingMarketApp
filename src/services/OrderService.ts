@@ -79,35 +79,68 @@ class OrderService {
   }
 
   async uploadImage(uri: string): Promise<string> {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    const filename = `orders/${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    const ref = storage.ref().child(filename);
-    await ref.put(blob);
-    return await ref.getDownloadURL();
+    try {
+      console.log('Starting image upload for:', uri);
+      // For React Native, it's often better to use XMLHttpRequest for blobs if fetch fails
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      const filename = `orders/${auth.currentUser?.uid || 'anon'}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+      const ref = storage.ref().child(filename);
+
+      console.log('Uploading to:', filename);
+      const snapshot = await ref.put(blob);
+      console.log('Upload successful');
+
+      const downloadURL = await snapshot.ref.getDownloadURL();
+      console.log('Download URL:', downloadURL);
+      return downloadURL;
+    } catch (error: any) {
+      console.error('Error in uploadImage:', error);
+      // Log more details if available
+      if (error.code) console.error('Error code:', error.code);
+      if (error.serverResponse) console.error('Server response:', error.serverResponse);
+      throw error;
+    }
   }
 
   async createOrder(data: any) {
     if (!auth.currentUser) throw new Error("Не авторизован");
 
-    const orderData = {
+    const orderData: Partial<Order> = {
       title: data.title || '',
       address: data.address || '',
       price: data.price ? Number(data.price) : 0,
       details: data.details || '',
       date: data.date || new Date().toISOString(),
-      images: data.images || [],
+      images: data.images as string[] || [],
       employerId: auth.currentUser.uid,
       status: 'pending',
-      timestamp: Date.now(),
+      // Fields to satisfy the Order interface if needed by rules
+      squareMeters: 0,
+      perimeter: 0,
+      fixturesCount: 0,
+      chandeliersCount: 0,
+      curtainRodsCount: 0,
+      time: '',
+      location: { latitude: 0, longitude: 0 },
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
 
     try {
-      return await db.collection("orders").add(orderData);
+      console.log('Attempting to create order with data:', JSON.stringify(orderData, null, 2));
+      const docRef = await db.collection("orders").add({
+        ...orderData,
+        timestamp: Date.now(), // Compatibility with some old queries
+      });
+      console.log('Order created successfully with ID:', docRef.id);
+      return docRef;
     } catch (error: any) {
       console.error("Error creating order in Firestore:", error);
+      if (error.code === 'permission-denied') {
+        console.error("Permission denied. Check if user is logged in and Firestore rules allow writing to 'orders'.");
+      }
       throw error;
     }
   }
