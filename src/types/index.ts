@@ -9,7 +9,7 @@ export interface Order {
   coordinates?: LatLng;
   date: string;
   time: string;
-  price: number;
+  price: number | string;
   squareMeters: number;
   perimeter: number;
   fixturesCount: number;

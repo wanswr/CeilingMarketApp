@@ -79,6 +79,36 @@ class OrderService {
   }
 
   async uploadImage(uri: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = function () {
+        const blob = xhr.response;
+        const filename = `orders/${auth.currentUser?.uid || 'anon'}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+        const ref = storage.ref().child(filename);
+
+        console.log('Uploading to:', filename);
+        ref.put(blob)
+          .then((snapshot) => snapshot.ref.getDownloadURL())
+          .then((url) => {
+            console.log('Upload successful, URL:', url);
+            resolve(url);
+          })
+          .catch((err) => {
+            console.error('Firebase storage upload failed:', err);
+            reject(err);
+          });
+      };
+      xhr.onerror = function (e) {
+        console.error('XHR Error:', e);
+        reject(new TypeError("Network request failed"));
+      };
+      xhr.responseType = "blob";
+      xhr.open("GET", uri, true);
+      xhr.send(null);
+    });
+  }
+
+  async uploadImageLegacy(uri: string): Promise<string> {
     try {
       console.log('Starting image upload for:', uri);
       // For React Native, it's often better to use XMLHttpRequest for blobs if fetch fails
@@ -129,11 +159,14 @@ class OrderService {
     };
 
     try {
-      console.log('Attempting to create order with data:', JSON.stringify(orderData, null, 2));
-      const docRef = await db.collection("orders").add({
+      // Deep sanitize data: remove undefined values and ensure types
+      const sanitizedData = JSON.parse(JSON.stringify({
         ...orderData,
-        timestamp: Date.now(), // Compatibility with some old queries
-      });
+        timestamp: Date.now(),
+      }));
+
+      console.log('Attempting to create order with sanitized data:', JSON.stringify(sanitizedData, null, 2));
+      const docRef = await db.collection("orders").add(sanitizedData);
       console.log('Order created successfully with ID:', docRef.id);
       return docRef;
     } catch (error: any) {

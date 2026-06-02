@@ -21,7 +21,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={{ padding: 20 }}>
         <Text style={styles.title}>{order.title || 'Заказ без названия'}</Text>
-        <Text style={styles.price}>{order.price} ₽</Text>
+        <Text style={styles.price}>{String(order.price)} ₽</Text>
         <Text style={styles.address}>{order.address}</Text>
         <Text style={styles.date}>Дата: {order.date ? new Date(order.date).toLocaleDateString() : 'Не указана'}</Text>
         <Text style={styles.details}>{order.details}</Text>
