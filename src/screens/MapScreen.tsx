@@ -89,19 +89,25 @@ const MapScreen = ({ navigation }: any) => {
           />
         )}
         
-        {orders.filter(o => o.status === 'pending').map(order => (
-          (order.coordinates || order.location) && (
+        {orders.filter(o => o.status === 'pending' || o.status === 'new').map(order => {
+          const coord = order.coordinates || order.location;
+          if (!coord || !coord.latitude || !coord.longitude) return null;
+
+          return (
             <Marker
               key={order.id}
-              coordinate={order.coordinates || order.location}
+              coordinate={{
+                latitude: Number(coord.latitude),
+                longitude: Number(coord.longitude)
+              }}
               onPress={() => onMarkerPress(order)}
             >
               <View style={styles.pinMarker}>
                 <Ionicons name="location" size={32} color={COLORS.primary} />
               </View>
             </Marker>
-          )
-        ))}
+          );
+        })}
       </MapView>
 
       <SafeAreaView style={styles.controlsContainer}>

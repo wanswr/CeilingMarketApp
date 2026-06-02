@@ -153,8 +153,9 @@ class OrderService {
       chandeliersCount: 0,
       curtainRodsCount: 0,
       time: '',
-      // Default to Moscow coordinates for testing if location is not provided
-      location: { latitude: 55.751244, longitude: 37.618423 },
+      // Use provided location or default to Moscow coordinates for testing
+      location: data.location || data.coordinates || { latitude: 55.751244, longitude: 37.618423 },
+      coordinates: data.coordinates || data.location || { latitude: 55.751244, longitude: 37.618423 },
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

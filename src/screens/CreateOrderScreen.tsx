@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { AppInput } from '../components/Input';
 import { orderService } from '../services/OrderService';
@@ -66,6 +67,21 @@ export default function CreateOrderScreen({ navigation }: any) {
 
     setLoading(true);
     try {
+      // Get current location
+      let coordinates = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({});
+          coordinates = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          };
+        }
+      } catch (err) {
+        console.warn("Could not get location:", err);
+      }
+
       // Upload images first
       let imageUrls: string[] = [];
       try {
@@ -81,6 +97,8 @@ export default function CreateOrderScreen({ navigation }: any) {
         ...form,
         date: form.date.toISOString(),
         images: imageUrls,
+        coordinates,
+        location: coordinates, // Dual field for compatibility
       };
 
       await orderService.createOrder(orderData);
