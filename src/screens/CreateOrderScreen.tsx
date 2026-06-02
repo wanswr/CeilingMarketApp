@@ -11,7 +11,8 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
-  Image
+  Image,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,6 +32,7 @@ export default function CreateOrderScreen({ navigation }: any) {
   });
   const [images, setImages] = useState<string[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date());
   const [loading, setLoading] = useState(false);
 
   const pickImage = async () => {
@@ -86,10 +88,21 @@ export default function CreateOrderScreen({ navigation }: any) {
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setForm({ ...form, date: selectedDate });
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      if (selectedDate) {
+        setForm({ ...form, date: selectedDate });
+      }
+    } else {
+      if (selectedDate) {
+        setTempDate(selectedDate);
+      }
     }
+  };
+
+  const confirmIosDate = () => {
+    setForm({ ...form, date: tempDate });
+    setShowDatePicker(false);
   };
 
   return (
@@ -129,7 +142,10 @@ export default function CreateOrderScreen({ navigation }: any) {
                 <Text style={styles.label}>Дата</Text>
                 <TouchableOpacity
                   style={styles.dateButton}
-                  onPress={() => setShowDatePicker(true)}
+                  onPress={() => {
+                    setTempDate(form.date);
+                    setShowDatePicker(true);
+                  }}
                 >
                   <Ionicons name="calendar-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
                   <Text>{form.date.toLocaleDateString()}</Text>
@@ -137,11 +153,41 @@ export default function CreateOrderScreen({ navigation }: any) {
               </View>
             </View>
 
-            {showDatePicker && (
+            {/* iOS Date Picker Modal */}
+            {Platform.OS === 'ios' && (
+              <Modal
+                transparent={true}
+                visible={showDatePicker}
+                animationType="slide"
+              >
+                <View style={styles.modalOverlay}>
+                  <View style={styles.modalContent}>
+                    <View style={styles.modalHeader}>
+                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                        <Text style={{color: COLORS.danger, fontWeight: '600'}}>Отмена</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={confirmIosDate}>
+                        <Text style={{color: COLORS.primary, fontWeight: '600'}}>Готово</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={tempDate}
+                      mode="date"
+                      display="spinner"
+                      onChange={onDateChange}
+                      minimumDate={new Date()}
+                    />
+                  </View>
+                </View>
+              </Modal>
+            )}
+
+            {/* Android Date Picker */}
+            {Platform.OS === 'android' && showDatePicker && (
               <DateTimePicker
                 value={form.date}
                 mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                display="default"
                 onChange={onDateChange}
                 minimumDate={new Date()}
               />
@@ -273,5 +319,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 16,
     letterSpacing: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
   },
 });

@@ -91,8 +91,12 @@ class OrderService {
     if (!auth.currentUser) throw new Error("Не авторизован");
 
     const orderData = {
-      ...data,
+      title: data.title || '',
+      address: data.address || '',
       price: data.price ? Number(data.price) : 0,
+      details: data.details || '',
+      date: data.date || new Date().toISOString(),
+      images: data.images || [],
       employerId: auth.currentUser.uid,
       status: 'pending',
       timestamp: Date.now(),
