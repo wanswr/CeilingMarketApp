@@ -39,7 +39,7 @@ export default function LoginScreen({ navigation }: any) {
           <FirebaseRecaptchaVerifierModal
             ref={recaptchaVerifier}
             firebaseConfig={firebase.app().options}
-            attemptInvisibleRecaptcha={true}
+            attemptInvisibleVerification={true}
           />
 
           <View style={styles.header}>
