@@ -113,7 +113,7 @@ const MapScreen = ({ navigation }: any) => {
           />
         )}
         
-        {orders.filter(o => o.status === 'pending' || o.status === 'new').map(order => {
+        {orders.filter(o => ['pending', 'new', 'accepted', 'in_work', 'executing'].includes(o.status)).map(order => {
           const coord = order.coordinates || order.location;
           if (!coord) return null;
 

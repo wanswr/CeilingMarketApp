@@ -63,22 +63,33 @@ export default function CreateOrderScreen({ navigation }: any) {
     setImages(images.filter((_, i) => i !== index));
   };
 
+  const mapRef = React.useRef<MapView>(null);
+
   const handleGeocode = async () => {
     if (!form.address || form.address.length < 5) return;
 
     setIsGeocoding(true);
     try {
-      // Adding regional context for better accuracy in Russia/Moscow
       const searchAddress = form.address.toLowerCase().includes('москва')
         ? form.address
         : `Москва, ${form.address}`;
 
       const geocoded = await Location.geocodeAsync(searchAddress);
       if (geocoded.length > 0) {
-        setCoordinates({
+        const newCoords = {
           latitude: geocoded[0].latitude,
           longitude: geocoded[0].longitude,
-        });
+        };
+        setCoordinates(newCoords);
+
+        // Animate map to new location
+        if (mapRef.current) {
+          mapRef.current.animateToRegion({
+            ...newCoords,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+          }, 1000);
+        }
       }
     } catch (err) {
       console.warn("Geocoding failed:", err);
@@ -195,53 +206,64 @@ export default function CreateOrderScreen({ navigation }: any) {
               onChangeText={(t)=>setForm({...form, title:t})}
             />
 
-            <AppInput
-              label="Адрес объекта"
-              placeholder="Улица, дом..."
-              value={form.address}
-              onChangeText={(t)=>setForm({...form, address:t})}
-              onBlur={handleGeocode}
-              icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
-            />
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Местоположение</Text>
+              <AppInput
+                label="Адрес объекта"
+                placeholder="Улица, дом..."
+                value={form.address}
+                onChangeText={(t)=>setForm({...form, address:t})}
+                onBlur={handleGeocode}
+                icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
+              />
 
-            <View style={styles.locationActions}>
-              <TouchableOpacity style={styles.locationBtn} onPress={handleGeocode} disabled={isGeocoding}>
-                {isGeocoding ? <ActivityIndicator size="small" color={COLORS.primary} /> : (
-                  <>
-                    <Ionicons name="search-outline" size={16} color={COLORS.primary} />
-                    <Text style={styles.locationBtnText}>Найти на карте</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.locationBtn} onPress={handleUseCurrentLocation}>
-                <Ionicons name="navigate-outline" size={16} color={COLORS.primary} />
-                <Text style={styles.locationBtnText}>Я на месте</Text>
-              </TouchableOpacity>
-            </View>
+              <View style={styles.locationActions}>
+                <TouchableOpacity style={styles.locationBtn} onPress={handleGeocode} disabled={isGeocoding}>
+                  {isGeocoding ? <ActivityIndicator size="small" color={COLORS.primary} /> : (
+                    <>
+                      <Ionicons name="search-outline" size={16} color={COLORS.primary} />
+                      <Text style={styles.locationBtnText}>Найти адрес</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.locationBtn} onPress={handleUseCurrentLocation}>
+                  <Ionicons name="navigate-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.locationBtnText}>Моё местоположение</Text>
+                </TouchableOpacity>
+              </View>
 
-            {coordinates && (
               <View style={styles.mapPreviewContainer}>
                 <MapView
+                  ref={mapRef}
                   provider={PROVIDER_GOOGLE}
                   style={styles.mapPreview}
                   initialRegion={{
-                    ...coordinates,
-                    latitudeDelta: 0.005,
-                    longitudeDelta: 0.005,
+                    latitude: coordinates?.latitude || 55.751244,
+                    longitude: coordinates?.longitude || 37.618423,
+                    latitudeDelta: 0.1,
+                    longitudeDelta: 0.1,
                   }}
                   onPress={(e) => setCoordinates(e.nativeEvent.coordinate)}
                 >
-                  <Marker
-                    coordinate={coordinates}
-                    draggable
-                    onDragEnd={(e) => setCoordinates(e.nativeEvent.coordinate)}
-                  />
+                  {coordinates && (
+                    <Marker
+                      coordinate={coordinates}
+                      draggable
+                      onDragEnd={(e) => setCoordinates(e.nativeEvent.coordinate)}
+                      pinColor={COLORS.primary}
+                    />
+                  )}
                 </MapView>
-                <View style={styles.mapOverlay}>
-                  <Text style={styles.mapHint}>Можно двигать метку или нажать на карту</Text>
+                <View style={styles.mapInstruction}>
+                  <Ionicons name="information-circle-outline" size={14} color="#666" />
+                  <Text style={styles.mapHint}>
+                    {coordinates
+                      ? "Уточните положение, передвинув синюю метку"
+                      : "Нажмите на карту, чтобы поставить метку вручную"}
+                  </Text>
                 </View>
               </View>
-            )}
+            </View>
 
             <View style={styles.row}>
               <View style={{ flex: 1, marginRight: 10 }}>
@@ -356,6 +378,23 @@ export default function CreateOrderScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  section: {
+    marginBottom: 25,
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.dark,
+    marginBottom: 15,
+  },
   locationActions: {
     flexDirection: 'row',
     marginBottom: 15,
@@ -385,19 +424,28 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  mapOverlay: {
+  mapInstruction: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    paddingVertical: 4,
+    bottom: 10,
+    left: 10,
+    right: 10,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
   mapHint: {
-    fontSize: 10,
-    color: COLORS.dark,
-    fontWeight: '600',
+    fontSize: 12,
+    color: '#444',
+    fontWeight: '500',
+    marginLeft: 6,
   },
   title: {
     fontSize: 28,
