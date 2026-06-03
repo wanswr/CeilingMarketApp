@@ -20,6 +20,28 @@ const OrdersListScreen = ({ navigation }: any) => {
     if (url) Linking.openURL(url);
   };
 
+  const handleAction = (orderId: string, action: 'accept' | 'delete') => {
+    if (action === 'delete') {
+      Alert.alert(
+        "Удаление",
+        "Вы уверены, что хотите удалить этот заказ?",
+        [
+          { text: "Отмена", style: "cancel" },
+          {
+            text: "Удалить",
+            style: "destructive",
+            onPress: () => {
+              // Add delete logic to OrderService if needed
+              console.log('Delete order', orderId);
+            }
+          }
+        ]
+      );
+    } else {
+      Alert.alert("Принять", "Вы подтверждаете выполнение этого заказа?");
+    }
+  };
+
   return (
     <View style={styles.container}>
       <SwipeListView
@@ -50,8 +72,29 @@ const OrdersListScreen = ({ navigation }: any) => {
             </View>
           </TouchableOpacity>
         )}
-        leftOpenValue={75}
-        rightOpenValue={-75}
+        renderHiddenItem={({ item }) => (
+          <View style={styles.rowBack}>
+            <TouchableOpacity
+              style={[styles.backLeftBtn]}
+              onPress={() => handleAction(item.id, 'accept')}
+            >
+              <Ionicons name="checkmark-circle" size={28} color="#fff" />
+              <Text style={styles.backTextWhite}>Принять</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.backRightBtn]}
+              onPress={() => handleAction(item.id, 'delete')}
+            >
+              <Ionicons name="trash" size={28} color="#fff" />
+              <Text style={styles.backTextWhite}>Удалить</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        leftOpenValue={80}
+        rightOpenValue={-80}
+        stopLeftSwipe={100}
+        stopRightSwipe={-100}
       />
     </View>
   );
@@ -87,7 +130,48 @@ const styles = StyleSheet.create({
   },
   priceText: { fontSize: 20, color: COLORS.success, fontWeight: '800' },
   iconGroup: { flexDirection: 'row' },
-  iconBtn: { marginLeft: 15 }
+  iconBtn: { marginLeft: 15 },
+  rowBack: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingLeft: 15,
+    marginHorizontal: 15,
+    marginTop: 15,
+    borderRadius: 20,
+  },
+  backLeftBtn: {
+    alignItems: 'center',
+    bottom: 0,
+    justifyContent: 'center',
+    position: 'absolute',
+    top: 0,
+    width: 80,
+    backgroundColor: COLORS.success,
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
+    left: 0,
+  },
+  backRightBtn: {
+    alignItems: 'center',
+    bottom: 0,
+    justifyContent: 'center',
+    position: 'absolute',
+    top: 0,
+    width: 80,
+    backgroundColor: COLORS.danger,
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
+    right: 0,
+  },
+  backTextWhite: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 4,
+  },
 });
 
 export default OrdersListScreen;

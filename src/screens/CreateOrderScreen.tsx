@@ -40,6 +40,7 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [coordinates, setCoordinates] = useState<{latitude: number, longitude: number} | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [normalizedAddress, setNormalizedAddress] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -66,12 +67,45 @@ export default function CreateOrderScreen({ navigation }: any) {
 
   const mapRef = React.useRef<MapView>(null);
 
-  const handleGeocode = async () => {
-    if (!form.address || form.address.length < 3) return;
+  const handleAddressChange = async (text: string) => {
+    setForm({ ...form, address: text });
+    if (text.length > 3) {
+      try {
+        const query = text.toLowerCase().includes('москва') ? text : `Москва, ${text}`;
+        const results = await Location.geocodeAsync(query);
+        if (results.length > 0) {
+          const rev = await Location.reverseGeocodeAsync({
+            latitude: results[0].latitude,
+            longitude: results[0].longitude
+          });
+          if (rev.length > 0) {
+            const r = rev[0];
+            const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
+            // Simple logic: if formatted address starts with user input, suggest it
+            if (formatted && !suggestions.includes(formatted)) {
+              setSuggestions([formatted]);
+            }
+          }
+        }
+      } catch (e) {}
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const selectSuggestion = (addr: string) => {
+    setForm({ ...form, address: addr });
+    setSuggestions([]);
+    handleGeocode(addr);
+  };
+
+  const handleGeocode = async (overrideAddr?: string) => {
+    const addrToUse = overrideAddr || form.address;
+    if (!addrToUse || addrToUse.length < 3) return;
 
     setIsGeocoding(true);
     try {
-      const input = form.address.trim();
+      const input = addrToUse.trim();
       const queries = [
         input, // Try exactly what user wrote
         `Москва, ${input}`, // Try Moscow prefix
@@ -247,13 +281,24 @@ export default function CreateOrderScreen({ navigation }: any) {
                 label="Адрес объекта"
                 placeholder="Улица, дом..."
                 value={form.address}
-                onChangeText={(t)=>setForm({...form, address:t})}
-                onBlur={handleGeocode}
+                onChangeText={handleAddressChange}
+                onBlur={() => handleGeocode()}
                 icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
               />
 
+              {suggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  {suggestions.map((s, i) => (
+                    <TouchableOpacity key={i} style={styles.suggestionItem} onPress={() => selectSuggestion(s)}>
+                      <Ionicons name="search-outline" size={14} color={COLORS.gray} />
+                      <Text style={styles.suggestionText}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
               <View style={styles.locationActions}>
-                <TouchableOpacity style={styles.locationBtn} onPress={handleGeocode} disabled={isGeocoding}>
+                <TouchableOpacity style={styles.locationBtn} onPress={() => handleGeocode()} disabled={isGeocoding}>
                   {isGeocoding ? <ActivityIndicator size="small" color={COLORS.primary} /> : (
                     <>
                       <Ionicons name="search-outline" size={16} color={COLORS.primary} />
@@ -420,6 +465,28 @@ export default function CreateOrderScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  suggestionsContainer: {
+    backgroundColor: '#fff',
+    marginTop: -15,
+    marginBottom: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  suggestionItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  suggestionText: {
+    fontSize: 14,
+    color: COLORS.dark,
+    marginLeft: 8,
+  },
   normalizedContainer: {
     flexDirection: 'row',
     alignItems: 'center',
