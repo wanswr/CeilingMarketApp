@@ -22,6 +22,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { AppInput } from '../components/Input';
 import { orderService } from '../services/OrderService';
 import { COLORS } from '../constants/theme';
+import { formatDate } from '../utils/date';
 
 export default function CreateOrderScreen({ navigation }: any) {
   const [form, setForm] = useState({
@@ -67,19 +68,29 @@ export default function CreateOrderScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      // Get current location
+      // Geocode address
       let coordinates = null;
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({});
+        const geocoded = await Location.geocodeAsync(form.address);
+        if (geocoded.length > 0) {
           coordinates = {
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
+            latitude: geocoded[0].latitude,
+            longitude: geocoded[0].longitude,
           };
+        } else {
+          // If geocoding fails, ask user if they want to use current GPS
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status === 'granted') {
+            const loc = await Location.getCurrentPositionAsync({});
+            coordinates = {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+            };
+            Alert.alert("Внимание", "Адрес не найден. Использованы текущие GPS-координаты.");
+          }
         }
       } catch (err) {
-        console.warn("Could not get location:", err);
+        console.warn("Geocoding failed:", err);
       }
 
       // Upload images first
@@ -173,7 +184,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                   }}
                 >
                   <Ionicons name="calendar-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
-                  <Text>{form.date.toLocaleDateString()}</Text>
+                  <Text>{formatDate(form.date)}</Text>
                 </TouchableOpacity>
               </View>
             </View>

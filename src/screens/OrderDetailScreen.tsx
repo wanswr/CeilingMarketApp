@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, SafeAreaView, Image } from 'react-native';
 import { COLORS } from '../constants/theme';
 import { orderService, Order } from '../services/OrderService';
+import { formatDate } from '../utils/date';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
@@ -23,7 +24,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         <Text style={styles.title}>{order.title || 'Заказ без названия'}</Text>
         <Text style={styles.price}>{String(order.price)} ₽</Text>
         <Text style={styles.address}>{order.address}</Text>
-        <Text style={styles.date}>Дата: {order.date ? new Date(order.date).toLocaleDateString() : 'Не указана'}</Text>
+        <Text style={styles.date}>Дата: {formatDate(order.date || order.timestamp) || 'Не указана'}</Text>
         <Text style={styles.details}>{order.details}</Text>
 
         {order.images && order.images.length > 0 && (

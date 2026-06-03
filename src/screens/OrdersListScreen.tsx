@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SwipeListView } from 'react-native-swipe-list-view';
 import { COLORS } from '../constants/theme';
 import { orderService, Order } from '../services/OrderService';
+import { formatDate } from '../utils/date';
 
 const OrdersListScreen = ({ navigation }: any) => {
   const [orders, setOrders] = useState<Order[]>(orderService.getOrders());
@@ -32,7 +33,7 @@ const OrdersListScreen = ({ navigation }: any) => {
           >
             <View style={styles.cardHeader}>
               <Text style={styles.dateText}>
-                {item.date ? new Date(item.date).toLocaleDateString() : new Date(item.timestamp).toLocaleDateString()}
+                {formatDate(item.date || item.timestamp)}
               </Text>
               <View style={[styles.statusBadge, { backgroundColor: item.status === 'started' ? COLORS.warning : COLORS.primary }]}>
                 <Text style={styles.statusText}>{item.status === 'started' ? 'В работе' : 'Ожидание'}</Text>

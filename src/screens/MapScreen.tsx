@@ -16,11 +16,13 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/theme';
 import { orderService, Order } from '../services/OrderService';
+import { formatDate } from '../utils/date';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
-  const [showGas, setShowGas] = useState(true);
-  const [showProd, setShowProd] = useState(true);
+  const [showGas, setShowGas] = useState(false);
+  const [showProd, setShowProd] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
   const [orders, setOrders] = useState<Order[]>(orderService.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [location, setLocation] = useState<any>(null);
@@ -123,11 +125,8 @@ const MapScreen = ({ navigation }: any) => {
                 longitude: Number(coord.longitude)
               }}
               onPress={() => onMarkerPress(order)}
-            >
-              <View style={styles.pinMarker}>
-                <Ionicons name="location" size={32} color={COLORS.primary} />
-              </View>
-            </Marker>
+              pinColor={COLORS.primary}
+            />
           );
         })}
       </MapView>
@@ -135,20 +134,32 @@ const MapScreen = ({ navigation }: any) => {
       <SafeAreaView style={styles.controlsContainer}>
         <View style={styles.controls}>
           <TouchableOpacity 
-            style={[styles.btn, showGas && styles.activeGas]} 
-            onPress={toggleGas}
+            style={styles.btn}
+            onPress={() => setShowLayers(!showLayers)}
           >
-            <Ionicons name="flame" size={18} color={showGas ? "#fff" : "#000"} />
-            <Text style={[styles.btnText, {color: showGas ? "#fff" : "#000"}]}>АГЗС</Text>
+            <Ionicons name="layers" size={18} color={COLORS.primary} />
+            <Text style={styles.btnText}>Слои</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.btn, showProd && styles.activeProd]} 
-            onPress={toggleProd}
-          >
-            <Ionicons name="business" size={18} color={showProd ? "#fff" : "#000"} />
-            <Text style={[styles.btnText, {color: showProd ? "#fff" : "#000"}]}>Цех</Text>
-          </TouchableOpacity>
+
+          {showLayers && (
+            <View style={styles.layersMenu}>
+              <TouchableOpacity
+                style={[styles.layerItem, showGas && styles.activeLayer]}
+                onPress={toggleGas}
+              >
+                <Ionicons name="flame" size={16} color={showGas ? "#fff" : "#000"} />
+                <Text style={[styles.layerText, {color: showGas ? "#fff" : "#000"}]}>АГЗС</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.layerItem, showProd && styles.activeLayer]}
+                onPress={toggleProd}
+              >
+                <Ionicons name="business" size={16} color={showProd ? "#fff" : "#000"} />
+                <Text style={[styles.layerText, {color: showProd ? "#fff" : "#000"}]}>Цех</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <TouchableOpacity
             style={styles.btn}
@@ -175,7 +186,7 @@ const MapScreen = ({ navigation }: any) => {
             <View style={styles.previewTag}>
               <Ionicons name="calendar-outline" size={14} color={COLORS.gray} />
               <Text style={styles.previewTagText}>
-                {selectedOrder.date ? new Date(selectedOrder.date).toLocaleDateString() : 'Скоро'}
+                {formatDate(selectedOrder.date || selectedOrder.timestamp)}
               </Text>
             </View>
             <Text style={styles.tapHint}>Нажмите, чтобы открыть</Text>
@@ -200,9 +211,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, marginBottom: 5, borderRadius: 15, backgroundColor: '#fff'
   },
   activeGas: { backgroundColor: COLORS.success },
-  activeProd: { backgroundColor: COLORS.primary },
+  activeLayer: { backgroundColor: COLORS.primary },
   btnText: { marginLeft: 8, fontWeight: '700', fontSize: 12 },
-  
+  layersMenu: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginTop: 5,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  layerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 2,
+  },
+  layerText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   pinMarker: {
     alignItems: 'center',
     justifyContent: 'center',
