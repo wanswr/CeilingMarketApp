@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { AppInput } from '../components/Input';
 import { orderService } from '../services/OrderService';
@@ -36,6 +37,8 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(new Date());
   const [loading, setLoading] = useState(false);
+  const [coordinates, setCoordinates] = useState<{latitude: number, longitude: number} | null>(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -60,39 +63,73 @@ export default function CreateOrderScreen({ navigation }: any) {
     setImages(images.filter((_, i) => i !== index));
   };
 
+  const handleGeocode = async () => {
+    if (!form.address || form.address.length < 5) return;
+
+    setIsGeocoding(true);
+    try {
+      // Adding regional context for better accuracy in Russia/Moscow
+      const searchAddress = form.address.toLowerCase().includes('москва')
+        ? form.address
+        : `Москва, ${form.address}`;
+
+      const geocoded = await Location.geocodeAsync(searchAddress);
+      if (geocoded.length > 0) {
+        setCoordinates({
+          latitude: geocoded[0].latitude,
+          longitude: geocoded[0].longitude,
+        });
+      }
+    } catch (err) {
+      console.warn("Geocoding failed:", err);
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Ошибка', 'Нет доступа к местоположению');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const loc = await Location.getCurrentPositionAsync({});
+      const coords = {
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      };
+      setCoordinates(coords);
+
+      // Reverse geocode to fill the address field
+      const reverse = await Location.reverseGeocodeAsync(coords);
+      if (reverse.length > 0) {
+        const addr = reverse[0];
+        const formatted = [addr.city, addr.street, addr.name].filter(Boolean).join(', ');
+        setForm(f => ({ ...f, address: formatted }));
+      }
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось получить координаты');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handlePublish = async () => {
     if (!form.address || !form.price || !form.title) {
       Alert.alert("Ошибка", "Заполните основные поля (Заголовок, Адрес, Оплата)");
       return;
     }
 
+    if (!coordinates) {
+      Alert.alert("Ошибка", "Не удалось определить координаты адреса. Пожалуйста, проверьте адрес или используйте текущее местоположение.");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Geocode address
-      let coordinates = null;
-      try {
-        const geocoded = await Location.geocodeAsync(form.address);
-        if (geocoded.length > 0) {
-          coordinates = {
-            latitude: geocoded[0].latitude,
-            longitude: geocoded[0].longitude,
-          };
-        } else {
-          // If geocoding fails, ask user if they want to use current GPS
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status === 'granted') {
-            const loc = await Location.getCurrentPositionAsync({});
-            coordinates = {
-              latitude: loc.coords.latitude,
-              longitude: loc.coords.longitude,
-            };
-            Alert.alert("Внимание", "Адрес не найден. Использованы текущие GPS-координаты.");
-          }
-        }
-      } catch (err) {
-        console.warn("Geocoding failed:", err);
-      }
-
       // Upload images first
       let imageUrls: string[] = [];
       try {
@@ -108,7 +145,7 @@ export default function CreateOrderScreen({ navigation }: any) {
         ...form,
         date: form.date.toISOString(),
         images: imageUrls,
-        coordinates,
+        coordinates: coordinates,
         location: coordinates, // Dual field for compatibility
       };
 
@@ -163,7 +200,48 @@ export default function CreateOrderScreen({ navigation }: any) {
               placeholder="Улица, дом..."
               value={form.address}
               onChangeText={(t)=>setForm({...form, address:t})}
+              onBlur={handleGeocode}
+              icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
             />
+
+            <View style={styles.locationActions}>
+              <TouchableOpacity style={styles.locationBtn} onPress={handleGeocode} disabled={isGeocoding}>
+                {isGeocoding ? <ActivityIndicator size="small" color={COLORS.primary} /> : (
+                  <>
+                    <Ionicons name="search-outline" size={16} color={COLORS.primary} />
+                    <Text style={styles.locationBtnText}>Найти на карте</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.locationBtn} onPress={handleUseCurrentLocation}>
+                <Ionicons name="navigate-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.locationBtnText}>Я на месте</Text>
+              </TouchableOpacity>
+            </View>
+
+            {coordinates && (
+              <View style={styles.mapPreviewContainer}>
+                <MapView
+                  provider={PROVIDER_GOOGLE}
+                  style={styles.mapPreview}
+                  initialRegion={{
+                    ...coordinates,
+                    latitudeDelta: 0.005,
+                    longitudeDelta: 0.005,
+                  }}
+                  onPress={(e) => setCoordinates(e.nativeEvent.coordinate)}
+                >
+                  <Marker
+                    coordinate={coordinates}
+                    draggable
+                    onDragEnd={(e) => setCoordinates(e.nativeEvent.coordinate)}
+                  />
+                </MapView>
+                <View style={styles.mapOverlay}>
+                  <Text style={styles.mapHint}>Можно двигать метку или нажать на карту</Text>
+                </View>
+              </View>
+            )}
 
             <View style={styles.row}>
               <View style={{ flex: 1, marginRight: 10 }}>
@@ -278,6 +356,49 @@ export default function CreateOrderScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  locationActions: {
+    flexDirection: 'row',
+    marginBottom: 15,
+    marginTop: -10,
+  },
+  locationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 15,
+    padding: 5,
+  },
+  locationBtnText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  mapPreviewContainer: {
+    height: 150,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  mapPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  mapOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  mapHint: {
+    fontSize: 10,
+    color: COLORS.dark,
+    fontWeight: '600',
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',

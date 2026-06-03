@@ -115,14 +115,19 @@ const MapScreen = ({ navigation }: any) => {
         
         {orders.filter(o => o.status === 'pending' || o.status === 'new').map(order => {
           const coord = order.coordinates || order.location;
-          if (!coord || !coord.latitude || !coord.longitude) return null;
+          if (!coord) return null;
+
+          const lat = Number(coord.latitude);
+          const lng = Number(coord.longitude);
+
+          if (isNaN(lat) || isNaN(lng)) return null;
 
           return (
             <Marker
               key={order.id}
               coordinate={{
-                latitude: Number(coord.latitude),
-                longitude: Number(coord.longitude)
+                latitude: lat,
+                longitude: lng
               }}
               onPress={() => onMarkerPress(order)}
               pinColor={COLORS.primary}
