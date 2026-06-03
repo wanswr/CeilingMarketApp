@@ -67,6 +67,19 @@ const MapScreen = ({ navigation }: any) => {
     return () => { orderService.off('ordersUpdated', updateOrders); };
   }, []);
 
+  const calculateDistance = useCallback((lat1: number, lon1: number, lat2: number, lon2: number) => {
+    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return Infinity;
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }, []);
+
   const filteredOrders = useMemo(() => {
     let filtered = orders.filter(o => ['pending', 'new', 'accepted', 'in_work', 'executing'].includes(o.status));
 
@@ -120,20 +133,7 @@ const MapScreen = ({ navigation }: any) => {
       }
       return 0;
     });
-  }, [orders, budgetMin, radius, location, filterByArea, mapRegion, sortBy]);
-
-  const calculateDistance = useCallback((lat1: number, lon1: number, lat2: number, lon2: number) => {
-    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return Infinity;
-    const R = 6371; // km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a =
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }, []);
+  }, [orders, budgetMin, radius, location, filterByArea, mapRegion, sortBy, calculateDistance]);
 
   const toggleGas = () => {
     setShowGas(!showGas);
@@ -255,13 +255,13 @@ const MapScreen = ({ navigation }: any) => {
               style={[styles.sortTab, sortBy === 'price-desc' && styles.activeSortTab]}
               onPress={() => setSortBy('price-desc')}
             >
-              <Text style={[styles.sortTabText, sortBy === 'price-desc' && styles.activeSortTabText]}>Дороже</Text>
+              <Text style={[styles.sortTabText, sortBy === 'price-desc' && styles.activeSortTabText]}>Оплата ↓</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.sortTab, sortBy === 'price-asc' && styles.activeSortTab]}
               onPress={() => setSortBy('price-asc')}
             >
-              <Text style={[styles.sortTabText, sortBy === 'price-asc' && styles.activeSortTabText]}>Дешевле</Text>
+              <Text style={[styles.sortTabText, sortBy === 'price-asc' && styles.activeSortTabText]}>Оплата ↑</Text>
             </TouchableOpacity>
           </View>
 
