@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -11,6 +11,10 @@ import {
   Alert,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  FlatList,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Circle } from 'react-native-maps';
 import { useRef } from 'react';
@@ -27,15 +31,15 @@ const MapScreen = ({ navigation }: any) => {
   const [showProd, setShowProd] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [orders, setOrders] = useState<Order[]>(orderService.getOrders());
-  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [budgetMin, setBudgetMin] = useState('');
-  const [radius, setRadius] = useState(''); // in km
+  const [radius, setRadius] = useState('');
   const [filterByArea, setFilterByArea] = useState(false);
   const [mapRegion, setMapRegion] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
 
   const role = orderService.getCurrentRole();
 
@@ -62,19 +66,13 @@ const MapScreen = ({ navigation }: any) => {
     return () => { orderService.off('ordersUpdated', updateOrders); };
   }, []);
 
-  useEffect(() => {
-    applyFilters();
-  }, [orders, budgetMin, radius, location, filterByArea, mapRegion]);
-
-  const applyFilters = () => {
+  const filteredOrders = useMemo(() => {
     let filtered = orders.filter(o => ['pending', 'new', 'accepted', 'in_work', 'executing'].includes(o.status));
 
-    // Budget Filter
     if (budgetMin) {
       filtered = filtered.filter(o => Number(o.price) >= Number(budgetMin));
     }
 
-    // Area/Zone Filter (using current map view)
     if (filterByArea && mapRegion) {
       const { latitude, longitude, latitudeDelta, longitudeDelta } = mapRegion;
       const minLat = latitude - latitudeDelta / 2;
@@ -91,7 +89,6 @@ const MapScreen = ({ navigation }: any) => {
       });
     }
 
-    // Radius Filter
     if (radius && location && !filterByArea) {
       filtered = filtered.filter(o => {
         const coord = o.coordinates || o.location;
@@ -106,8 +103,8 @@ const MapScreen = ({ navigation }: any) => {
       });
     }
 
-    setFilteredOrders(filtered);
-  };
+    return filtered;
+  }, [orders, budgetMin, radius, location, filterByArea, mapRegion]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; // km
@@ -163,7 +160,8 @@ const MapScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <MapView
+      {viewMode === 'map' ? (
+        <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={styles.map}
@@ -226,10 +224,49 @@ const MapScreen = ({ navigation }: any) => {
             />
           );
         })}
-      </MapView>
+        </MapView>
+      ) : (
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+          <FlatList
+            data={filteredOrders}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.listItem}
+                onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
+              >
+                <View style={styles.listHeader}>
+                  <Text style={styles.listTitle} numberOfLines={1}>{item.address}</Text>
+                  <Text style={styles.listPrice}>{item.price} ₽</Text>
+                </View>
+                <Text style={styles.listDetails} numberOfLines={2}>{item.details}</Text>
+                <View style={styles.listFooter}>
+                  <Text style={styles.listDate}>{formatDate(item.date || item.timestamp)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.gray} />
+                </View>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="search-outline" size={48} color={COLORS.border} />
+                <Text style={styles.emptyText}>Заказы не найдены</Text>
+              </View>
+            )}
+          />
+        </SafeAreaView>
+      )}
 
       <SafeAreaView style={styles.controlsContainer}>
         <View style={styles.controls}>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={() => setViewMode(viewMode === 'map' ? 'list' : 'map')}
+          >
+            <Ionicons name={viewMode === 'map' ? 'list' : 'map'} size={18} color={COLORS.primary} />
+            <Text style={styles.btnText}>{viewMode === 'map' ? 'Список' : 'Карта'}</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.btn}
             onPress={() => setFilterModalVisible(true)}
@@ -239,7 +276,7 @@ const MapScreen = ({ navigation }: any) => {
             {(budgetMin || radius || filterByArea) && <View style={styles.filterDot} />}
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.btn}
             onPress={() => setShowLayers(!showLayers)}
           >
@@ -278,66 +315,71 @@ const MapScreen = ({ navigation }: any) => {
       </SafeAreaView>
 
       <Modal visible={filterModalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Фильтры заказов</Text>
-              <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
-                <Ionicons name="close" size={24} color={COLORS.dark} />
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalContent}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Фильтры заказов</Text>
+                <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={COLORS.dark} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>Минимальный бюджет (₽)</Text>
+                <TextInput
+                  style={styles.filterInput}
+                  keyboardType="numeric"
+                  placeholder="Напр: 5000"
+                  value={budgetMin}
+                  onChangeText={setBudgetMin}
+                />
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>Радиус поиска (км)</Text>
+                <TextInput
+                  style={[styles.filterInput, filterByArea && { opacity: 0.5 }]}
+                  keyboardType="numeric"
+                  placeholder="Напр: 10"
+                  value={radius}
+                  onChangeText={setRadius}
+                  editable={!filterByArea}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.toggleRow}
+                onPress={() => setFilterByArea(!filterByArea)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.toggleTitle}>Искать в видимой области</Text>
+                  <Text style={styles.toggleSub}>Показывать только те заказы на экране</Text>
+                </View>
+                <View style={[styles.toggleSwitch, filterByArea && styles.toggleActive]}>
+                  <View style={[styles.toggleDot, filterByArea && styles.toggleDotActive]} />
+                </View>
               </TouchableOpacity>
-            </View>
 
-            <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>Минимальный бюджет (₽)</Text>
-              <TextInput
-                style={styles.filterInput}
-                keyboardType="numeric"
-                placeholder="Напр: 5000"
-                value={budgetMin}
-                onChangeText={setBudgetMin}
-              />
-            </View>
+              <TouchableOpacity
+                style={styles.resetBtn}
+                onPress={() => { setBudgetMin(''); setRadius(''); setFilterByArea(false); }}
+              >
+                <Text style={styles.resetBtnText}>Сбросить все</Text>
+              </TouchableOpacity>
 
-            <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>Радиус поиска (км)</Text>
-              <TextInput
-                style={[styles.filterInput, filterByArea && { opacity: 0.5 }]}
-                keyboardType="numeric"
-                placeholder="Напр: 10"
-                value={radius}
-                onChangeText={setRadius}
-                editable={!filterByArea}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.toggleRow}
-              onPress={() => setFilterByArea(!filterByArea)}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.toggleTitle}>Искать в видимой области</Text>
-                <Text style={styles.toggleSub}>Показывать только те заказы, которые сейчас на экране</Text>
-              </View>
-              <View style={[styles.toggleSwitch, filterByArea && styles.toggleActive]}>
-                <View style={[styles.toggleDot, filterByArea && styles.toggleDotActive]} />
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.resetBtn}
-              onPress={() => { setBudgetMin(''); setRadius(''); setFilterByArea(false); }}
-            >
-              <Text style={styles.resetBtnText}>Сбросить все</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.applyBtn}
-              onPress={() => setFilterModalVisible(false)}
-            >
-              <Text style={styles.applyBtnText}>Применить</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.applyBtn}
+                onPress={() => setFilterModalVisible(false)}
+              >
+                <Text style={styles.applyBtnText}>Применить</Text>
+              </TouchableOpacity>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {selectedOrder && (
@@ -587,6 +629,62 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '800',
+  },
+  listItem: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: COLORS.light,
+  },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  listTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.dark,
+    flex: 1,
+    marginRight: 10,
+  },
+  listPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.success,
+  },
+  listDetails: {
+    fontSize: 13,
+    color: COLORS.gray,
+    marginBottom: 12,
+  },
+  listFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  listDate: {
+    fontSize: 12,
+    color: COLORS.gray,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 100,
+  },
+  emptyText: {
+    marginTop: 15,
+    fontSize: 16,
+    color: COLORS.gray,
+    fontWeight: '500',
   },
 });
 
