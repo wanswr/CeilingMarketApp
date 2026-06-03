@@ -39,6 +39,7 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [coordinates, setCoordinates] = useState<{latitude: number, longitude: number} | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
+  const [normalizedAddress, setNormalizedAddress] = useState<string | null>(null);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -66,30 +67,64 @@ export default function CreateOrderScreen({ navigation }: any) {
   const mapRef = React.useRef<MapView>(null);
 
   const handleGeocode = async () => {
-    if (!form.address || form.address.length < 5) return;
+    if (!form.address || form.address.length < 3) return;
 
     setIsGeocoding(true);
     try {
-      const searchAddress = form.address.toLowerCase().includes('москва')
-        ? form.address
-        : `Москва, ${form.address}`;
+      const input = form.address.trim();
+      const queries = [
+        input, // Try exactly what user wrote
+        `Москва, ${input}`, // Try Moscow prefix
+        `Московская область, ${input}`, // Try Region prefix
+      ];
 
-      const geocoded = await Location.geocodeAsync(searchAddress);
-      if (geocoded.length > 0) {
+      let bestResult = null;
+
+      for (const query of queries) {
+        const results = await Location.geocodeAsync(query);
+        if (results.length > 0) {
+          // Check if the result is actually in the Moscow region (roughly)
+          // Lat: 54-57, Lng: 35-40
+          const res = results[0];
+          if (res.latitude > 54 && res.latitude < 57 && res.longitude > 35 && res.longitude < 40) {
+            bestResult = res;
+            break;
+          }
+          // If not in Moscow region, still keep it as fallback if it's the first result
+          if (!bestResult) bestResult = res;
+        }
+      }
+
+      if (bestResult) {
         const newCoords = {
-          latitude: geocoded[0].latitude,
-          longitude: geocoded[0].longitude,
+          latitude: bestResult.latitude,
+          longitude: bestResult.longitude,
         };
         setCoordinates(newCoords);
 
-        // Animate map to new location
+        // Reverse geocode to show "Normalized" address
+        try {
+          const rev = await Location.reverseGeocodeAsync(newCoords);
+          if (rev.length > 0) {
+            const r = rev[0];
+            const normalized = [r.city, r.street, r.name].filter(Boolean).join(', ');
+            setNormalizedAddress(normalized);
+          } else {
+            setNormalizedAddress(null);
+          }
+        } catch (e) {
+          setNormalizedAddress(null);
+        }
+
         if (mapRef.current) {
           mapRef.current.animateToRegion({
             ...newCoords,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
           }, 1000);
         }
+      } else {
+        Alert.alert("Адрес не найден", "Попробуйте уточнить город или район, либо поставьте метку на карте вручную.");
       }
     } catch (err) {
       console.warn("Geocoding failed:", err);
@@ -231,6 +266,13 @@ export default function CreateOrderScreen({ navigation }: any) {
                   <Text style={styles.locationBtnText}>Моё местоположение</Text>
                 </TouchableOpacity>
               </View>
+
+              {normalizedAddress && (
+                <View style={styles.normalizedContainer}>
+                  <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                  <Text style={styles.normalizedText}>Найдено: {normalizedAddress}</Text>
+                </View>
+              )}
 
               <View style={styles.mapPreviewContainer}>
                 <MapView
@@ -378,6 +420,22 @@ export default function CreateOrderScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  normalizedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FFF4',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#C6F6D5',
+  },
+  normalizedText: {
+    fontSize: 13,
+    color: '#2F855A',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
   section: {
     marginBottom: 25,
     backgroundColor: '#fff',
