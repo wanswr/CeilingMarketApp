@@ -9,8 +9,10 @@ import {
   Platform,
   Dimensions,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, Circle } from 'react-native-maps';
 import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -25,9 +27,16 @@ const MapScreen = ({ navigation }: any) => {
   const [showProd, setShowProd] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [orders, setOrders] = useState<Order[]>(orderService.getOrders());
+  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [budgetMin, setBudgetMin] = useState('');
+  const [radius, setRadius] = useState(''); // in km
+  const [filterByArea, setFilterByArea] = useState(false);
+  const [mapRegion, setMapRegion] = useState<any>(null);
+
   const role = orderService.getCurrentRole();
 
   useEffect(() => {
@@ -41,12 +50,10 @@ const MapScreen = ({ navigation }: any) => {
     })();
 
     const updateOrders = (newOrders: Order[]) => {
-      console.log('MapScreen: Orders updated', newOrders.length);
       setOrders(newOrders);
     };
 
     orderService.on('ordersUpdated', updateOrders);
-    // Explicitly fetch current orders in case listener hasn't fired yet
     const initialOrders = orderService.getOrders();
     if (initialOrders.length > 0) {
       setOrders(initialOrders);
@@ -54,6 +61,65 @@ const MapScreen = ({ navigation }: any) => {
 
     return () => { orderService.off('ordersUpdated', updateOrders); };
   }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [orders, budgetMin, radius, location, filterByArea, mapRegion]);
+
+  const applyFilters = () => {
+    let filtered = orders.filter(o => ['pending', 'new', 'accepted', 'in_work', 'executing'].includes(o.status));
+
+    // Budget Filter
+    if (budgetMin) {
+      filtered = filtered.filter(o => Number(o.price) >= Number(budgetMin));
+    }
+
+    // Area/Zone Filter (using current map view)
+    if (filterByArea && mapRegion) {
+      const { latitude, longitude, latitudeDelta, longitudeDelta } = mapRegion;
+      const minLat = latitude - latitudeDelta / 2;
+      const maxLat = latitude + latitudeDelta / 2;
+      const minLng = longitude - longitudeDelta / 2;
+      const maxLng = longitude + longitudeDelta / 2;
+
+      filtered = filtered.filter(o => {
+        const coord = o.coordinates || o.location;
+        if (!coord) return false;
+        const lat = Number(coord.latitude);
+        const lng = Number(coord.longitude);
+        return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
+      });
+    }
+
+    // Radius Filter
+    if (radius && location && !filterByArea) {
+      filtered = filtered.filter(o => {
+        const coord = o.coordinates || o.location;
+        if (!coord) return false;
+        const dist = calculateDistance(
+          location.coords.latitude,
+          location.coords.longitude,
+          Number(coord.latitude),
+          Number(coord.longitude)
+        );
+        return dist <= Number(radius);
+      });
+    }
+
+    setFilteredOrders(filtered);
+  };
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
 
   const toggleGas = () => {
     setShowGas(!showGas);
@@ -109,6 +175,7 @@ const MapScreen = ({ navigation }: any) => {
         }}
         showsUserLocation={true}
         onPress={handleMapPress}
+        onRegionChangeComplete={setMapRegion}
       >
         {showGas && (
           <Marker 
@@ -125,7 +192,19 @@ const MapScreen = ({ navigation }: any) => {
           />
         )}
         
-        {orders.filter(o => ['pending', 'new', 'accepted', 'in_work', 'executing'].includes(o.status)).map(order => {
+        {location && radius && (
+          <Circle
+            center={{
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude
+            }}
+            radius={Number(radius) * 1000}
+            strokeColor="rgba(0,122,255,0.3)"
+            fillColor="rgba(0,122,255,0.1)"
+          />
+        )}
+
+        {filteredOrders.map(order => {
           const coord = order.coordinates || order.location;
           const key = `${order.id}-${order.updatedAt || order.createdAt || Date.now()}`;
           if (!coord) return null;
@@ -151,6 +230,15 @@ const MapScreen = ({ navigation }: any) => {
 
       <SafeAreaView style={styles.controlsContainer}>
         <View style={styles.controls}>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={() => setFilterModalVisible(true)}
+          >
+            <Ionicons name="filter" size={18} color={COLORS.primary} />
+            <Text style={styles.btnText}>Фильтр</Text>
+            {(budgetMin || radius || filterByArea) && <View style={styles.filterDot} />}
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={styles.btn}
             onPress={() => setShowLayers(!showLayers)}
@@ -188,6 +276,69 @@ const MapScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      <Modal visible={filterModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Фильтры заказов</Text>
+              <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.dark} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Минимальный бюджет (₽)</Text>
+              <TextInput
+                style={styles.filterInput}
+                keyboardType="numeric"
+                placeholder="Напр: 5000"
+                value={budgetMin}
+                onChangeText={setBudgetMin}
+              />
+            </View>
+
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Радиус поиска (км)</Text>
+              <TextInput
+                style={[styles.filterInput, filterByArea && { opacity: 0.5 }]}
+                keyboardType="numeric"
+                placeholder="Напр: 10"
+                value={radius}
+                onChangeText={setRadius}
+                editable={!filterByArea}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={styles.toggleRow}
+              onPress={() => setFilterByArea(!filterByArea)}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleTitle}>Искать в видимой области</Text>
+                <Text style={styles.toggleSub}>Показывать только те заказы, которые сейчас на экране</Text>
+              </View>
+              <View style={[styles.toggleSwitch, filterByArea && styles.toggleActive]}>
+                <View style={[styles.toggleDot, filterByArea && styles.toggleDotActive]} />
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.resetBtn}
+              onPress={() => { setBudgetMin(''); setRadius(''); setFilterByArea(false); }}
+            >
+              <Text style={styles.resetBtnText}>Сбросить все</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.applyBtn}
+              onPress={() => setFilterModalVisible(false)}
+            >
+              <Text style={styles.applyBtnText}>Применить</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {selectedOrder && (
         <View style={styles.previewCard}>
@@ -264,6 +415,15 @@ const styles = StyleSheet.create({
   activeGas: { backgroundColor: COLORS.success },
   activeLayer: { backgroundColor: COLORS.primary },
   btnText: { marginLeft: 8, fontWeight: '700', fontSize: 12 },
+  filterDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.danger,
+  },
   layersMenu: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -330,6 +490,103 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.dark,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 25,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 25,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.dark,
+  },
+  filterSection: {
+    marginBottom: 20,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.gray,
+    marginBottom: 10,
+  },
+  filterInput: {
+    backgroundColor: COLORS.light,
+    borderRadius: 12,
+    padding: 15,
+    fontSize: 16,
+    color: COLORS.dark,
+    fontWeight: '600',
+  },
+  resetBtn: {
+    alignItems: 'center',
+    marginBottom: 15,
+    marginTop: 10,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    backgroundColor: COLORS.light,
+    padding: 15,
+    borderRadius: 16,
+  },
+  toggleTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.dark,
+  },
+  toggleSub: {
+    fontSize: 11,
+    color: COLORS.gray,
+    marginTop: 2,
+  },
+  toggleSwitch: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#D1D1D6',
+    padding: 2,
+  },
+  toggleActive: {
+    backgroundColor: COLORS.success,
+  },
+  toggleDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  toggleDotActive: {
+    alignSelf: 'flex-end',
+  },
+  resetBtnText: {
+    color: COLORS.danger,
+    fontWeight: '700',
+  },
+  applyBtn: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 18,
+    borderRadius: 18,
+    alignItems: 'center',
+  },
+  applyBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
   },
 });
 
