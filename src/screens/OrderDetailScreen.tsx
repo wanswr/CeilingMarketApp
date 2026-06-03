@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, SafeAreaView, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { orderService, Order } from '../services/OrderService';
+import { auth } from '../services/firebase';
 import { formatDate } from '../utils/date';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
@@ -15,6 +17,21 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     orderService.on('ordersUpdated', load);
     return () => { orderService.off('ordersUpdated', load); };
   }, [orderId]);
+
+  useEffect(() => {
+    if (order && order.employerId === auth.currentUser?.uid) {
+      navigation.setOptions({
+        headerRight: () => (
+          <TouchableOpacity
+            style={{ marginRight: 15 }}
+            onPress={() => navigation.navigate('EditOrder', { orderId: order.id })}
+          >
+            <Ionicons name="create-outline" size={24} color={COLORS.primary} />
+          </TouchableOpacity>
+        )
+      });
+    }
+  }, [order]);
 
   if (!order) return null;
 

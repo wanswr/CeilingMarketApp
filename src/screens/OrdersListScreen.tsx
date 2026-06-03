@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Linking, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Linking, Modal, ScrollView, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SwipeListView } from 'react-native-swipe-list-view';
 import { COLORS } from '../constants/theme';
@@ -80,26 +80,46 @@ const OrdersListScreen = ({ navigation }: any) => {
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
-            style={styles.rowFront}
+            style={[styles.rowFront, item.isPinned && styles.pinnedRow]}
           >
-            <View style={styles.cardHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {item.isPinned && <Ionicons name="pin" size={16} color={COLORS.primary} style={{ marginRight: 6 }} />}
-                <Text style={styles.dateText}>
-                  {formatDate(item.date || item.timestamp)}
-                </Text>
+            {item.images && item.images.length > 0 && (
+              <Image source={{ uri: item.images[0] }} style={styles.cardImage} />
+            )}
+
+            <View style={styles.cardContent}>
+              <View style={styles.cardHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {item.isPinned && <Ionicons name="pin" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />}
+                  <Text style={styles.dateText}>
+                    {formatDate(item.date || item.timestamp)}
+                  </Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: item.status === 'started' || item.status === 'in_work' ? COLORS.warning : COLORS.primary }]}>
+                  <Text style={styles.statusText}>{item.status === 'started' || item.status === 'in_work' ? 'В РАБОТЕ' : 'ОЖИДАНИЕ'}</Text>
+                </View>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: item.status === 'started' || item.status === 'in_work' ? COLORS.warning : COLORS.primary }]}>
-                <Text style={styles.statusText}>{item.status === 'started' || item.status === 'in_work' ? 'В работе' : 'Ожидание'}</Text>
+
+              <Text style={styles.titleText} numberOfLines={1}>{item.title || 'Заказ без названия'}</Text>
+
+              <View style={styles.addressRow}>
+                <Ionicons name="location-sharp" size={14} color={COLORS.gray} />
+                <Text style={styles.addressText} numberOfLines={1}>{item.address}</Text>
               </View>
-            </View>
-            <Text style={styles.titleText}>{item.title || 'Заказ без названия'}</Text>
-            <Text style={styles.addressText}>{item.address}</Text>
-            <View style={styles.cardFooter}>
-              <Text style={styles.priceText}>{item.price} ₽</Text>
-              <View style={styles.iconGroup}>
-                <TouchableOpacity onPress={() => openMap(item.address)} style={styles.iconBtn}><Ionicons name="navigate-circle-outline" size={28} color={COLORS.primary} /></TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('Chats')} style={styles.iconBtn}><Ionicons name="chatbubbles-outline" size={26} color={COLORS.secondary} /></TouchableOpacity>
+
+              <View style={styles.cardFooter}>
+                <View style={styles.priceContainer}>
+                  <Text style={styles.priceLabel}>Бюджет</Text>
+                  <Text style={styles.priceText}>{item.price} ₽</Text>
+                </View>
+
+                <View style={styles.cardActions}>
+                  {item.candidates && item.candidates.length > 0 && (
+                    <View style={styles.candidatesBadge}>
+                      <Text style={styles.candidatesCount}>{item.candidates.length}</Text>
+                    </View>
+                  )}
+                  <Ionicons name="chevron-forward" size={20} color={COLORS.border} />
+                </View>
               </View>
             </View>
           </TouchableOpacity>
@@ -172,31 +192,70 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   rowFront: {
     backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 24,
     marginHorizontal: 15,
     marginTop: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 5,
+    overflow: 'hidden',
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dateText: { color: COLORS.gray, fontSize: 13, fontWeight: '500' },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  statusText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  titleText: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginTop: 12 },
-  addressText: { fontSize: 15, fontWeight: '500', color: COLORS.gray, marginBottom: 12, marginTop: 4 },
+  pinnedRow: {
+    borderWidth: 1.5,
+    borderColor: COLORS.primary + '33', // 20% opacity
+  },
+  cardImage: {
+    width: '100%',
+    height: 120,
+  },
+  cardContent: {
+    padding: 16,
+  },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  dateText: { color: COLORS.gray, fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  titleText: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 6 },
+  addressRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  addressText: { fontSize: 14, fontWeight: '500', color: COLORS.gray, marginLeft: 4, flex: 1 },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: COLORS.light,
     paddingTop: 12,
   },
-  priceText: { fontSize: 20, color: COLORS.success, fontWeight: '800' },
+  priceContainer: {
+  },
+  priceLabel: {
+    fontSize: 10,
+    color: COLORS.gray,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  priceText: { fontSize: 18, color: COLORS.success, fontWeight: '900' },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  candidatesBadge: {
+    backgroundColor: COLORS.secondary,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  candidatesCount: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   iconGroup: { flexDirection: 'row' },
   iconBtn: { marginLeft: 15 },
   rowBack: {

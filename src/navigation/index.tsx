@@ -9,6 +9,7 @@ import VerifyCodeScreen from '../screens/VerifyCodeScreen';
 import RegisterDetailsScreen from '../screens/RegisterDetailsScreen';
 import RoleSelectionScreen from '../screens/RoleSelectionScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
+import EditOrderScreen from '../screens/EditOrderScreen';
 
 const Stack = createStackNavigator();
 
@@ -79,6 +80,11 @@ export default function Navigation() {
             name="OrderDetail" 
             component={OrderDetailScreen} 
             options={{headerShown: true, title: 'Заказ'}} 
+          />
+          <Stack.Screen
+            name="EditOrder"
+            component={EditOrderScreen}
+            options={{headerShown: true, title: 'Редактирование'}}
           />
         </>
       )}

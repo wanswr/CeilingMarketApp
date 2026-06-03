@@ -191,6 +191,14 @@ class OrderService {
     });
   }
 
+  async updateOrder(orderId: string, data: any) {
+    const sanitizedData = JSON.parse(JSON.stringify({
+      ...data,
+      updatedAt: Date.now(),
+    }));
+    return db.collection("orders").doc(orderId).update(sanitizedData);
+  }
+
   async updateStatus(orderId: string, status: OrderStatus) {
     return db.collection("orders").doc(orderId).update({
       status,
