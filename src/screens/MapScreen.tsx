@@ -8,6 +8,7 @@ import {
   SafeAreaView, 
   Platform,
   Dimensions,
+  Alert,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useRef } from 'react';
@@ -27,6 +28,7 @@ const MapScreen = ({ navigation }: any) => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const role = orderService.getCurrentRole();
 
   useEffect(() => {
     (async () => {
@@ -184,26 +186,59 @@ const MapScreen = ({ navigation }: any) => {
       </SafeAreaView>
 
       {selectedOrder && (
-        <TouchableOpacity 
-          style={styles.previewCard} 
-          activeOpacity={0.9}
-          onPress={() => navigation.navigate('OrderDetail', { orderId: selectedOrder.id })}
-        >
+        <View style={styles.previewCard}>
           <View style={styles.previewHeader}>
             <Text style={styles.previewTitle} numberOfLines={1}>{selectedOrder.address}</Text>
             <Text style={styles.previewPrice}>{selectedOrder.price} ₽</Text>
           </View>
           <Text style={styles.previewDetails} numberOfLines={2}>{selectedOrder.details}</Text>
-          <View style={styles.previewFooter}>
-            <View style={styles.previewTag}>
-              <Ionicons name="calendar-outline" size={14} color={COLORS.gray} />
-              <Text style={styles.previewTagText}>
-                {formatDate(selectedOrder.date || selectedOrder.timestamp)}
-              </Text>
-            </View>
-            <Text style={styles.tapHint}>Нажмите, чтобы открыть</Text>
+
+          <View style={styles.previewActions}>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: COLORS.light }]}
+              onPress={() => navigation.navigate('OrderDetail', { orderId: selectedOrder.id })}
+            >
+              <Ionicons name="information-circle-outline" size={18} color={COLORS.dark} />
+              <Text style={styles.actionBtnText}>Детали</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: COLORS.light }]}
+              onPress={() => navigation.navigate('Chats')}
+            >
+              <Ionicons name="chatbubble-outline" size={16} color={COLORS.secondary} />
+              <Text style={[styles.actionBtnText, { color: COLORS.secondary }]}>Чат</Text>
+            </TouchableOpacity>
+
+            {role === 'worker' && selectedOrder.status === 'pending' && (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: COLORS.primary }]}
+                onPress={async () => {
+                  const hasSub = await orderService.checkSubscription();
+                  if (hasSub) {
+                    orderService.applyForOrder(selectedOrder.id, 'me');
+                    Alert.alert("Успех", "Вы откликнулись на заказ!");
+                  } else {
+                    Alert.alert("Подписка", "Для отклика требуется активная подписка.");
+                  }
+                }}
+              >
+                <Ionicons name="flash-outline" size={16} color="#fff" />
+                <Text style={[styles.actionBtnText, { color: '#fff' }]}>Отклик</Text>
+              </TouchableOpacity>
+            )}
+
+            {role === 'employer' && (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: COLORS.primary }]}
+                onPress={() => navigation.navigate('Orders')}
+              >
+                <Ionicons name="list-outline" size={16} color="#fff" />
+                <Text style={[styles.actionBtnText, { color: '#fff' }]}>Заказы</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -272,10 +307,26 @@ const styles = StyleSheet.create({
   previewTitle: { fontSize: 17, fontWeight: 'bold', color: '#1C1C1E', flex: 1, marginRight: 10 },
   previewPrice: { fontSize: 18, fontWeight: 'bold', color: COLORS.success },
   previewDetails: { fontSize: 14, color: COLORS.gray, marginBottom: 12 },
-  previewFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  previewTag: { flexDirection: 'row', alignItems: 'center' },
-  previewTagText: { fontSize: 12, color: COLORS.gray, marginLeft: 4 },
-  tapHint: { fontSize: 11, color: COLORS.primary, fontWeight: '600' }
+  previewActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginHorizontal: 4,
+  },
+  actionBtnText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.dark,
+  },
 });
 
 export default MapScreen;
