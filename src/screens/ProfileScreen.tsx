@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { orderService } from '../services/OrderService';
+import { auth } from '../services/firebase';
 
 const ProfileScreen = () => {
   const [role, setRole] = useState(orderService.getCurrentRole());
@@ -19,6 +20,13 @@ const ProfileScreen = () => {
     Alert.alert("Роль изменена", `Вы вошли как ${next === 'employer' ? 'Работодатель' : 'Мастер'}`);
   };
 
+  const handleLogout = () => {
+    Alert.alert("Выход", "Вы уверены, что хотите выйти?", [
+      { text: "Отмена", style: "cancel" },
+      { text: "Выйти", onPress: () => auth.signOut(), style: "destructive" }
+    ]);
+  };
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -32,6 +40,10 @@ const ProfileScreen = () => {
       </View>
       <TouchableOpacity style={styles.btn} onPress={toggle}>
         <Text>Сменить роль</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={handleLogout}>
+        <Text style={{ color: '#FF3B30', fontWeight: 'bold' }}>Выйти из аккаунта</Text>
       </TouchableOpacity>
     </ScrollView>
   );

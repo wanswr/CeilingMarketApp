@@ -25,7 +25,8 @@ import { orderService } from '../services/OrderService';
 import { COLORS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 
-export default function CreateOrderScreen({ navigation }: any) {
+export default function EditOrderScreen({ navigation, route }: any) {
+  const { orderId } = route.params;
   const [form, setForm] = useState({
     title: '',
     address: '',
@@ -41,6 +42,27 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [normalizedAddress, setNormalizedAddress] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    const order = orderService.getOrders().find(o => o.id === orderId);
+    if (order) {
+      setForm({
+        title: order.title || '',
+        address: order.address || '',
+        price: String(order.price || ''),
+        details: order.details || '',
+        date: order.date ? new Date(order.date) : new Date(),
+      });
+      setImages(order.images || []);
+      const coord = order.coordinates || order.location;
+      if (coord) {
+        setCoordinates({
+          latitude: Number(coord.latitude),
+          longitude: Number(coord.longitude)
+        });
+      }
+    }
+  }, [orderId]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -69,34 +91,24 @@ export default function CreateOrderScreen({ navigation }: any) {
 
   const handleAddressChange = async (text: string) => {
     setForm({ ...form, address: text });
-    if (text.length > 2) {
+    if (text.length > 3) {
       try {
-        // Broaden search to Moscow and suburbs
-        const queries = [
-          text,
-          `Москва, ${text}`,
-          `Московская область, ${text}`
-        ];
-
-        let foundSuggestions: string[] = [];
-        for (const q of queries) {
-          const results = await Location.geocodeAsync(q);
-          if (results.length > 0) {
-            const rev = await Location.reverseGeocodeAsync({
-              latitude: results[0].latitude,
-              longitude: results[0].longitude
-            });
-            if (rev.length > 0) {
-              const r = rev[0];
-              const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
-              if (formatted && !foundSuggestions.includes(formatted)) {
-                foundSuggestions.push(formatted);
-              }
+        const query = text.toLowerCase().includes('москва') ? text : `Москва, ${text}`;
+        const results = await Location.geocodeAsync(query);
+        if (results.length > 0) {
+          const rev = await Location.reverseGeocodeAsync({
+            latitude: results[0].latitude,
+            longitude: results[0].longitude
+          });
+          if (rev.length > 0) {
+            const r = rev[0];
+            const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
+            // Simple logic: if formatted address starts with user input, suggest it
+            if (formatted && !suggestions.includes(formatted)) {
+              setSuggestions([formatted]);
             }
           }
-          if (foundSuggestions.length > 2) break;
         }
-        setSuggestions(foundSuggestions);
       } catch (e) {}
     } else {
       setSuggestions([]);
@@ -107,8 +119,6 @@ export default function CreateOrderScreen({ navigation }: any) {
     setForm({ ...form, address: addr });
     setSuggestions([]);
     handleGeocode(addr);
-    // Explicitly focus input or handle cursor if needed,
-    // but in RN setting state usually puts cursor at the end.
   };
 
   const handleGeocode = async (overrideAddr?: string) => {
@@ -222,36 +232,31 @@ export default function CreateOrderScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      // Upload images first
-      let imageUrls: string[] = [];
-      try {
-        imageUrls = await Promise.all(
-          images.map(uri => orderService.uploadImage(uri))
-        );
-      } catch (storageErr) {
-        console.warn("Storage upload failed, proceeding without images:", storageErr);
-        Alert.alert("Предупреждение", "Не удалось загрузить фотографии (проверьте подписку Firebase), заказ будет создан без них.");
+      // Handle images: some might be URLs, some might be new URIs
+      const newImages = images.filter(img => !img.startsWith('http'));
+      const oldImages = images.filter(img => img.startsWith('http'));
+
+      let uploadedUrls: string[] = [];
+      if (newImages.length > 0) {
+        try {
+          uploadedUrls = await Promise.all(
+            newImages.map(uri => orderService.uploadImage(uri))
+          );
+        } catch (storageErr) {
+          console.warn("Storage upload failed for new images:", storageErr);
+        }
       }
 
       const orderData = {
         ...form,
         date: form.date.toISOString(),
-        images: imageUrls,
+        images: [...oldImages, ...uploadedUrls],
         coordinates: coordinates,
-        location: coordinates, // Dual field for compatibility
+        location: coordinates,
       };
 
-      console.log('Publishing order with location:', orderData.location);
-      await orderService.createOrder(orderData);
-
-      // Reset form
-      setForm({ title: '', address: '', price: '', details: '', date: new Date() });
-      setImages([]);
-      setCoordinates(null);
-      setNormalizedAddress(null);
-      setSuggestions([]);
-
-      Alert.alert("Успех", "Заказ опубликован!");
+      await orderService.updateOrder(orderId, orderData);
+      Alert.alert("Успех", "Заказ обновлен!");
       navigation.goBack();
     } catch (e: any) {
       console.error(e);
@@ -286,7 +291,7 @@ export default function CreateOrderScreen({ navigation }: any) {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView contentContainerStyle={{ padding: 20 }}>
-            <Text style={styles.title}>Новый заказ</Text>
+            <Text style={styles.title}>Редактировать заказ</Text>
 
             <AppInput
               label="Заголовок"
@@ -297,24 +302,14 @@ export default function CreateOrderScreen({ navigation }: any) {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Местоположение</Text>
-              <View style={{ position: 'relative' }}>
-                <AppInput
-                  label="Адрес объекта"
-                  placeholder="Улица, дом..."
-                  value={form.address}
-                  onChangeText={handleAddressChange}
-                  onBlur={() => handleGeocode()}
-                  icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
-                />
-                {form.address.length > 0 && (
-                  <TouchableOpacity
-                    style={styles.clearBtn}
-                    onPress={() => { setForm({...form, address: ''}); setSuggestions([]); setCoordinates(null); }}
-                  >
-                    <Ionicons name="close-circle" size={20} color={COLORS.gray} />
-                  </TouchableOpacity>
-                )}
-              </View>
+              <AppInput
+                label="Адрес объекта"
+                placeholder="Улица, дом..."
+                value={form.address}
+                onChangeText={handleAddressChange}
+                onBlur={() => handleGeocode()}
+                icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
+              />
 
               {suggestions.length > 0 && (
                 <View style={styles.suggestionsContainer}>
@@ -483,7 +478,7 @@ export default function CreateOrderScreen({ navigation }: any) {
               onPress={handlePublish}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishText}>ОПУБЛИКОВАТЬ</Text>}
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishText}>СОХРАНИТЬ</Text>}
             </TouchableOpacity>
 
             <View style={{ height: 40 }} />
@@ -495,12 +490,6 @@ export default function CreateOrderScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  clearBtn: {
-    position: 'absolute',
-    right: 15,
-    top: 45,
-    zIndex: 10,
-  },
   suggestionsContainer: {
     backgroundColor: '#fff',
     marginTop: -15,
