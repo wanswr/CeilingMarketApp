@@ -192,7 +192,21 @@ class OrderService {
   }
 
   async updateStatus(orderId: string, status: OrderStatus) {
-    return db.collection("orders").doc(orderId).update({ status });
+    return db.collection("orders").doc(orderId).update({
+      status,
+      updatedAt: Date.now()
+    });
+  }
+
+  async deleteOrder(orderId: string) {
+    return db.collection("orders").doc(orderId).delete();
+  }
+
+  async togglePin(orderId: string, currentPinStatus: boolean) {
+    return db.collection("orders").doc(orderId).update({
+      isPinned: !currentPinStatus,
+      updatedAt: Date.now()
+    });
   }
 }
 

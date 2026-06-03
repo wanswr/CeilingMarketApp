@@ -24,4 +24,5 @@ export interface Order {
   workerId?: string;
   images?: string[];
   timestamp?: any;
+  isPinned?: boolean;
 }
