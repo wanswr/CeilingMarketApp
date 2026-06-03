@@ -40,6 +40,7 @@ const MapScreen = ({ navigation }: any) => {
   const [filterByArea, setFilterByArea] = useState(false);
   const [mapRegion, setMapRegion] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+  const [sortBy, setSortBy] = useState<'distance' | 'price-desc' | 'price-asc'>('distance');
 
   const role = orderService.getCurrentRole();
 
@@ -69,6 +70,21 @@ const MapScreen = ({ navigation }: any) => {
   const filteredOrders = useMemo(() => {
     let filtered = orders.filter(o => ['pending', 'new', 'accepted', 'in_work', 'executing'].includes(o.status));
 
+    // Enrich with distance for sorting
+    filtered = filtered.map(o => {
+      const coord = o.coordinates || o.location;
+      let dist = Infinity;
+      if (location && coord) {
+        dist = calculateDistance(
+          Number(location.coords.latitude),
+          Number(location.coords.longitude),
+          Number(coord.latitude),
+          Number(coord.longitude)
+        );
+      }
+      return { ...o, _distance: dist };
+    });
+
     if (budgetMin) {
       filtered = filtered.filter(o => Number(o.price) >= Number(budgetMin));
     }
@@ -90,23 +106,24 @@ const MapScreen = ({ navigation }: any) => {
     }
 
     if (radius && location && !filterByArea) {
-      filtered = filtered.filter(o => {
-        const coord = o.coordinates || o.location;
-        if (!coord) return false;
-        const dist = calculateDistance(
-          location.coords.latitude,
-          location.coords.longitude,
-          Number(coord.latitude),
-          Number(coord.longitude)
-        );
-        return dist <= Number(radius);
-      });
+      filtered = filtered.filter(o => (o as any)._distance <= Number(radius));
     }
 
-    return filtered;
-  }, [orders, budgetMin, radius, location, filterByArea, mapRegion]);
+    // Apply Sorting
+    return filtered.sort((a, b) => {
+      if (sortBy === 'distance') {
+        return (a as any)._distance - (b as any)._distance;
+      } else if (sortBy === 'price-desc') {
+        return Number(b.price) - Number(a.price);
+      } else if (sortBy === 'price-asc') {
+        return Number(a.price) - Number(b.price);
+      }
+      return 0;
+    });
+  }, [orders, budgetMin, radius, location, filterByArea, mapRegion, sortBy]);
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const calculateDistance = useCallback((lat1: number, lon1: number, lat2: number, lon2: number) => {
+    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return Infinity;
     const R = 6371; // km
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -116,7 +133,7 @@ const MapScreen = ({ navigation }: any) => {
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
-  };
+  }, []);
 
   const toggleGas = () => {
     setShowGas(!showGas);
@@ -227,6 +244,27 @@ const MapScreen = ({ navigation }: any) => {
         </MapView>
       ) : (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+          <View style={styles.sortContainer}>
+            <TouchableOpacity
+              style={[styles.sortTab, sortBy === 'distance' && styles.activeSortTab]}
+              onPress={() => setSortBy('distance')}
+            >
+              <Text style={[styles.sortTabText, sortBy === 'distance' && styles.activeSortTabText]}>Ближе</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortTab, sortBy === 'price-desc' && styles.activeSortTab]}
+              onPress={() => setSortBy('price-desc')}
+            >
+              <Text style={[styles.sortTabText, sortBy === 'price-desc' && styles.activeSortTabText]}>Дороже</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortTab, sortBy === 'price-asc' && styles.activeSortTab]}
+              onPress={() => setSortBy('price-asc')}
+            >
+              <Text style={[styles.sortTabText, sortBy === 'price-asc' && styles.activeSortTabText]}>Дешевле</Text>
+            </TouchableOpacity>
+          </View>
+
           <FlatList
             data={filteredOrders}
             keyExtractor={item => item.id}
@@ -243,7 +281,11 @@ const MapScreen = ({ navigation }: any) => {
                 <Text style={styles.listDetails} numberOfLines={2}>{item.details}</Text>
                 <View style={styles.listFooter}>
                   <Text style={styles.listDate}>{formatDate(item.date || item.timestamp)}</Text>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.gray} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="location-outline" size={12} color={COLORS.primary} />
+                    <Text style={styles.distanceValue}>{(item as any)._distance < Infinity ? `${(item as any)._distance.toFixed(1)} км` : '?'}</Text>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.gray} style={{ marginLeft: 10 }} />
+                  </View>
                 </View>
               </TouchableOpacity>
             )}
@@ -257,34 +299,27 @@ const MapScreen = ({ navigation }: any) => {
         </SafeAreaView>
       )}
 
-      <SafeAreaView style={styles.controlsContainer}>
-        <View style={styles.controls}>
+      <SafeAreaView style={styles.headerControls}>
+        <View style={styles.headerRow}>
           <TouchableOpacity
-            style={styles.btn}
-            onPress={() => setViewMode(viewMode === 'map' ? 'list' : 'map')}
-          >
-            <Ionicons name={viewMode === 'map' ? 'list' : 'map'} size={18} color={COLORS.primary} />
-            <Text style={styles.btnText}>{viewMode === 'map' ? 'Список' : 'Карта'}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.btn}
+            style={styles.headerBtn}
             onPress={() => setFilterModalVisible(true)}
           >
-            <Ionicons name="filter" size={18} color={COLORS.primary} />
-            <Text style={styles.btnText}>Фильтр</Text>
+            <Ionicons name="filter" size={20} color={COLORS.primary} />
+            <Text style={styles.headerBtnText}>Фильтр</Text>
             {(budgetMin || radius || filterByArea) && <View style={styles.filterDot} />}
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.btn}
+            style={styles.headerBtn}
             onPress={() => setShowLayers(!showLayers)}
           >
-            <Ionicons name="layers" size={18} color={COLORS.primary} />
-            <Text style={styles.btnText}>Слои</Text>
+            <Ionicons name="layers" size={20} color={COLORS.primary} />
+            <Text style={styles.headerBtnText}>Слои</Text>
           </TouchableOpacity>
+        </View>
 
-          {showLayers && (
+        {showLayers && (
             <View style={styles.layersMenu}>
               <TouchableOpacity
                 style={[styles.layerItem, showGas && styles.activeLayer]}
@@ -304,15 +339,24 @@ const MapScreen = ({ navigation }: any) => {
             </View>
           )}
 
-          <TouchableOpacity
-            style={styles.btn}
-            onPress={centerToUser}
-          >
-            <Ionicons name="locate" size={18} color="#000" />
-            <Text style={styles.btnText}>Где я</Text>
-          </TouchableOpacity>
-        </View>
       </SafeAreaView>
+
+      <View style={styles.bottomControls}>
+        <TouchableOpacity
+          style={styles.circleBtn}
+          onPress={centerToUser}
+        >
+          <Ionicons name="locate" size={24} color="#000" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.viewToggleBtn}
+          onPress={() => setViewMode(viewMode === 'map' ? 'list' : 'map')}
+        >
+          <Ionicons name={viewMode === 'map' ? 'list' : 'map'} size={24} color="#fff" />
+          <Text style={styles.viewToggleText}>{viewMode === 'map' ? 'СПИСОК' : 'КАРТА'}</Text>
+        </TouchableOpacity>
+      </View>
 
       <Modal visible={filterModalVisible} animationType="slide" transparent={true}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -444,38 +488,77 @@ const MapScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { width: '100%', height: '100%' },
-  controlsContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 20, right: 15 },
-  controls: { 
-    backgroundColor: 'rgba(255,255,255,0.95)', 
-    padding: 6, 
+  headerControls: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 30,
+    left: 20,
+    right: 20
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  headerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
     borderRadius: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5
+  },
+  headerBtnText: { marginLeft: 8, fontWeight: '700', fontSize: 13, color: COLORS.dark },
+  bottomControls: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    alignItems: 'flex-end',
+  },
+  circleBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8
   },
-  btn: { 
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, marginBottom: 5, borderRadius: 15, backgroundColor: '#fff'
+  viewToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 10
   },
+  viewToggleText: { color: '#fff', fontWeight: '900', fontSize: 12, marginLeft: 10, letterSpacing: 1 },
   activeGas: { backgroundColor: COLORS.success },
   activeLayer: { backgroundColor: COLORS.primary },
   btnText: { marginLeft: 8, fontWeight: '700', fontSize: 12 },
   filterDot: {
     position: 'absolute',
-    top: 5,
-    right: 5,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: -2,
+    right: -2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: COLORS.danger,
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
   layersMenu: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginTop: 5,
-    padding: 4,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 15,
+    marginTop: 10,
+    padding: 6,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 8,
+    elevation: 4,
+    width: 150,
   },
   layerItem: {
     flexDirection: 'row',
@@ -685,6 +768,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.gray,
     fontWeight: '500',
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    padding: 15,
+    paddingBottom: 5,
+    justifyContent: 'space-between',
+  },
+  sortTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: COLORS.light,
+    marginHorizontal: 4,
+  },
+  activeSortTab: {
+    backgroundColor: COLORS.primary,
+  },
+  sortTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray,
+  },
+  activeSortTabText: {
+    color: '#fff',
+  },
+  distanceValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginLeft: 4,
   },
 });
 
