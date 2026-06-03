@@ -101,6 +101,7 @@ export default function CreateOrderScreen({ navigation }: any) {
         location: coordinates, // Dual field for compatibility
       };
 
+      console.log('Publishing order with location:', orderData.location);
       await orderService.createOrder(orderData);
       Alert.alert("Успех", "Заказ опубликован!");
       navigation.goBack();

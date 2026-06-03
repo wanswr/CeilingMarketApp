@@ -10,6 +10,7 @@ import {
   Dimensions,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
@@ -17,6 +18,7 @@ import { COLORS } from '../constants/theme';
 import { orderService, Order } from '../services/OrderService';
 
 const MapScreen = ({ navigation }: any) => {
+  const mapRef = useRef<MapView>(null);
   const [showGas, setShowGas] = useState(true);
   const [showProd, setShowProd] = useState(true);
   const [orders, setOrders] = useState<Order[]>(orderService.getOrders());
@@ -49,9 +51,28 @@ const MapScreen = ({ navigation }: any) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const centerToUser = () => {
+    if (location && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      }, 1000);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+  };
+
   const onMarkerPress = (order: Order) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelectedOrder(order);
+  };
+
+  const handleMapPress = (e: any) => {
+    // If we click on the map itself (not a marker), deselect
+    if (e.nativeEvent.action !== 'marker-press') {
+      setSelectedOrder(null);
+    }
   };
 
   if (loading) return (
@@ -63,6 +84,7 @@ const MapScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <MapView
+        ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         initialRegion={{
@@ -72,7 +94,7 @@ const MapScreen = ({ navigation }: any) => {
           longitudeDelta: 0.1,
         }}
         showsUserLocation={true}
-        onPress={() => setSelectedOrder(null)}
+        onPress={handleMapPress}
       >
         {showGas && (
           <Marker 
@@ -127,6 +149,14 @@ const MapScreen = ({ navigation }: any) => {
             <Ionicons name="business" size={18} color={showProd ? "#fff" : "#000"} />
             <Text style={[styles.btnText, {color: showProd ? "#fff" : "#000"}]}>Цех</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={centerToUser}
+          >
+            <Ionicons name="locate" size={18} color="#000" />
+            <Text style={styles.btnText}>Где я</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
 
@@ -144,7 +174,9 @@ const MapScreen = ({ navigation }: any) => {
           <View style={styles.previewFooter}>
             <View style={styles.previewTag}>
               <Ionicons name="calendar-outline" size={14} color={COLORS.gray} />
-              <Text style={styles.previewTagText}>{selectedOrder.date}</Text>
+              <Text style={styles.previewTagText}>
+                {selectedOrder.date ? new Date(selectedOrder.date).toLocaleDateString() : 'Скоро'}
+              </Text>
             </View>
             <Text style={styles.tapHint}>Нажмите, чтобы открыть</Text>
           </View>
