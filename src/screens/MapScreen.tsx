@@ -42,12 +42,15 @@ const MapScreen = ({ navigation }: any) => {
 
     const updateOrders = (newOrders: Order[]) => {
       console.log('MapScreen: Orders updated', newOrders.length);
-      setOrders([...newOrders]);
+      setOrders(newOrders);
     };
 
     orderService.on('ordersUpdated', updateOrders);
     // Explicitly fetch current orders in case listener hasn't fired yet
-    setOrders(orderService.getOrders());
+    const initialOrders = orderService.getOrders();
+    if (initialOrders.length > 0) {
+      setOrders(initialOrders);
+    }
 
     return () => { orderService.off('ordersUpdated', updateOrders); };
   }, []);
