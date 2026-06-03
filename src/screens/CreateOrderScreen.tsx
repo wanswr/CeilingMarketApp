@@ -69,24 +69,34 @@ export default function CreateOrderScreen({ navigation }: any) {
 
   const handleAddressChange = async (text: string) => {
     setForm({ ...form, address: text });
-    if (text.length > 3) {
+    if (text.length > 2) {
       try {
-        const query = text.toLowerCase().includes('москва') ? text : `Москва, ${text}`;
-        const results = await Location.geocodeAsync(query);
-        if (results.length > 0) {
-          const rev = await Location.reverseGeocodeAsync({
-            latitude: results[0].latitude,
-            longitude: results[0].longitude
-          });
-          if (rev.length > 0) {
-            const r = rev[0];
-            const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
-            // Simple logic: if formatted address starts with user input, suggest it
-            if (formatted && !suggestions.includes(formatted)) {
-              setSuggestions([formatted]);
+        // Broaden search to Moscow and suburbs
+        const queries = [
+          text,
+          `Москва, ${text}`,
+          `Московская область, ${text}`
+        ];
+
+        let foundSuggestions: string[] = [];
+        for (const q of queries) {
+          const results = await Location.geocodeAsync(q);
+          if (results.length > 0) {
+            const rev = await Location.reverseGeocodeAsync({
+              latitude: results[0].latitude,
+              longitude: results[0].longitude
+            });
+            if (rev.length > 0) {
+              const r = rev[0];
+              const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
+              if (formatted && !foundSuggestions.includes(formatted)) {
+                foundSuggestions.push(formatted);
+              }
             }
           }
+          if (foundSuggestions.length > 2) break;
         }
+        setSuggestions(foundSuggestions);
       } catch (e) {}
     } else {
       setSuggestions([]);
@@ -97,6 +107,8 @@ export default function CreateOrderScreen({ navigation }: any) {
     setForm({ ...form, address: addr });
     setSuggestions([]);
     handleGeocode(addr);
+    // Explicitly focus input or handle cursor if needed,
+    // but in RN setting state usually puts cursor at the end.
   };
 
   const handleGeocode = async (overrideAddr?: string) => {
@@ -231,6 +243,14 @@ export default function CreateOrderScreen({ navigation }: any) {
 
       console.log('Publishing order with location:', orderData.location);
       await orderService.createOrder(orderData);
+
+      // Reset form
+      setForm({ title: '', address: '', price: '', details: '', date: new Date() });
+      setImages([]);
+      setCoordinates(null);
+      setNormalizedAddress(null);
+      setSuggestions([]);
+
       Alert.alert("Успех", "Заказ опубликован!");
       navigation.goBack();
     } catch (e: any) {
@@ -277,14 +297,24 @@ export default function CreateOrderScreen({ navigation }: any) {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Местоположение</Text>
-              <AppInput
-                label="Адрес объекта"
-                placeholder="Улица, дом..."
-                value={form.address}
-                onChangeText={handleAddressChange}
-                onBlur={() => handleGeocode()}
-                icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
-              />
+              <View style={{ position: 'relative' }}>
+                <AppInput
+                  label="Адрес объекта"
+                  placeholder="Улица, дом..."
+                  value={form.address}
+                  onChangeText={handleAddressChange}
+                  onBlur={() => handleGeocode()}
+                  icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
+                />
+                {form.address.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.clearBtn}
+                    onPress={() => { setForm({...form, address: ''}); setSuggestions([]); setCoordinates(null); }}
+                  >
+                    <Ionicons name="close-circle" size={20} color={COLORS.gray} />
+                  </TouchableOpacity>
+                )}
+              </View>
 
               {suggestions.length > 0 && (
                 <View style={styles.suggestionsContainer}>
@@ -465,6 +495,12 @@ export default function CreateOrderScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  clearBtn: {
+    position: 'absolute',
+    right: 15,
+    top: 45,
+    zIndex: 10,
+  },
   suggestionsContainer: {
     backgroundColor: '#fff',
     marginTop: -15,

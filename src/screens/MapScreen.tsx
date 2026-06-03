@@ -127,6 +127,7 @@ const MapScreen = ({ navigation }: any) => {
         
         {orders.filter(o => ['pending', 'new', 'accepted', 'in_work', 'executing'].includes(o.status)).map(order => {
           const coord = order.coordinates || order.location;
+          const key = `${order.id}-${order.updatedAt || order.createdAt || Date.now()}`;
           if (!coord) return null;
 
           const lat = Number(coord.latitude);
@@ -136,7 +137,7 @@ const MapScreen = ({ navigation }: any) => {
 
           return (
             <Marker
-              key={order.id}
+              key={key}
               coordinate={{
                 latitude: lat,
                 longitude: lng
