@@ -1,5 +1,6 @@
 import 'react-native-get-random-values';
 import 'tslib';
+import './src/services/firebase'; // Ensure Firebase is initialized before everything else
 import { registerRootComponent } from 'expo';
 
 import App from './App';
