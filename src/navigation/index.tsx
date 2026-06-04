@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
@@ -20,7 +19,7 @@ export default function Navigation() {
   const [needsProfile, setNeedsProfile] = useState(false);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
+    return auth.onAuthStateChanged(async (u) => {
       if (u) {
         const userDoc = await getDoc(doc(db, "users", u.uid));
         setNeedsProfile(!userDoc.exists());

@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, Alert, ActivityIndicator } from 'react-native';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-import { signInWithPhoneNumber } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
@@ -15,7 +14,7 @@ export default function LoginScreen({ navigation }: any) {
     if (phone.length < 12) { Alert.alert("Ошибка", "Введите номер +79991234567"); return; }
     setLoading(true);
     try {
-      const result = await signInWithPhoneNumber(auth, phone, recaptchaVerifier.current);
+      const result = await auth.signInWithPhoneNumber(phone, recaptchaVerifier.current);
       navigation.navigate('VerifyCode', { phoneNumber: phone, confirmResult: result });
     } catch (err: any) { Alert.alert("Ошибка", err.message); } 
     finally { setLoading(false); }
