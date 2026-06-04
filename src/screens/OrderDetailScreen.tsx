@@ -42,8 +42,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           </View>
         )}
         
-        {order.workerId === 'me' && order.status === 'in_work' && (
-          <TouchableOpacity style={styles.btn} onPress={() => orderService.updateStatus(order.id, 'executing')}>
+        {order.workerId === 'me' && order.status === 'in_progress' && (
+          <TouchableOpacity style={styles.btn} onPress={() => orderService.updateStatus(order.id, 'finished')}>
             <Text style={styles.btnText}>Я НА ОБЪЕКТЕ</Text>
           </TouchableOpacity>
         )}

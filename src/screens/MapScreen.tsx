@@ -95,7 +95,7 @@ const MapScreen = ({ navigation }: any) => {
         {orders.filter(o => o.status === 'pending').map(order => (
           <Marker
             key={order.id}
-            coordinate={order.coordinates}
+            coordinate={order.location}
             onPress={() => onMarkerPress(order)}
           >
             <View style={styles.pinMarker}>

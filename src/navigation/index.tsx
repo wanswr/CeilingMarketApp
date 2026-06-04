@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
+import { orderService } from '../services/OrderService';
 
 import BottomTabNavigator from './BottomTabNavigator';
 import LoginScreen from '../screens/LoginScreen';
@@ -20,17 +21,39 @@ export default function Navigation() {
   const [needsProfile, setNeedsProfile] = useState(false);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
+    let unsubscribeProfile: any;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       if (u) {
-        const userDoc = await getDoc(doc(db, "users", u.uid));
-        setNeedsProfile(!userDoc.exists());
-        setUser(u);
+        // Use a listener for profile to react to creation
+        unsubscribeProfile = onSnapshot(doc(db, "users", u.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            setNeedsProfile(false);
+            const data = docSnap.data();
+            if (data.role) {
+              orderService.setRole(data.role);
+            }
+          } else {
+            setNeedsProfile(true);
+          }
+          setUser(u);
+          setLoading(false);
+        }, (err) => {
+          console.warn("Profile Listener Error:", err);
+          setLoading(false);
+        });
       } else {
+        if (unsubscribeProfile) unsubscribeProfile();
         setUser(null);
         setNeedsProfile(false);
+        setLoading(false);
       }
-      setLoading(false);
     });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+    };
   }, []);
 
   if (loading) return <View style={{flex:1, justifyContent:'center'}}><ActivityIndicator size="large" color="#5856D6"/></View>;
