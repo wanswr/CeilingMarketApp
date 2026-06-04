@@ -7,7 +7,6 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   Platform,
-  Dimensions,
   Alert,
   Modal,
   TextInput,
@@ -45,10 +44,31 @@ const MapScreen = ({ navigation }: any) => {
   const role = orderService.getCurrentRole();
 
   useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', marginRight: 15 }}>
+          <TouchableOpacity
+            onPress={() => setFilterModalVisible(true)}
+            style={{ marginRight: 15 }}
+          >
+            <Ionicons name="filter" size={24} color={COLORS.primary} />
+            {(budgetMin || radius || filterByArea) && <View style={styles.headerFilterDot} />}
+          </TouchableOpacity>
+          {viewMode === 'map' && (
+            <TouchableOpacity onPress={() => setShowLayers(!showLayers)}>
+              <Ionicons name="layers" size={24} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      ),
+    });
+  }, [navigation, viewMode, budgetMin, radius, filterByArea, showLayers]);
+
+  useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        let loc = await Location.getCurrentPositionAsync({});
+        const loc = await Location.getCurrentPositionAsync({});
         setLocation(loc);
       }
       setLoading(false);
@@ -177,6 +197,28 @@ const MapScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
+      {showLayers && viewMode === 'map' && (
+        <View style={styles.layersOverlay}>
+          <View style={styles.layersMenu}>
+            <TouchableOpacity
+              style={[styles.layerItem, showGas && styles.activeLayer]}
+              onPress={toggleGas}
+            >
+              <Ionicons name="flame" size={16} color={showGas ? "#fff" : "#000"} />
+              <Text style={[styles.layerText, {color: showGas ? "#fff" : "#000"}]}>АГЗС</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.layerItem, showProd && styles.activeLayer]}
+              onPress={toggleProd}
+            >
+              <Ionicons name="business" size={16} color={showProd ? "#fff" : "#000"} />
+              <Text style={[styles.layerText, {color: showProd ? "#fff" : "#000"}]}>Цех</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {viewMode === 'map' ? (
         <MapView
         ref={mapRef}
@@ -244,25 +286,28 @@ const MapScreen = ({ navigation }: any) => {
         </MapView>
       ) : (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-          <View style={styles.sortContainer}>
-            <TouchableOpacity
-              style={[styles.sortTab, sortBy === 'distance' && styles.activeSortTab]}
-              onPress={() => setSortBy('distance')}
-            >
-              <Text style={[styles.sortTabText, sortBy === 'distance' && styles.activeSortTabText]}>Ближе</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.sortTab, sortBy === 'price-desc' && styles.activeSortTab]}
-              onPress={() => setSortBy('price-desc')}
-            >
-              <Text style={[styles.sortTabText, sortBy === 'price-desc' && styles.activeSortTabText]}>Оплата ↓</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.sortTab, sortBy === 'price-asc' && styles.activeSortTab]}
-              onPress={() => setSortBy('price-asc')}
-            >
-              <Text style={[styles.sortTabText, sortBy === 'price-asc' && styles.activeSortTabText]}>Оплата ↑</Text>
-            </TouchableOpacity>
+          <View style={styles.listHeaderContainer}>
+            <Text style={styles.listHeaderText}>Заказы</Text>
+            <View style={styles.sortContainer}>
+              <TouchableOpacity
+                style={[styles.sortTab, sortBy === 'distance' && styles.activeSortTab]}
+                onPress={() => setSortBy('distance')}
+              >
+                <Text style={[styles.sortTabText, sortBy === 'distance' && styles.activeSortTabText]}>Ближе</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sortTab, sortBy === 'price-desc' && styles.activeSortTab]}
+                onPress={() => setSortBy('price-desc')}
+              >
+                <Text style={[styles.sortTabText, sortBy === 'price-desc' && styles.activeSortTabText]}>Оплата ↓</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sortTab, sortBy === 'price-asc' && styles.activeSortTab]}
+                onPress={() => setSortBy('price-asc')}
+              >
+                <Text style={[styles.sortTabText, sortBy === 'price-asc' && styles.activeSortTabText]}>Оплата ↑</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <FlatList
@@ -299,48 +344,6 @@ const MapScreen = ({ navigation }: any) => {
         </SafeAreaView>
       )}
 
-      <SafeAreaView style={styles.headerControls}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => setFilterModalVisible(true)}
-          >
-            <Ionicons name="filter" size={20} color={COLORS.primary} />
-            <Text style={styles.headerBtnText}>Фильтр</Text>
-            {(budgetMin || radius || filterByArea) && <View style={styles.filterDot} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => setShowLayers(!showLayers)}
-          >
-            <Ionicons name="layers" size={20} color={COLORS.primary} />
-            <Text style={styles.headerBtnText}>Слои</Text>
-          </TouchableOpacity>
-        </View>
-
-        {showLayers && (
-            <View style={styles.layersMenu}>
-              <TouchableOpacity
-                style={[styles.layerItem, showGas && styles.activeLayer]}
-                onPress={toggleGas}
-              >
-                <Ionicons name="flame" size={16} color={showGas ? "#fff" : "#000"} />
-                <Text style={[styles.layerText, {color: showGas ? "#fff" : "#000"}]}>АГЗС</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.layerItem, showProd && styles.activeLayer]}
-                onPress={toggleProd}
-              >
-                <Ionicons name="business" size={16} color={showProd ? "#fff" : "#000"} />
-                <Text style={[styles.layerText, {color: showProd ? "#fff" : "#000"}]}>Цех</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-      </SafeAreaView>
-
       <View style={styles.bottomControls}>
         <TouchableOpacity
           style={styles.circleBtn}
@@ -358,13 +361,22 @@ const MapScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      <Modal visible={filterModalVisible} animationType="slide" transparent={true}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.modalContent}
-            >
+      <Modal
+        visible={filterModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setFilterModalVisible(false)}>
+            <View style={{ flex: 1 }} />
+          </TouchableWithoutFeedback>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalContent}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Фильтры заказов</Text>
                 <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
@@ -421,9 +433,10 @@ const MapScreen = ({ navigation }: any) => {
               >
                 <Text style={styles.applyBtnText}>Применить</Text>
               </TouchableOpacity>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {selectedOrder && (
@@ -488,26 +501,12 @@ const MapScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { width: '100%', height: '100%' },
-  headerControls: {
+  layersOverlay: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 30,
-    left: 20,
-    right: 20
+    top: 10,
+    right: 20,
+    zIndex: 100,
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  headerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5
-  },
-  headerBtnText: { marginLeft: 8, fontWeight: '700', fontSize: 13, color: COLORS.dark },
   bottomControls: {
     position: 'absolute',
     bottom: 30,
@@ -537,6 +536,17 @@ const styles = StyleSheet.create({
   activeGas: { backgroundColor: COLORS.success },
   activeLayer: { backgroundColor: COLORS.primary },
   btnText: { marginLeft: 8, fontWeight: '700', fontSize: 12 },
+  headerFilterDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.danger,
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
   filterDot: {
     position: 'absolute',
     top: -2,
@@ -618,15 +628,20 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
-    padding: 25,
-    paddingBottom: 40,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 60 : 45, // More padding at bottom
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 25,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -769,25 +784,45 @@ const styles = StyleSheet.create({
     color: COLORS.gray,
     fontWeight: '500',
   },
+  listHeaderContainer: {
+    backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'ios' ? 10 : 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.light,
+  },
+  listHeaderText: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.dark,
+    marginHorizontal: 20,
+    marginBottom: 15,
+  },
   sortContainer: {
     flexDirection: 'row',
-    padding: 15,
-    paddingBottom: 5,
-    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 15,
   },
   sortTab: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 12,
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: 15,
     backgroundColor: COLORS.light,
-    marginHorizontal: 4,
+    marginHorizontal: 5,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   activeSortTab: {
     backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
   sortTabText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: COLORS.gray,
   },
