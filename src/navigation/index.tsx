@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { db, auth } from '../services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
 import { orderService } from '../services/OrderService';
 
 import BottomTabNavigator from './BottomTabNavigator';
@@ -21,11 +23,10 @@ export default function Navigation() {
   useEffect(() => {
     let unsubscribeProfile: any;
 
-    const unsubscribeAuth = auth.onAuthStateChanged(async (u: any) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       if (u) {
-        // @ts-ignore
-        unsubscribeProfile = db.collection("users").doc(u.uid).onSnapshot((docSnap: any) => {
-          if (docSnap.exists) {
+        unsubscribeProfile = onSnapshot(doc(db, "users", u.uid), (docSnap) => {
+          if (docSnap.exists()) {
             setNeedsProfile(false);
             const data = docSnap.data();
             if (data.role) {
@@ -36,7 +37,7 @@ export default function Navigation() {
           }
           setUser(u);
           setLoading(false);
-        }, (err: any) => {
+        }, (err) => {
           console.warn("Profile Listener Error:", err);
           setLoading(false);
         });
