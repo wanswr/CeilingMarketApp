@@ -1,18 +1,4 @@
-import {
-  collection,
-  addDoc,
-  query,
-  onSnapshot,
-  orderBy,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  arrayUnion,
-  where,
-  FieldValue,
-  serverTimestamp
-} from 'firebase/firestore';
+import firebase from './firebase';
 import { db, auth } from './firebase';
 import { Order, UserProfile, UserRole } from '../types';
 
@@ -20,18 +6,17 @@ class OrderService {
   private orders: Order[] = [];
   private listeners: any = {};
   private currentRole: UserRole = 'worker';
-  private currentUserProfile: UserProfile | null = null;
 
   constructor() {
     this.initOrdersListener();
   }
 
   private initOrdersListener() {
-    const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-    onSnapshot(q, (snapshot) => {
-      this.orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Order));
+    // @ts-ignore
+    db.collection("orders").orderBy("createdAt", "desc").onSnapshot((snapshot: any) => {
+      this.orders = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() } as Order));
       this.emit('ordersUpdated', this.orders);
-    }, (err) => console.warn("Firestore Orders Error:", err));
+    }, (err: any) => console.warn("Firestore Orders Error:", err));
   }
 
   on(event: string, cb: Function) {
@@ -61,9 +46,9 @@ class OrderService {
 
   // User Management
   async getUserProfile(uid: string): Promise<UserProfile | null> {
-    const docRef = doc(db, "users", uid);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
+    // @ts-ignore
+    const docSnap = await db.collection("users").doc(uid).get();
+    if (docSnap.exists) {
       return docSnap.data() as UserProfile;
     }
     return null;
@@ -88,13 +73,14 @@ class OrderService {
       ...data
     };
 
-    await setDoc(doc(db, "users", uid), profile);
-    this.currentUserProfile = profile;
+    // @ts-ignore
+    await db.collection("users").doc(uid).set(profile);
     return profile;
   }
 
   async updateProfile(uid: string, data: Partial<UserProfile>) {
-    await updateDoc(doc(db, "users", uid), data);
+    // @ts-ignore
+    await db.collection("users").doc(uid).update(data);
   }
 
   // Order Management
@@ -110,19 +96,23 @@ class OrderService {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    return addDoc(collection(db, "orders"), newOrder);
+    // @ts-ignore
+    return db.collection("orders").add(newOrder);
   }
 
   async applyForOrder(orderId: string, userId: string) {
-    const orderRef = doc(db, "orders", orderId);
-    await updateDoc(orderRef, {
-      candidates: arrayUnion(userId)
+    // @ts-ignore
+    const orderRef = db.collection("orders").doc(orderId);
+    await orderRef.update({
+      // @ts-ignore
+      candidates: firebase.firestore.FieldValue.arrayUnion(userId)
     });
   }
 
   async confirmWorker(orderId: string, workerId: string) {
-    const orderRef = doc(db, "orders", orderId);
-    await updateDoc(orderRef, {
+    // @ts-ignore
+    const orderRef = db.collection("orders").doc(orderId);
+    await orderRef.update({
       workerId,
       status: 'accepted',
       updatedAt: Date.now()
@@ -130,8 +120,9 @@ class OrderService {
   }
 
   async updateStatus(orderId: string, status: string) {
-    const orderRef = doc(db, "orders", orderId);
-    await updateDoc(orderRef, {
+    // @ts-ignore
+    const orderRef = db.collection("orders").doc(orderId);
+    await orderRef.update({
       status,
       updatedAt: Date.now()
     });
