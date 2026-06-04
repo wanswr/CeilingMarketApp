@@ -10,18 +10,38 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Users collection
+    // Strict validation for User documents
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId);
+      // Only the user themselves can update their profile, ensuring role/pushToken integrity
+      allow write: if isOwner(userId) &&
+        (request.resource.data.keys().hasOnly(['name', 'email', 'phone', 'role', 'pushToken', 'subscriptionUntil', 'isTrialUsed', 'updatedAt', 'createdAt', 'avatar']));
     }
 
-    // Orders collection
+    // Strict validation for Orders
     match /orders/{orderId} {
+      // Authenticated users can read visible orders
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
+
+      // Only authenticated users can create orders, must set employerId to their own UID
+      allow create: if isAuthenticated() && request.resource.data.employerId == request.auth.uid;
+
+      // Update logic:
+      // 1. Employer can update details/status
+      // 2. Worker can update status (apply/in_work/completed)
+      allow update: if isAuthenticated() && (
+        resource.data.employerId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'workerId', 'updatedAt', 'candidates'])
+      );
+
+      // Only the creator can delete their order
       allow delete: if isAuthenticated() && resource.data.employerId == request.auth.uid;
+    }
+
+    // Chats security
+    match /chats/{chatId} {
+      allow read, write: if isAuthenticated() &&
+        (resource == null || request.auth.uid in resource.data.participants);
     }
   }
 }

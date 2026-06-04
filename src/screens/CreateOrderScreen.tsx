@@ -43,9 +43,9 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Ошибка', 'Нужен доступ к галерее');
+    const { status: libStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (libStatus !== 'granted') {
+      Alert.alert('Доступ запрещен', 'Для выбора фото требуется разрешение на доступ к галерее. Вы можете включить его в настройках.');
       return;
     }
 

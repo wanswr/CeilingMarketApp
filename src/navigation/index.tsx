@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { auth, db } from '../services/firebase';
+import { notificationService } from '../services/NotificationService';
 
 import BottomTabNavigator from './BottomTabNavigator';
 import LoginScreen from '../screens/LoginScreen';
@@ -10,6 +11,7 @@ import RegisterDetailsScreen from '../screens/RegisterDetailsScreen';
 import RoleSelectionScreen from '../screens/RoleSelectionScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 import EditOrderScreen from '../screens/EditOrderScreen';
+import InviteFriendsScreen from '../screens/InviteFriendsScreen';
 
 const Stack = createStackNavigator();
 
@@ -29,6 +31,7 @@ export default function Navigation() {
       }
 
       if (u) {
+        notificationService.registerForPushNotificationsAsync();
         unsubscribeUserDoc = db.collection("users").doc(u.uid).onSnapshot((doc) => {
           if (doc.exists) {
             const data = doc.data();
@@ -85,6 +88,11 @@ export default function Navigation() {
             name="EditOrder"
             component={EditOrderScreen}
             options={{headerShown: true, title: 'Редактирование'}}
+          />
+          <Stack.Screen
+            name="InviteFriends"
+            component={InviteFriendsScreen}
+            options={{headerShown: true, title: 'Пригласить друзей'}}
           />
         </>
       )}

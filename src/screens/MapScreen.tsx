@@ -165,7 +165,26 @@ const MapScreen = ({ navigation }: any) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const centerToUser = () => {
+  const centerToUser = async () => {
+    if (!location) {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        let loc = await Location.getCurrentPositionAsync({});
+        setLocation(loc);
+        if (mapRef.current) {
+           mapRef.current.animateToRegion({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }, 1000);
+        }
+      } else {
+        Alert.alert("Доступ запрещен", "Пожалуйста, разрешите доступ к местоположению в настройках устройства.");
+      }
+      return;
+    }
+
     if (location && mapRef.current) {
       mapRef.current.animateToRegion({
         latitude: location.coords.latitude,

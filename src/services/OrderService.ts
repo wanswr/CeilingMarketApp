@@ -1,5 +1,7 @@
+import firebase from 'firebase/compat/app';
 import { db, auth, storage } from './firebase';
 import { Order, OrderStatus } from '../types';
+import { notificationService } from './NotificationService';
 
 class OrderService {
   private orders: Order[] = [];
@@ -181,14 +183,31 @@ class OrderService {
   }
 
   async applyForOrder(orderId: string, workerId: string) {
-    console.log(`Applying for order ${orderId} as ${workerId}`);
+    if (!auth.currentUser) throw new Error("Не авторизован");
+
+    // Add current user to candidates array
+    const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
+    const userData = userDoc.data();
+
+    const candidate = {
+      id: auth.currentUser.uid,
+      name: userData?.name || 'Мастер',
+      phone: userData?.phone || '',
+      timestamp: Date.now()
+    };
+
+    return db.collection("orders").doc(orderId).update({
+      candidates: firebase.firestore.FieldValue.arrayUnion(candidate)
+    });
   }
 
   async confirmWorker(orderId: string, worker: any) {
-    return db.collection("orders").doc(orderId).update({
+    await db.collection("orders").doc(orderId).update({
       workerId: worker.id,
       status: 'accepted'
     });
+    // Notify worker
+    await notificationService.notifyStatusChange(orderId, worker.id, 'accepted');
   }
 
   async updateOrder(orderId: string, data: any) {
@@ -200,10 +219,25 @@ class OrderService {
   }
 
   async updateStatus(orderId: string, status: OrderStatus) {
-    return db.collection("orders").doc(orderId).update({
+    await db.collection("orders").doc(orderId).update({
       status,
       updatedAt: Date.now()
     });
+
+    try {
+        const orderDoc = await db.collection("orders").doc(orderId).get();
+        const orderData = orderDoc.data() as Order;
+
+        // Notify employer if worker changes status
+        if (this.currentRole === 'worker' && orderData.employerId) {
+            await notificationService.notifyStatusChange(orderId, orderData.employerId, status);
+        } else if (this.currentRole === 'employer' && orderData.workerId) {
+            // Notify worker if employer changes status (e.g. cancelled)
+            await notificationService.notifyStatusChange(orderId, orderData.workerId, status);
+        }
+    } catch (e) {
+        console.error("Error in updateStatus notification:", e);
+    }
   }
 
   async deleteOrder(orderId: string) {

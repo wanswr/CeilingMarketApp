@@ -5,7 +5,7 @@ import { COLORS } from '../constants/theme';
 import { orderService } from '../services/OrderService';
 import { auth } from '../services/firebase';
 
-const ProfileScreen = () => {
+const ProfileScreen = ({ navigation }: any) => {
   const [role, setRole] = useState(orderService.getCurrentRole());
 
   useEffect(() => {
@@ -40,6 +40,13 @@ const ProfileScreen = () => {
       </View>
       <TouchableOpacity style={styles.btn} onPress={toggle}>
         <Text>Сменить роль</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => navigation.navigate('InviteFriends')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ionicons name="people-outline" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
+          <Text>Пригласить коллег</Text>
+        </View>
       </TouchableOpacity>
 
       <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={handleLogout}>
