@@ -33,7 +33,7 @@ class NotificationService {
     const pushTokenData = await Notifications.getExpoPushTokenAsync({
         projectId: "8078330b-0649-43c2-a9b0-96695eb0746f"
     });
-    token = pushTokenData.data;
+    token = pushTokenData.data as string;
 
     this.token = token;
 

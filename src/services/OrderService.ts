@@ -126,32 +126,6 @@ class OrderService {
     });
   }
 
-  async uploadImageLegacy(uri: string): Promise<string> {
-    try {
-      console.log('Starting image upload for:', uri);
-      // For React Native, it's often better to use XMLHttpRequest for blobs if fetch fails
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      const filename = `orders/${auth.currentUser?.uid || 'anon'}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-      const ref = storage.ref().child(filename);
-
-      console.log('Uploading to:', filename);
-      const snapshot = await ref.put(blob);
-      console.log('Upload successful');
-
-      const downloadURL = await snapshot.ref.getDownloadURL();
-      console.log('Download URL:', downloadURL);
-      return downloadURL;
-    } catch (error: any) {
-      console.error('Error in uploadImage:', error);
-      // Log more details if available
-      if (error.code) console.error('Error code:', error.code);
-      if (error.serverResponse) console.error('Server response:', error.serverResponse);
-      throw error;
-    }
-  }
-
   async createOrder(data: any) {
     if (!auth.currentUser) throw new Error("Не авторизован");
 

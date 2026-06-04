@@ -14,7 +14,7 @@ export const ru = {
   },
   roles: {
     selectionTitle: 'Выберите вашу роль',
-    employer: 'Работодатель',
+    employer: 'Заказчик',
     employerDesc: 'Я хочу создать заказ и найти мастеров',
     worker: 'Мастер (Исполнитель)',
     workerDesc: 'Я ищу работу и хочу откликаться на заказы',

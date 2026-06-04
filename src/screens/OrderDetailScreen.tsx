@@ -88,7 +88,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                       <Ionicons name="person-circle" size={40} color={COLORS.gray} />
                       <View style={{ marginLeft: 12, flex: 1 }}>
                         <Text style={styles.candidateName}>{c.name || `Исполнитель #${i + 1}`}</Text>
-                        <Text style={styles.candidateMeta}>⭐ 5.0 • 12 выполненных заказов</Text>
+                        <Text style={styles.candidateMeta}>⭐ {(Number(c.rating || 5) * 2).toFixed(1)} • {c.completedOrders || 0} выполненных заказов</Text>
                       </View>
                       <View style={styles.selectBtn}>
                         <Text style={styles.selectBtnText}>Выбрать</Text>

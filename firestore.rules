@@ -36,7 +36,7 @@ service cloud.firestore {
       // Phone numbers in orders should be hidden in the UI if not confirmed.
       // Rules protect the document itself.
 
-      allow create: if isAuthenticated() && isSubscribed();
+      allow create: if isAuthenticated();
 
       allow update: if isAuthenticated() && (
         resource.data.employerId == request.auth.uid ||

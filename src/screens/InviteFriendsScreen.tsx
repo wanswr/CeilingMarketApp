@@ -76,7 +76,7 @@ export default function InviteFriendsScreen() {
       </View>
       <FlatList
         data={contacts}
-        keyExtractor={(item) => item.id || Math.random().toString()}
+        keyExtractor={(item, index) => (item.id || index.toString())}
         renderItem={({ item }) => (
           <View style={styles.contactItem}>
             <View style={styles.avatar}>
@@ -84,7 +84,7 @@ export default function InviteFriendsScreen() {
             </View>
             <View style={styles.info}>
               <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.phone}>{item.phoneNumbers?.[0].number}</Text>
+              <Text style={styles.phone}>{item.phoneNumbers?.[0]?.number || 'Нет номера'}</Text>
             </View>
             <TouchableOpacity
               style={styles.inviteBtn}

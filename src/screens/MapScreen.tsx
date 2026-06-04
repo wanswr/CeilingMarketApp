@@ -32,6 +32,7 @@ const MapScreen = ({ navigation }: any) => {
   const [showLayers, setShowLayers] = useState(false);
   const [orders, setOrders] = useState<Order[]>(orderService.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [employerProfile, setEmployerProfile] = useState<any>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
@@ -197,9 +198,19 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
-  const onMarkerPress = (order: Order) => {
+  const onMarkerPress = async (order: Order) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelectedOrder(order);
+    setEmployerProfile(null);
+
+    try {
+      const doc = await db.collection("users").doc(order.employerId).get();
+      if (doc.exists) {
+        setEmployerProfile(doc.data());
+      }
+    } catch (e) {
+      console.log("Error loading employer profile:", e);
+    }
   };
 
   const handleMapPress = (e: any) => {
@@ -465,6 +476,18 @@ const MapScreen = ({ navigation }: any) => {
             <Text style={styles.previewTitle} numberOfLines={1}>{selectedOrder.address}</Text>
             <Text style={styles.previewPrice}>{selectedOrder.price} ₽</Text>
           </View>
+
+          <View style={styles.employerRow}>
+            <Ionicons name="person-circle" size={24} color={COLORS.gray} />
+            <Text style={styles.employerName}>{employerProfile?.name || 'Заказчик'}</Text>
+            <View style={styles.previewRating}>
+              <Ionicons name="star" size={14} color="#FFD700" />
+              <Text style={styles.ratingText}>
+                {employerProfile?.rating ? (Number(employerProfile.rating) * 2).toFixed(1) : '10.0'}
+              </Text>
+            </View>
+          </View>
+
           <Text style={styles.previewDetails} numberOfLines={2}>{selectedOrder.details}</Text>
 
           <View style={styles.previewActions}>
@@ -625,6 +648,10 @@ const styles = StyleSheet.create({
   previewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   previewTitle: { fontSize: 17, fontWeight: 'bold', color: '#1C1C1E', flex: 1, marginRight: 10 },
   previewPrice: { fontSize: 18, fontWeight: 'bold', color: COLORS.success },
+  employerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  employerName: { fontSize: 14, fontWeight: '600', color: COLORS.dark, marginLeft: 8 },
+  previewRating: { flexDirection: 'row', alignItems: 'center', marginLeft: 10, backgroundColor: COLORS.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  ratingText: { fontSize: 12, fontWeight: '700', color: COLORS.dark, marginLeft: 4 },
   previewDetails: { fontSize: 14, color: COLORS.gray, marginBottom: 12 },
   previewActions: {
     flexDirection: 'row',

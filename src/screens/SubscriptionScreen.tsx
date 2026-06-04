@@ -121,7 +121,7 @@ export default function SubscriptionScreen({ navigation }: any) {
         style={styles.supportBtn}
         onPress={() => Linking.openURL('https://t.me/ceilingsapp_support')}
       >
-        <Ionicons name="logo-telegram" size={20} color={COLORS.primary} />
+        <Ionicons name="send" size={20} color={COLORS.primary} />
         <Text style={styles.supportText}>Связаться с поддержкой в Telegram</Text>
       </TouchableOpacity>
     </ScrollView>

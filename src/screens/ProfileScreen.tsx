@@ -29,7 +29,7 @@ const ProfileScreen = ({ navigation }: any) => {
   const toggle = () => {
     const next = role === 'employer' ? 'worker' : 'employer';
     orderService.setRole(next);
-    Alert.alert("Роль изменена", `Вы вошли как ${next === 'employer' ? 'Работодатель' : 'Мастер'}`);
+    Alert.alert("Роль изменена", `Вы вошли как ${next === 'employer' ? 'Заказчик' : 'Мастер'}`);
   };
 
   const handleLogout = () => {
@@ -51,7 +51,7 @@ const ProfileScreen = ({ navigation }: any) => {
             )}
             {profile?.isVerified && (
               <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-seal" size={24} color={COLORS.primary} />
+                <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
               </View>
             )}
           </View>
@@ -63,7 +63,7 @@ const ProfileScreen = ({ navigation }: any) => {
 
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{profile?.rating || '5.0'}</Text>
+            <Text style={styles.statValue}>{profile?.rating ? (Number(profile.rating) * 2).toFixed(1) : '10.0'}</Text>
             <Text style={styles.statLabel}>Рейтинг</Text>
           </View>
           <View style={styles.statDivider} />
@@ -86,7 +86,7 @@ const ProfileScreen = ({ navigation }: any) => {
           )}
           {profile?.telegram && (
             <TouchableOpacity onPress={() => Linking.openURL(`https://t.me/${profile.telegram.replace('@', '')}`)}>
-              <Ionicons name="paper-plane" size={28} color="#0088cc" style={{ marginHorizontal: 15 }} />
+              <Ionicons name="send" size={28} color="#0088cc" style={{ marginHorizontal: 15 }} />
             </TouchableOpacity>
           )}
         </View>
