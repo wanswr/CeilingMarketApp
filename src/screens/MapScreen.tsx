@@ -23,6 +23,7 @@ import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/theme';
 import { orderService, Order } from '../services/OrderService';
 import { formatDate } from '../utils/date';
+import i18n from '../constants/i18n';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
@@ -256,14 +257,14 @@ const MapScreen = ({ navigation }: any) => {
         {showGas && (
           <Marker 
             coordinate={{latitude: 55.765244, longitude: 37.638423}} 
-            title="АГЗС" 
+            title={i18n.t('map.gas')}
             pinColor="green" 
           />
         )}
         {showProd && (
           <Marker 
             coordinate={{latitude: 55.741244, longitude: 37.598423}} 
-            title="Цех Производства" 
+            title={i18n.t('map.prod')}
             pinColor="blue" 
           />
         )}
@@ -376,7 +377,7 @@ const MapScreen = ({ navigation }: any) => {
           onPress={() => setViewMode(viewMode === 'map' ? 'list' : 'map')}
         >
           <Ionicons name={viewMode === 'map' ? 'list' : 'map'} size={24} color="#fff" />
-          <Text style={styles.viewToggleText}>{viewMode === 'map' ? 'СПИСОК' : 'КАРТА'}</Text>
+          <Text style={styles.viewToggleText}>{viewMode === 'map' ? i18n.t('map.listBtn') : i18n.t('map.mapBtn')}</Text>
         </TouchableOpacity>
       </View>
 

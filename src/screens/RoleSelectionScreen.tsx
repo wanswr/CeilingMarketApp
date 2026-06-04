@@ -4,6 +4,7 @@ import { db, auth } from '../services/firebase';
 import { COLORS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import i18n from '../constants/i18n';
 
 const RoleSelectionScreen = ({ navigation }: any) => {
   const selectRole = async (role: 'worker' | 'employer') => {
@@ -29,7 +30,7 @@ const RoleSelectionScreen = ({ navigation }: any) => {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Выберите роль</Text>
+          <Text style={styles.title}>{i18n.t('roles.selectionTitle')}</Text>
           <Text style={styles.subtitle}>Это поможет нам адаптировать приложение под ваши цели</Text>
         </View>
 
@@ -46,8 +47,8 @@ const RoleSelectionScreen = ({ navigation }: any) => {
               <Ionicons name="hammer-outline" size={32} color={COLORS.primary} />
             </View>
             <View style={styles.cardText}>
-              <Text style={styles.cardTitle}>Я — Мастер</Text>
-              <Text style={styles.cardSubtitle}>Хочу находить заказы по установке потолков</Text>
+              <Text style={styles.cardTitle}>{i18n.t('roles.worker')}</Text>
+              <Text style={styles.cardSubtitle}>{i18n.t('roles.workerDesc')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color={COLORS.primary} />
           </LinearGradient>
@@ -66,8 +67,8 @@ const RoleSelectionScreen = ({ navigation }: any) => {
               <Ionicons name="briefcase-outline" size={32} color="#AF52DE" />
             </View>
             <View style={styles.cardText}>
-              <Text style={[styles.cardTitle, { color: '#AF52DE' }]}>Я — Заказчик</Text>
-              <Text style={styles.cardSubtitle}>Ищу мастеров для выполнения работ</Text>
+              <Text style={[styles.cardTitle, { color: '#AF52DE' }]}>{i18n.t('roles.employer')}</Text>
+              <Text style={styles.cardSubtitle}>{i18n.t('roles.employerDesc')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#AF52DE" />
           </LinearGradient>

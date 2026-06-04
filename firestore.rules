@@ -4,9 +4,10 @@ service cloud.firestore {
     function isAuthenticated() { return request.auth != null; }
     function isOwner(userId) { return isAuthenticated() && request.auth.uid == userId; }
 
-    // Check if a user is subscribed
+    // Check if a user is subscribed or has an active trial
     function isSubscribed() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSubscribed == true;
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return userData.isSubscribed == true || (userData.subscriptionUntil != null && timestamp(userData.subscriptionUntil) > request.time);
     }
 
     // Check if the order is confirmed between requester and owner

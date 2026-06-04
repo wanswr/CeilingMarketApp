@@ -8,6 +8,7 @@ class OrderService {
   private listeners: { [key: string]: Function[] } = {};
   private currentRole: 'employer' | 'worker' = 'employer';
   private unsubscribe: (() => void) | null = null;
+  private userUnsubscribe: (() => void) | null = null;
 
   constructor() {
     this.init();
@@ -17,26 +18,34 @@ class OrderService {
     auth.onAuthStateChanged((user) => {
       if (user) {
         if (this.unsubscribe) this.unsubscribe();
+        if (this.userUnsubscribe) this.userUnsubscribe();
 
-        // Use a timeout or a check to delay listening if user is still in registration
-        // For now, we handle the error silently to avoid Red Box on the login/onboarding screen
+        // Listen to orders
         this.unsubscribe = db.collection("orders")
           .orderBy("timestamp", "desc")
           .onSnapshot((snapshot) => {
             this.orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Order));
             this.emit('ordersUpdated', this.orders);
           }, (err) => {
-            if (err.code === 'permission-denied') {
-              console.warn("Firestore: Waiting for permissions (profile registration in progress)");
-            } else {
-              console.error("Firestore Error:", err);
+            if (err.code !== 'permission-denied') console.error("Firestore Orders Error:", err);
+          });
+
+        // Listen to user profile for role and subscription
+        this.userUnsubscribe = db.collection("users").doc(user.uid)
+          .onSnapshot((doc) => {
+            if (doc.exists) {
+              const data = doc.data();
+              if (data?.role && data.role !== this.currentRole) {
+                this.currentRole = data.role;
+                this.emit('roleChanged', data.role);
+              }
             }
+          }, (err) => {
+            if (err.code !== 'permission-denied') console.error("Firestore User Error:", err);
           });
       } else {
-        if (this.unsubscribe) {
-          this.unsubscribe();
-          this.unsubscribe = null;
-        }
+        if (this.unsubscribe) { this.unsubscribe(); this.unsubscribe = null; }
+        if (this.userUnsubscribe) { this.userUnsubscribe(); this.userUnsubscribe = null; }
         this.orders = [];
         this.emit('ordersUpdated', []);
       }
@@ -75,9 +84,16 @@ class OrderService {
     }
   }
 
-  setRole(role: 'employer' | 'worker') {
+  async setRole(role: 'employer' | 'worker') {
     this.currentRole = role;
     this.emit('roleChanged', role);
+    if (auth.currentUser) {
+      try {
+        await db.collection("users").doc(auth.currentUser.uid).update({ role });
+      } catch (e) {
+        console.error("Failed to persist role change:", e);
+      }
+    }
   }
 
   async uploadImage(uri: string): Promise<string> {

@@ -33,9 +33,13 @@ export const ru = {
   orders: {
     new: 'Новый заказ',
     title: 'Заголовок',
+    titlePlaceholder: 'Напр: Монтаж потолка 20м2',
+    location: 'Местоположение',
     address: 'Адрес объекта',
     price: 'Оплата (₽)',
+    date: 'Дата',
     details: 'Описание',
+    detailsPlaceholder: 'Дополнительные детали...',
     publish: 'ОПУБЛИКОВАТЬ',
     apply: 'Откликнуться',
     detailsBtn: 'Детали',

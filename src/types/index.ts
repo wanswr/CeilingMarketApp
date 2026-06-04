@@ -1,5 +1,26 @@
 export type OrderStatus = 'new' | 'accepted' | 'in_progress' | 'finished' | 'paid' | 'cancelled' | 'pending' | 'in_work' | 'executing' | 'started';
 export interface LatLng { latitude: number; longitude: number; }
+export interface UserProfile {
+  uid: string;
+  name: string;
+  phone: string;
+  role: 'worker' | 'employer';
+  avatar?: string;
+  rating: number;
+  experience?: number; // years
+  ordersCount: number;
+  completedOrders: number;
+  instagram?: string;
+  telegram?: string;
+  isVerified: boolean;
+  subscriptionUntil?: string;
+  isTrialUsed: boolean;
+  pushToken?: string;
+  portfolio?: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Order {
   id: string;
   employerId: string;

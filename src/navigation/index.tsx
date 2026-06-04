@@ -14,6 +14,7 @@ import EditOrderScreen from '../screens/EditOrderScreen';
 import InviteFriendsScreen from '../screens/InviteFriendsScreen';
 import SubscriptionScreen from '../screens/SubscriptionScreen';
 import VerificationScreen from '../screens/VerificationScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
 
 const Stack = createStackNavigator();
 
@@ -105,6 +106,11 @@ export default function Navigation() {
             name="Verification"
             component={VerificationScreen}
             options={{headerShown: true, title: 'Верификация'}}
+          />
+          <Stack.Screen
+            name="EditProfile"
+            component={EditProfileScreen}
+            options={{headerShown: true, title: 'Редактировать профиль'}}
           />
         </>
       )}

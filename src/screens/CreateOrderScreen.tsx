@@ -24,6 +24,7 @@ import { AppInput } from '../components/Input';
 import { orderService } from '../services/OrderService';
 import { COLORS } from '../constants/theme';
 import { formatDate } from '../utils/date';
+import i18n from '../constants/i18n';
 
 export default function CreateOrderScreen({ navigation }: any) {
   const [form, setForm] = useState({
@@ -286,20 +287,20 @@ export default function CreateOrderScreen({ navigation }: any) {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView contentContainerStyle={{ padding: 20 }}>
-            <Text style={styles.title}>Новый заказ</Text>
+            <Text style={styles.title}>{i18n.t('orders.new')}</Text>
 
             <AppInput
-              label="Заголовок"
-              placeholder="Напр: Монтаж потолка 20м2"
+              label={i18n.t('orders.title')}
+              placeholder={i18n.t('orders.titlePlaceholder')}
               value={form.title}
               onChangeText={(t)=>setForm({...form, title:t})}
             />
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Местоположение</Text>
+              <Text style={styles.sectionTitle}>{i18n.t('orders.location')}</Text>
               <View style={{ position: 'relative' }}>
                 <AppInput
-                  label="Адрес объекта"
+                  label={i18n.t('orders.address')}
                   placeholder="Улица, дом..."
                   value={form.address}
                   onChangeText={handleAddressChange}
@@ -385,14 +386,14 @@ export default function CreateOrderScreen({ navigation }: any) {
             <View style={styles.row}>
               <View style={{ flex: 1, marginRight: 10 }}>
                 <AppInput
-                  label="Оплата (₽)"
+                  label={i18n.t('orders.price')}
                   keyboardType="numeric"
                   value={form.price}
                   onChangeText={(t)=>setForm({...form, price:t})}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Дата</Text>
+                <Text style={styles.label}>{i18n.t('orders.date')}</Text>
                 <TouchableOpacity
                   style={styles.dateButton}
                   onPress={() => {
@@ -449,8 +450,8 @@ export default function CreateOrderScreen({ navigation }: any) {
             )}
 
             <AppInput
-              label="Описание"
-              placeholder="Дополнительные детали..."
+              label={i18n.t('orders.details')}
+              placeholder={i18n.t('orders.detailsPlaceholder')}
               multiline
               style={{height: 100, textAlignVertical: 'top'}}
               value={form.details}
@@ -483,7 +484,7 @@ export default function CreateOrderScreen({ navigation }: any) {
               onPress={handlePublish}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishText}>ОПУБЛИКОВАТЬ</Text>}
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishText}>{i18n.t('orders.publish')}</Text>}
             </TouchableOpacity>
 
             <View style={{ height: 40 }} />
