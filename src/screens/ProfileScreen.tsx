@@ -42,11 +42,29 @@ const ProfileScreen = ({ navigation }: any) => {
         <Text>Сменить роль</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => navigation.navigate('Subscription')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ionicons name="card-outline" size={20} color={COLORS.success} style={{ marginRight: 10 }} />
+          <Text style={{ fontWeight: '700' }}>Активировать подписку</Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => navigation.navigate('Verification')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.secondary} style={{ marginRight: 10 }} />
+          <Text>Пройти верификацию</Text>
+        </View>
+      </TouchableOpacity>
+
       <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => navigation.navigate('InviteFriends')}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Ionicons name="people-outline" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
           <Text>Пригласить коллег</Text>
         </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => Linking.openURL('https://ceilingsapp.example.com/privacy')}>
+        <Text style={{ color: COLORS.gray, fontSize: 12 }}>Политика конфиденциальности</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={handleLogout}>

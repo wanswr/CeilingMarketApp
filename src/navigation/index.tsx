@@ -12,6 +12,8 @@ import RoleSelectionScreen from '../screens/RoleSelectionScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 import EditOrderScreen from '../screens/EditOrderScreen';
 import InviteFriendsScreen from '../screens/InviteFriendsScreen';
+import SubscriptionScreen from '../screens/SubscriptionScreen';
+import VerificationScreen from '../screens/VerificationScreen';
 
 const Stack = createStackNavigator();
 
@@ -93,6 +95,16 @@ export default function Navigation() {
             name="InviteFriends"
             component={InviteFriendsScreen}
             options={{headerShown: true, title: 'Пригласить друзей'}}
+          />
+          <Stack.Screen
+            name="Subscription"
+            component={SubscriptionScreen}
+            options={{headerShown: true, title: 'Подписка'}}
+          />
+          <Stack.Screen
+            name="Verification"
+            component={VerificationScreen}
+            options={{headerShown: true, title: 'Верификация'}}
           />
         </>
       )}

@@ -3,6 +3,8 @@ import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleS
 import { auth } from '../services/firebase';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import firebase from '../services/firebase';
 import { COLORS } from '../constants/theme';
@@ -12,6 +14,31 @@ export default function LoginScreen({ navigation }: any) {
   const [phone, setPhone] = useState('+7');
   const [loading, setLoading] = useState(false);
   const recaptchaVerifier = useRef<any>(null);
+
+  React.useEffect(() => {
+    checkBiometrics();
+  }, []);
+
+  const checkBiometrics = async () => {
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+    if (hasHardware && isEnrolled) {
+      const savedPhone = await SecureStore.getItemAsync('saved_phone');
+      if (savedPhone) {
+        setPhone(savedPhone);
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Вход по биометрии',
+          fallbackLabel: 'Использовать пароль',
+        });
+
+        if (result.success) {
+          // If we had a persistent token or password, we could log in automatically here.
+          // For phone auth, we still need to send a code unless we use a persistent token from Firebase.
+        }
+      }
+    }
+  };
 
   const handleSendCode = async () => {
     if (phone.length < 12) {
