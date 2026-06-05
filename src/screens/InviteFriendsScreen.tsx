@@ -76,7 +76,7 @@ export default function InviteFriendsScreen() {
       </View>
       <FlatList
         data={contacts}
-        keyExtractor={(item, index) => (item.id || index.toString())}
+        keyExtractor={(item, index) => ((item as any).id || index.toString())}
         renderItem={({ item }) => (
           <View style={styles.contactItem}>
             <View style={styles.avatar}>

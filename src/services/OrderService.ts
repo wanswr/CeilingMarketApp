@@ -77,6 +77,8 @@ class OrderService {
       const doc = await db.collection("users").doc(auth.currentUser.uid).get();
       if (!doc.exists) return false;
       const data = doc.data();
+      // Allow if explicitly subscribed OR has active subscription until date
+      if (data?.isSubscribed === true) return true;
       if (!data?.subscriptionUntil) return false;
       return new Date(data.subscriptionUntil) > new Date();
     } catch {
@@ -97,32 +99,23 @@ class OrderService {
   }
 
   async uploadImage(uri: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.onload = function () {
-        const blob = xhr.response;
+    return new Promise(async (resolve, reject) => {
+      try {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+
         const filename = `orders/${auth.currentUser?.uid || 'anon'}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
         const ref = storage.ref().child(filename);
 
         console.log('Uploading to:', filename);
-        ref.put(blob)
-          .then((snapshot) => snapshot.ref.getDownloadURL())
-          .then((url) => {
-            console.log('Upload successful, URL:', url);
-            resolve(url);
-          })
-          .catch((err) => {
-            console.error('Firebase storage upload failed:', err);
-            reject(err);
-          });
-      };
-      xhr.onerror = function (e) {
-        console.error('XHR Error:', e);
-        reject(new TypeError("Network request failed"));
-      };
-      xhr.responseType = "blob";
-      xhr.open("GET", uri, true);
-      xhr.send(null);
+        const snapshot = await ref.put(blob);
+        const url = await snapshot.ref.getDownloadURL();
+        console.log('Upload successful, URL:', url);
+        resolve(url);
+      } catch (err) {
+        console.error('Firebase storage upload failed:', err);
+        reject(err);
+      }
     });
   }
 
@@ -162,6 +155,12 @@ class OrderService {
       console.log('Attempting to create order with sanitized data:', JSON.stringify(sanitizedData, null, 2));
       const docRef = await db.collection("orders").add(sanitizedData);
       console.log('Order created successfully with ID:', docRef.id);
+
+      // Update employer stats
+      await db.collection("users").doc(auth.currentUser.uid).update({
+        ordersCount: firebase.firestore.FieldValue.increment(1)
+      });
+
       return docRef;
     } catch (error: any) {
       console.error("Error creating order in Firestore:", error);

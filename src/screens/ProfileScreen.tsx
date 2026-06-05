@@ -80,12 +80,12 @@ const ProfileScreen = ({ navigation }: any) => {
 
         <View style={styles.socialIcons}>
           {profile?.instagram && (
-            <TouchableOpacity onPress={() => Linking.openURL(`https://instagram.com/${profile.instagram.replace('@', '')}`)}>
+            <TouchableOpacity onPress={() => Linking.openURL(`https://instagram.com/${profile?.instagram?.replace('@', '')}`)}>
               <Ionicons name="logo-instagram" size={28} color="#E1306C" style={{ marginHorizontal: 15 }} />
             </TouchableOpacity>
           )}
           {profile?.telegram && (
-            <TouchableOpacity onPress={() => Linking.openURL(`https://t.me/${profile.telegram.replace('@', '')}`)}>
+            <TouchableOpacity onPress={() => Linking.openURL(`https://t.me/${profile?.telegram?.replace('@', '')}`)}>
               <Ionicons name="send" size={28} color="#0088cc" style={{ marginHorizontal: 15 }} />
             </TouchableOpacity>
           )}

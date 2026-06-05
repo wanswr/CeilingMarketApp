@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/theme';
+import { db } from '../services/firebase';
 import { orderService, Order } from '../services/OrderService';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
