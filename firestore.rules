@@ -10,32 +10,15 @@ service cloud.firestore {
       return userData.isSubscribed == true || (userData.subscriptionUntil != null && timestamp(userData.subscriptionUntil) > request.time);
     }
 
-    // Helper to check if requester is involved in a specific order
-    function isInvolvedInOrder(orderData) {
-      return (orderData.employerId == request.auth.uid || orderData.workerId == request.auth.uid) &&
-             orderData.status in ['accepted', 'started', 'finished', 'completed'];
-    }
-
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow write: if isOwner(userId);
 
       match /private/data {
-        // Only owner or confirmed partner can read private data (phone)
-        allow read: if isOwner(userId) ||
-          exists(/databases/$(database)/documents/orders) &&
-          get(/databases/$(database)/documents/orders).data.isInvolvedInOrder; // This is a conceptual rule, see below
-
-        // Real rule for partner verification:
-        // We allow reading if there exists an order where userId is either employer or worker
-        // AND the requester is the other party AND status is confirmed.
-        allow read: if isOwner(userId) ||
-          exists(/databases/$(database)/documents/orders/$(orderId)) &&
-          isInvolvedInOrder(get(/databases/$(database)/documents/orders/$(orderId)).data) &&
-          (get(/databases/$(database)/documents/orders/$(orderId)).data.employerId == userId ||
-           get(/databases/$(database)/documents/orders/$(orderId)).data.workerId == userId);
-
-        allow write: if isOwner(userId);
+        // Only owner can read/write their own private data by default.
+        // In a real production app, you would add logic to allow confirmed partners
+        // via a more complex exists() check or a separate 'permissions' collection.
+        allow read, write: if isOwner(userId);
       }
     }
 
