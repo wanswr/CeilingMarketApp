@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+import { doc, updateDoc } from 'firebase/firestore';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { db, auth } from '../services/firebase';
 import { COLORS } from '../constants/theme';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import i18n from '../constants/i18n';
 
 const RoleSelectionScreen = ({ navigation }: any) => {
@@ -14,10 +15,12 @@ const RoleSelectionScreen = ({ navigation }: any) => {
         const subscriptionUntil = new Date();
         subscriptionUntil.setDate(subscriptionUntil.getDate() + 7); // 7 days trial
 
-        await db.collection("users").doc(user.uid).update({
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, {
           role: role,
           subscriptionUntil: subscriptionUntil.toISOString(),
           isTrialUsed: true,
+          updatedAt: Date.now()
         });
         // Navigation state in navigation/index.tsx will automatically switch to MainApp
       }

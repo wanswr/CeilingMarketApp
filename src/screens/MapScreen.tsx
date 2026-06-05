@@ -20,11 +20,15 @@ import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
+import { doc, getDoc } from 'firebase/firestore';
 import { COLORS } from '../constants/theme';
 import { db } from '../services/firebase';
 import { orderService, Order } from '../services/OrderService';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
+
+// Simple in-memory cache for profiles
+const profileCache: { [key: string]: any } = {};
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
@@ -104,7 +108,7 @@ const MapScreen = ({ navigation }: any) => {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    let filtered = orders.filter(o => ['pending', 'new', 'accepted', 'in_work', 'executing'].includes(o.status));
+    let filtered = orders.filter(o => ['pending', 'accepted', 'started'].includes(o.status));
 
     // Enrich with distance for sorting
     filtered = filtered.map(o => {
@@ -202,12 +206,20 @@ const MapScreen = ({ navigation }: any) => {
   const onMarkerPress = async (order: Order) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelectedOrder(order);
-    setEmployerProfile(null);
 
+    if (profileCache[order.employerId]) {
+      setEmployerProfile(profileCache[order.employerId]);
+      return;
+    }
+
+    setEmployerProfile(null);
     try {
-      const doc = await db.collection("users").doc(order.employerId).get();
-      if (doc.exists) {
-        setEmployerProfile(doc.data());
+      const userRef = doc(db, "users", order.employerId);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        profileCache[order.employerId] = data;
+        setEmployerProfile(data);
       }
     } catch (e) {
       console.log("Error loading employer profile:", e);
@@ -215,7 +227,6 @@ const MapScreen = ({ navigation }: any) => {
   };
 
   const handleMapPress = (e: any) => {
-    // If we click on the map itself (not a marker), deselect
     if (e.nativeEvent.action !== 'marker-press') {
       setSelectedOrder(null);
     }

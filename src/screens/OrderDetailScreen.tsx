@@ -1,163 +1,189 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, SafeAreaView, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Alert, Linking, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, getDoc } from 'firebase/firestore';
+import { db, auth } from '../services/firebase';
 import { COLORS } from '../constants/theme';
-import { orderService, Order } from '../services/OrderService';
-import { auth } from '../services/firebase';
 import { formatDate } from '../utils/date';
+import { Order, OrderStatus } from '../types';
+import { orderService } from '../services/OrderService';
 
-const OrderDetailScreen = ({ route, navigation }: any) => {
+export default function OrderDetailScreen({ route, navigation }: any) {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | null>(null);
-  const role = orderService.getCurrentRole();
+  const [loading, setLoading] = useState(true);
+  const [employer, setEmployer] = useState<any>(null);
+  const [phone, setPhone] = useState<string | null>(null);
+  const currentRole = orderService.getCurrentRole();
 
   useEffect(() => {
-    const load = () => setOrder(orderService.getOrders().find(o => o.id === orderId) || null);
-    load();
-    orderService.on('ordersUpdated', load);
-    return () => { orderService.off('ordersUpdated', load); };
+    fetchOrder();
   }, [orderId]);
 
-  useEffect(() => {
-    if (order && order.employerId === auth.currentUser?.uid) {
-      navigation.setOptions({
-        headerRight: () => (
-          <TouchableOpacity
-            style={{ marginRight: 15 }}
-            onPress={() => navigation.navigate('EditOrder', { orderId: order.id })}
-          >
-            <Ionicons name="create-outline" size={24} color={COLORS.primary} />
-          </TouchableOpacity>
-        )
-      });
-    }
-  }, [order]);
+  const fetchOrder = async () => {
+    try {
+      const orderRef = doc(db, "orders", orderId);
+      const snap = await getDoc(orderRef);
+      if (snap.exists()) {
+        const data = snap.id ? { ...snap.data() as Order, id: snap.id } : snap.data() as Order;
+        setOrder(data);
 
-  if (!order) return null;
+        // Fetch employer
+        const empRef = doc(db, "users", data.employerId);
+        const empSnap = await getDoc(empRef);
+        if (empSnap.exists()) setEmployer(empSnap.data());
+
+        // Try fetch phone if involved in order
+        if (data.status !== 'pending' && (data.workerId === auth.currentUser?.uid || data.employerId === auth.currentUser?.uid)) {
+            const targetId = data.employerId === auth.currentUser?.uid ? data.workerId! : data.employerId;
+            const p = await orderService.getPrivatePhone(targetId);
+            setPhone(p);
+        }
+      }
+    } catch (e) {
+      Alert.alert("Ошибка", "Не удалось загрузить детали заказа");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateStatus = async (status: OrderStatus) => {
+    try {
+      await orderService.updateStatus(orderId, status);
+      setOrder({ ...order!, status });
+      Alert.alert("Успех", "Статус обновлен");
+    } catch (e) {
+      Alert.alert("Ошибка", "Не удалось обновить статус");
+    }
+  };
+
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  if (!order) return <View style={styles.center}><Text>Заказ не найден</Text></View>;
+
+  const getStatusText = (status: OrderStatus) => {
+    switch (status) {
+      case 'pending': return 'Ожидает мастеров';
+      case 'accepted': return 'Мастер выбран';
+      case 'started': return 'В работе';
+      case 'finished': return 'Завершен';
+      case 'completed': return 'Подтвержден';
+      case 'cancelled': return 'Отменен';
+      default: return status;
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {order.images && order.images.length > 0 ? (
-          <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-            {order.images.map((img: string, idx: number) => (
-              <Image key={idx} source={{ uri: img }} style={styles.heroImage} />
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{order.title || order.address}</Text>
+        <View style={styles.statusRow}>
+            <View style={[styles.badge, { backgroundColor: COLORS.light }]}>
+                <Text style={styles.status}>{getStatusText(order.status)}</Text>
+            </View>
+            <Text style={styles.price}>{order.price} ₽</Text>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.infoItem}>
+          <Ionicons name="location-outline" size={20} color={COLORS.primary} />
+          <Text style={styles.infoText}>{order.address}</Text>
+        </View>
+        <View style={styles.infoItem}>
+          <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+          <Text style={styles.infoText}>{formatDate(order.date)}</Text>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Описание</Text>
+        <Text style={styles.details}>{order.details || 'Нет описания'}</Text>
+      </View>
+
+      {order.images && order.images.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Фотографии</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+            {order.images.map((img, i) => (
+              <Image key={i} source={{ uri: img }} style={styles.image} />
             ))}
           </ScrollView>
-        ) : (
-          <View style={[styles.heroImage, { backgroundColor: COLORS.light, justifyContent: 'center', alignItems: 'center' }]}>
-            <Ionicons name="image-outline" size={64} color={COLORS.border} />
+        </View>
+      )}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Заказчик</Text>
+        <View style={styles.employerRow}>
+          <View style={styles.avatar}>
+            {employer?.avatar ? <Image source={{uri: employer.avatar}} style={styles.avatarImg} /> : <Ionicons name="person" size={24} color="#ccc" />}
           </View>
-        )}
-
-        <View style={styles.content}>
-          <View style={styles.headerRow}>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>
-                {order.status === 'pending' ? 'ОЖИДАНИЕ' : 'В РАБОТЕ'}
-              </Text>
-            </View>
-            <Text style={styles.priceText}>{String(order.price)} ₽</Text>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.empName}>{employer?.name || 'Заказчик'}</Text>
+            <Text style={styles.empRating}>Рейтинг: {employer?.rating ? (Number(employer.rating)*2).toFixed(1) : '10.0'}</Text>
           </View>
-
-          <Text style={styles.title}>{order.title || 'Заказ без названия'}</Text>
-
-          <View style={styles.infoSection}>
-            <View style={styles.infoItem}>
-              <Ionicons name="location" size={20} color={COLORS.primary} />
-              <Text style={styles.infoText}>{order.address}</Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Ionicons name="calendar" size={20} color={COLORS.primary} />
-              <Text style={styles.infoText}>Дата выполнения: {formatDate(order.date || order.timestamp)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          <Text style={styles.sectionTitle}>Описание</Text>
-          <Text style={styles.details}>{order.details || 'Описание не указано'}</Text>
-
-          {role === 'employer' && order.status === 'pending' && (
-            <View style={styles.candidatesSection}>
-              <Text style={styles.sectionTitle}>Отклики ({order.candidates?.length || 0})</Text>
-              {order.candidates && order.candidates.length > 0 ? (
-                order.candidates.map((c, i) => (
-                  <TouchableOpacity key={i} style={styles.candidateCard} onPress={() => orderService.confirmWorker(order.id, c)}>
-                    <View style={styles.candidateHeader}>
-                      <Ionicons name="person-circle" size={40} color={COLORS.gray} />
-                      <View style={{ marginLeft: 12, flex: 1 }}>
-                        <Text style={styles.candidateName}>{c.name || `Исполнитель #${i + 1}`}</Text>
-                        <Text style={styles.candidateMeta}>⭐ {(Number(c.rating || 5) * 2).toFixed(1)} • {c.completedOrders || 0} выполненных заказов</Text>
-                      </View>
-                      <View style={styles.selectBtn}>
-                        <Text style={styles.selectBtnText}>Выбрать</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>Пока никто не откликнулся</Text>
-                </View>
-              )}
-            </View>
-          )}
-
-          {role === 'worker' && order.status === 'pending' && (
-            <TouchableOpacity
-              style={styles.mainBtn}
-              onPress={async () => {
-                const hasSub = await orderService.checkSubscription();
-                if (hasSub) {
-                  orderService.applyForOrder(order.id, 'me');
-                  Alert.alert("Успех", "Ваш отклик успешно отправлен заказчику!");
-                } else {
-                  Alert.alert("Требуется подписка", "Для отклика на заказы необходимо активировать доступ.");
-                }
-              }}
-            >
-              <Text style={styles.mainBtnText}>ОТКЛИКНУТЬСЯ НА ЗАКАЗ</Text>
-            </TouchableOpacity>
-          )}
-
-          {order.workerId === 'me' && order.status === 'in_work' && (
-            <TouchableOpacity style={styles.mainBtn} onPress={() => orderService.updateStatus(order.id, 'executing')}>
-              <Text style={styles.mainBtnText}>Я НА ОБЪЕКТЕ</Text>
+          {phone && (
+            <TouchableOpacity onPress={() => Linking.openURL(`tel:${phone}`)}>
+              <Ionicons name="call" size={24} color={COLORS.success} />
             </TouchableOpacity>
           )}
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+
+      <View style={styles.actions}>
+        {currentRole === 'worker' && order.status === 'pending' && (
+          <TouchableOpacity style={styles.mainBtn} onPress={() => orderService.applyForOrder(order.id, 'me')}>
+            <Text style={styles.mainBtnText}>ОТКЛИКНУТЬСЯ</Text>
+          </TouchableOpacity>
+        )}
+
+        {currentRole === 'worker' && order.workerId === auth.currentUser?.uid && (
+            <>
+                {order.status === 'accepted' && (
+                    <TouchableOpacity style={[styles.mainBtn, {backgroundColor: COLORS.secondary}]} onPress={() => updateStatus('started')}>
+                        <Text style={styles.mainBtnText}>ПРИСТУПИТЬ К РАБОТЕ</Text>
+                    </TouchableOpacity>
+                )}
+                {order.status === 'started' && (
+                    <TouchableOpacity style={[styles.mainBtn, {backgroundColor: COLORS.success}]} onPress={() => updateStatus('finished')}>
+                        <Text style={styles.mainBtnText}>ВЫПОЛНИЛ</Text>
+                    </TouchableOpacity>
+                )}
+            </>
+        )}
+
+        {currentRole === 'employer' && order.employerId === auth.currentUser?.uid && order.status === 'finished' && (
+             <TouchableOpacity style={[styles.mainBtn, {backgroundColor: COLORS.primary}]} onPress={() => updateStatus('completed')}>
+                <Text style={styles.mainBtnText}>ПОДТВЕРДИТЬ ВЫПОЛНЕНИЕ</Text>
+            </TouchableOpacity>
+        )}
+      </View>
+      <View style={{height: 50}} />
+    </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
-  imageScroll: { height: 250 },
-  heroImage: { width: Dimensions.get('window').width, height: 250, resizeMode: 'cover' },
-  content: { padding: 20, marginTop: -20, backgroundColor: COLORS.white, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  statusBadge: { backgroundColor: COLORS.primary + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  statusText: { color: COLORS.primary, fontWeight: '900', fontSize: 10, letterSpacing: 1 },
-  priceText: { fontSize: 28, fontWeight: '900', color: COLORS.success },
-  title: { fontSize: 24, fontWeight: '800', color: COLORS.dark, marginBottom: 20 },
-  infoSection: { marginBottom: 25 },
-  infoItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  infoText: { marginLeft: 10, fontSize: 15, color: COLORS.dark, fontWeight: '500' },
-  divider: { height: 1, backgroundColor: COLORS.light, marginBottom: 25 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 15 },
-  details: { fontSize: 16, color: COLORS.gray, lineHeight: 24, marginBottom: 30 },
-  mainBtn: { backgroundColor: COLORS.primary, paddingVertical: 20, borderRadius: 20, alignItems: 'center', shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 8 },
-  mainBtnText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
-  candidatesSection: { marginTop: 10 },
-  candidateCard: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 20, marginBottom: 12, borderWidth: 1, borderColor: COLORS.light },
-  candidateHeader: { flexDirection: 'row', alignItems: 'center' },
-  candidateName: { fontSize: 16, fontWeight: '700', color: COLORS.dark },
-  candidateMeta: { fontSize: 12, color: COLORS.gray, marginTop: 2 },
-  selectBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  selectBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  emptyState: { alignItems: 'center', padding: 20 },
-  emptyText: { color: COLORS.gray, fontSize: 14 }
+  container: { flex: 1, backgroundColor: '#fff' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { padding: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  title: { fontSize: 24, fontWeight: '800', color: COLORS.dark },
+  statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  status: { fontSize: 12, fontWeight: 'bold', color: COLORS.primary },
+  price: { fontSize: 20, fontWeight: 'bold', color: COLORS.success },
+  section: { padding: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.dark, marginBottom: 15 },
+  infoItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  infoText: { marginLeft: 10, fontSize: 15, color: COLORS.dark },
+  details: { fontSize: 15, color: COLORS.gray, lineHeight: 22 },
+  imageScroll: { flexDirection: 'row' },
+  image: { width: 200, height: 150, borderRadius: 15, marginRight: 15 },
+  employerRow: { flexDirection: 'row', alignItems: 'center' },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.bgLight, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  avatarImg: { width: '100%', height: '100%' },
+  empName: { fontSize: 16, fontWeight: 'bold' },
+  empRating: { fontSize: 12, color: COLORS.gray, marginTop: 2 },
+  actions: { padding: 20 },
+  mainBtn: { backgroundColor: COLORS.primary, padding: 18, borderRadius: 15, alignItems: 'center' },
+  mainBtnText: { color: '#fff', fontWeight: '800', letterSpacing: 1 }
 });
-export default OrderDetailScreen;

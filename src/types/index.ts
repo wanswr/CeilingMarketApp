@@ -1,4 +1,4 @@
-export type OrderStatus = 'new' | 'accepted' | 'in_progress' | 'finished' | 'paid' | 'cancelled' | 'pending' | 'in_work' | 'executing' | 'started';
+export type OrderStatus = 'pending' | 'accepted' | 'started' | 'finished' | 'completed' | 'cancelled';
 export interface LatLng { latitude: number; longitude: number; }
 export interface UserProfile {
   uid: string;

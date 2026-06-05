@@ -1,4 +1,27 @@
-import firebase from 'firebase/compat/app';
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  orderBy,
+  where,
+  serverTimestamp,
+  increment,
+  arrayUnion,
+  Timestamp,
+  setDoc
+} from 'firebase/firestore';
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL
+} from 'firebase/storage';
+import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, storage } from './firebase';
 import { Order, OrderStatus } from '../types';
 import { notificationService } from './NotificationService';
@@ -15,34 +38,34 @@ class OrderService {
   }
 
   private init() {
-    auth.onAuthStateChanged((user) => {
+    onAuthStateChanged(auth, (user) => {
       if (user) {
         if (this.unsubscribe) this.unsubscribe();
         if (this.userUnsubscribe) this.userUnsubscribe();
 
-        // Listen to orders
-        this.unsubscribe = db.collection("orders")
-          .orderBy("timestamp", "desc")
-          .onSnapshot((snapshot) => {
-            this.orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Order));
-            this.emit('ordersUpdated', this.orders);
-          }, (err) => {
-            if (err.code !== 'permission-denied') console.error("Firestore Orders Error:", err);
-          });
+        // Scalability: Consider adding where("status", "in", ["pending", "accepted", "started"])
+        const ordersRef = collection(db, "orders");
+        const ordersQuery = query(ordersRef, orderBy("timestamp", "desc"));
+        this.unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
+          this.orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Order));
+          this.emit('ordersUpdated', this.orders);
+        }, (err) => {
+          if (err.code !== 'permission-denied') console.error("Firestore Orders Error:", err);
+        });
 
         // Listen to user profile for role and subscription
-        this.userUnsubscribe = db.collection("users").doc(user.uid)
-          .onSnapshot((doc) => {
-            if (doc.exists) {
-              const data = doc.data();
-              if (data?.role && data.role !== this.currentRole) {
-                this.currentRole = data.role;
-                this.emit('roleChanged', data.role);
-              }
+        const userRef = doc(db, "users", user.uid);
+        this.userUnsubscribe = onSnapshot(userRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data?.role && data.role !== this.currentRole) {
+              this.currentRole = data.role;
+              this.emit('roleChanged', data.role);
             }
-          }, (err) => {
-            if (err.code !== 'permission-denied') console.error("Firestore User Error:", err);
-          });
+          }
+        }, (err) => {
+          if (err.code !== 'permission-denied') console.error("Firestore User Error:", err);
+        });
       } else {
         if (this.unsubscribe) { this.unsubscribe(); this.unsubscribe = null; }
         if (this.userUnsubscribe) { this.userUnsubscribe(); this.userUnsubscribe = null; }
@@ -74,13 +97,19 @@ class OrderService {
   async checkSubscription(): Promise<boolean> {
     if (!auth.currentUser) return false;
     try {
-      const doc = await db.collection("users").doc(auth.currentUser.uid).get();
-      if (!doc.exists) return false;
-      const data = doc.data();
-      // Allow if explicitly subscribed OR has active subscription until date
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      const snapshot = await getDoc(userRef);
+      if (!snapshot.exists()) return false;
+      const data = snapshot.data();
+
       if (data?.isSubscribed === true) return true;
       if (!data?.subscriptionUntil) return false;
-      return new Date(data.subscriptionUntil) > new Date();
+
+      const subDate = data.subscriptionUntil instanceof Timestamp
+        ? data.subscriptionUntil.toDate()
+        : new Date(data.subscriptionUntil);
+
+      return subDate > new Date();
     } catch {
       return false;
     }
@@ -91,7 +120,8 @@ class OrderService {
     this.emit('roleChanged', role);
     if (auth.currentUser) {
       try {
-        await db.collection("users").doc(auth.currentUser.uid).update({ role });
+        const userRef = doc(db, "users", auth.currentUser.uid);
+        await updateDoc(userRef, { role });
       } catch (e) {
         console.error("Failed to persist role change:", e);
       }
@@ -99,30 +129,28 @@ class OrderService {
   }
 
   async uploadImage(uri: string): Promise<string> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const response = await fetch(uri);
-        const blob = await response.blob();
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
 
-        const filename = `orders/${auth.currentUser?.uid || 'anon'}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-        const ref = storage.ref().child(filename);
+      const filename = `orders/${auth.currentUser?.uid || 'anon'}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+      const storageRef = ref(storage, filename);
 
-        console.log('Uploading to:', filename);
-        const snapshot = await ref.put(blob);
-        const url = await snapshot.ref.getDownloadURL();
-        console.log('Upload successful, URL:', url);
-        resolve(url);
-      } catch (err) {
-        console.error('Firebase storage upload failed:', err);
-        reject(err);
-      }
-    });
+      console.log('Uploading to:', filename);
+      await uploadBytes(storageRef, blob);
+      const url = await getDownloadURL(storageRef);
+      console.log('Upload successful, URL:', url);
+      return url;
+    } catch (err) {
+      console.error('Firebase storage upload failed:', err);
+      throw err;
+    }
   }
 
   async createOrder(data: any) {
     if (!auth.currentUser) throw new Error("Не авторизован");
 
-    const orderData: Partial<Order> = {
+    const orderData: any = {
       title: data.title || '',
       address: data.address || '',
       price: data.price ? Number(data.price) : 0,
@@ -130,47 +158,36 @@ class OrderService {
       date: data.date || new Date().toISOString(),
       images: data.images as string[] || [],
       employerId: auth.currentUser.uid,
-      status: 'pending',
-      // Fields to satisfy the Order interface if needed by rules
+      status: 'pending' as OrderStatus,
       squareMeters: 0,
       perimeter: 0,
       fixturesCount: 0,
       chandeliersCount: 0,
       curtainRodsCount: 0,
       time: '',
-      // Use provided location or default to Moscow coordinates for testing
       location: data.location || data.coordinates || { latitude: 55.751244, longitude: 37.618423 },
       coordinates: data.coordinates || data.location || { latitude: 55.751244, longitude: 37.618423 },
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      timestamp: serverTimestamp(),
     };
 
     try {
-      // Deep sanitize data: remove undefined values and ensure types
-      const sanitizedData = JSON.parse(JSON.stringify({
-        ...orderData,
-        timestamp: Date.now(),
-      }));
-
-      console.log('Attempting to create order with sanitized data:', JSON.stringify(sanitizedData, null, 2));
-      const docRef = await db.collection("orders").add(sanitizedData);
+      const docRef = await addDoc(collection(db, "orders"), orderData);
       console.log('Order created successfully with ID:', docRef.id);
 
-      // Update employer stats - wrap in try-catch to avoid crashing if user doc isn't perfectly initialized
       try {
-        await db.collection("users").doc(auth.currentUser.uid).update({
-          ordersCount: firebase.firestore.FieldValue.increment(1)
+        const userRef = doc(db, "users", auth.currentUser.uid);
+        await updateDoc(userRef, {
+          ordersCount: increment(1)
         });
       } catch (e) {
-        console.warn("Failed to increment ordersCount (user document might not exist):", e);
+        console.warn("Failed to increment ordersCount:", e);
       }
 
       return docRef;
     } catch (error: any) {
       console.error("Error creating order in Firestore:", error);
-      if (error.code === 'permission-denied') {
-        console.error("Permission denied. Check if user is logged in and Firestore rules allow writing to 'orders'.");
-      }
       throw error;
     }
   }
@@ -178,54 +195,53 @@ class OrderService {
   async applyForOrder(orderId: string, workerId: string) {
     if (!auth.currentUser) throw new Error("Не авторизован");
 
-    // Add current user to candidates array
-    const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
-    const userData = userDoc.data();
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.data();
 
     const candidate = {
       id: auth.currentUser.uid,
       name: userData?.name || 'Мастер',
-      phone: userData?.phone || '',
       timestamp: Date.now()
     };
 
-    return db.collection("orders").doc(orderId).update({
-      candidates: firebase.firestore.FieldValue.arrayUnion(candidate)
+    const orderRef = doc(db, "orders", orderId);
+    return updateDoc(orderRef, {
+      candidates: arrayUnion(candidate)
     });
   }
 
   async confirmWorker(orderId: string, worker: any) {
-    await db.collection("orders").doc(orderId).update({
+    const orderRef = doc(db, "orders", orderId);
+    await updateDoc(orderRef, {
       workerId: worker.id,
-      status: 'accepted'
+      status: 'accepted' as OrderStatus
     });
-    // Notify worker
     await notificationService.notifyStatusChange(orderId, worker.id, 'accepted');
   }
 
   async updateOrder(orderId: string, data: any) {
-    const sanitizedData = JSON.parse(JSON.stringify({
+    const orderRef = doc(db, "orders", orderId);
+    return updateDoc(orderRef, {
       ...data,
       updatedAt: Date.now(),
-    }));
-    return db.collection("orders").doc(orderId).update(sanitizedData);
+    });
   }
 
   async updateStatus(orderId: string, status: OrderStatus) {
-    await db.collection("orders").doc(orderId).update({
+    const orderRef = doc(db, "orders", orderId);
+    await updateDoc(orderRef, {
       status,
       updatedAt: Date.now()
     });
 
     try {
-        const orderDoc = await db.collection("orders").doc(orderId).get();
-        const orderData = orderDoc.data() as Order;
+        const orderSnap = await getDoc(orderRef);
+        const orderData = orderSnap.data() as Order;
 
-        // Notify employer if worker changes status
         if (this.currentRole === 'worker' && orderData.employerId) {
             await notificationService.notifyStatusChange(orderId, orderData.employerId, status);
         } else if (this.currentRole === 'employer' && orderData.workerId) {
-            // Notify worker if employer changes status (e.g. cancelled)
             await notificationService.notifyStatusChange(orderId, orderData.workerId, status);
         }
     } catch (e) {
@@ -234,14 +250,32 @@ class OrderService {
   }
 
   async deleteOrder(orderId: string) {
-    return db.collection("orders").doc(orderId).delete();
+    const orderRef = doc(db, "orders", orderId);
+    return deleteDoc(orderRef);
   }
 
   async togglePin(orderId: string, currentPinStatus: boolean) {
-    return db.collection("orders").doc(orderId).update({
+    const orderRef = doc(db, "orders", orderId);
+    return updateDoc(orderRef, {
       isPinned: !currentPinStatus,
       updatedAt: Date.now()
     });
+  }
+
+  async savePrivateData(userId: string, data: any) {
+    const privateRef = doc(db, "users", userId, "private", "data");
+    return setDoc(privateRef, data, { merge: true });
+  }
+
+  async getPrivatePhone(userId: string): Promise<string> {
+    try {
+      const privateRef = doc(db, "users", userId, "private", "data");
+      const snap = await getDoc(privateRef);
+      return snap.exists() ? snap.data().phoneNumber : '';
+    } catch (e) {
+      console.warn("Permission denied for private phone:", e);
+      return '';
+    }
   }
 }
 

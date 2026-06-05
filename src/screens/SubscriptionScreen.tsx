@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, ActivityIndicator, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { doc, getDoc, collection, addDoc } from 'firebase/firestore';
 import { COLORS } from '../constants/theme';
 import { db, auth } from '../services/firebase';
 
@@ -12,8 +13,9 @@ export default function SubscriptionScreen({ navigation }: any) {
 
   React.useEffect(() => {
     // Remote flag to hide payment instructions during Apple Review
-    db.collection("config").doc("app_settings").get().then(doc => {
-      if (doc.exists && doc.data()?.hidePaymentForReview) {
+    const configRef = doc(db, "config", "app_settings");
+    getDoc(configRef).then(snap => {
+      if (snap.exists() && snap.data()?.hidePaymentForReview) {
         setIsAppleTesting(true);
       }
     });
@@ -49,13 +51,12 @@ export default function SubscriptionScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      // Logic: Send to Telegram or save to Firestore for Admin Bot to pick up
-      await db.collection("payment_requests").add({
+      await addDoc(collection(db, "payment_requests"), {
         userId: auth.currentUser?.uid,
         userPhone: auth.currentUser?.phoneNumber,
         timestamp: Date.now(),
         status: 'pending',
-        receiptUri: image, // In real app, upload this to Storage first
+        receiptUri: image,
       });
 
       Alert.alert("Успешно", "Ваш чек отправлен на модерацию. Подписка будет активирована в ближайшее время.");

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Linking, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { COLORS } from '../constants/theme';
 import { orderService } from '../services/OrderService';
 import { auth, db } from '../services/firebase';
@@ -15,8 +16,11 @@ const ProfileScreen = ({ navigation }: any) => {
     orderService.on('roleChanged', sync);
 
     if (auth.currentUser) {
-      const unsub = db.collection("users").doc(auth.currentUser.uid).onSnapshot(doc => {
-        if (doc.exists) setProfile(doc.data() as UserProfile);
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      const unsub = onSnapshot(userRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setProfile(snapshot.data() as UserProfile);
+        }
       });
       return () => {
         orderService.off('roleChanged', sync);

@@ -1,5 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import Constants from 'expo-constants';
 import { db, auth } from './firebase';
 
 Notifications.setNotificationHandler({
@@ -32,8 +34,11 @@ class NotificationService {
       return;
     }
 
+    // Use dynamic projectId from expoConfig if available, fallback to hardcoded
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId || "8078330b-0649-43c2-a9b0-96695eb0746f";
+
     const pushTokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: "8078330b-0649-43c2-a9b0-96695eb0746f"
+        projectId: projectId
     });
     token = pushTokenData.data as string;
 
@@ -49,7 +54,8 @@ class NotificationService {
     }
 
     // Save token to user profile
-    await db.collection("users").doc(auth.currentUser.uid).set({
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    await setDoc(userRef, {
       pushToken: token,
     }, { merge: true });
 
@@ -78,8 +84,9 @@ class NotificationService {
 
   async notifyStatusChange(orderId: string, recipientId: string, status: string) {
     try {
-        const userDoc = await db.collection("users").doc(recipientId).get();
-        const userData = userDoc.data();
+        const userRef = doc(db, "users", recipientId);
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.data();
 
         if (userData?.pushToken) {
             let title = "Обновление заказа";
@@ -87,8 +94,10 @@ class NotificationService {
 
             if (status === 'accepted') {
                 body = "Ваш заказ принят исполнителем!";
-            } else if (status === 'in_work') {
+            } else if (status === 'started') {
                 body = "Исполнитель приступил к работе!";
+            } else if (status === 'finished') {
+                body = "Исполнитель выполнил работу!";
             } else if (status === 'completed') {
                 body = "Заказ успешно завершен!";
             }
@@ -98,12 +107,6 @@ class NotificationService {
     } catch (error) {
         console.error("Error sending status notification:", error);
     }
-  }
-
-  async notifyNewOrder(employerName: string, budget: number) {
-      // In a real app, you would probably trigger this from a Cloud Function
-      // but for this demo/task we can implement a logic to find matching workers
-      // and send them notifications.
   }
 }
 

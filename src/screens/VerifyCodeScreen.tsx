@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Alert, SafeAreaView, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
+import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
+import { auth } from '../services/firebase';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
 import { COLORS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function VerifyCodeScreen({ route, navigation }: any) {
-  const { phoneNumber, confirmResult } = route.params;
+  const { phoneNumber, verificationId } = route.params;
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(60);
@@ -22,7 +24,8 @@ export default function VerifyCodeScreen({ route, navigation }: any) {
     if (code.length !== 6) return;
     setLoading(true);
     try {
-      await confirmResult.confirm(code);
+      const credential = PhoneAuthProvider.credential(verificationId, code);
+      await signInWithCredential(auth, credential);
       // Navigation will be handled by auth state listener in Navigation/index.tsx
     }
     catch (err) {

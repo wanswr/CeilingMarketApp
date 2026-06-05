@@ -1,14 +1,15 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
+import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
+import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../services/firebase';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
-import * as LocalAuthentication from 'expo-local-authentication';
-import * as SecureStore from 'expo-secure-store';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-import firebase from '../services/firebase';
+import app from '../services/firebase';
 import { COLORS } from '../constants/theme';
-import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }: any) {
   const [phone, setPhone] = useState('+7');
@@ -33,8 +34,7 @@ export default function LoginScreen({ navigation }: any) {
         });
 
         if (result.success) {
-          // If we had a persistent token or password, we could log in automatically here.
-          // For phone auth, we still need to send a code unless we use a persistent token from Firebase.
+          // Logic for automatic login with biometrics would go here
         }
       }
     }
@@ -47,8 +47,12 @@ export default function LoginScreen({ navigation }: any) {
     }
     setLoading(true);
     try {
-      const result = await auth.signInWithPhoneNumber(phone, recaptchaVerifier.current);
-      navigation.navigate('VerifyCode', { phoneNumber: phone, confirmResult: result });
+      const phoneProvider = new PhoneAuthProvider(auth);
+      const verificationId = await phoneProvider.verifyPhoneNumber(
+        phone,
+        recaptchaVerifier.current
+      );
+      navigation.navigate('VerifyCode', { phoneNumber: phone, verificationId });
     } catch (err: any) {
       console.error(err);
       Alert.alert("Ошибка", "Не удалось отправить код. " + err.message);
@@ -65,7 +69,7 @@ export default function LoginScreen({ navigation }: any) {
         >
           <FirebaseRecaptchaVerifierModal
             ref={recaptchaVerifier}
-            firebaseConfig={firebase.app().options}
+            firebaseConfig={app.options}
             attemptInvisibleVerification={true}
           />
 

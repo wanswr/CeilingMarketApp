@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { notificationService } from '../services/NotificationService';
 
@@ -35,9 +36,10 @@ export default function Navigation() {
 
       if (u) {
         notificationService.registerForPushNotificationsAsync();
-        unsubscribeUserDoc = db.collection("users").doc(u.uid).onSnapshot((doc) => {
-          if (doc.exists) {
-            const data = doc.data();
+        const userRef = doc(db, "users", u.uid);
+        unsubscribeUserDoc = onSnapshot(userRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
             setNeedsProfile(false);
             setNeedsRole(!data?.role);
           } else {
@@ -46,7 +48,7 @@ export default function Navigation() {
           }
           setUser(u);
           setLoading(false);
-        }, (err) => {
+        }, (err: any) => {
           console.error("User Doc Error:", err);
           setUser(u);
           setLoading(false);

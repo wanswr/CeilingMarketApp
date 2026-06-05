@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { doc, setDoc } from 'firebase/firestore';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
 import { db, auth } from '../services/firebase';
+import { orderService } from '../services/OrderService';
 import { COLORS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -20,12 +22,22 @@ const RegisterDetailsScreen = ({ navigation }: any) => {
     try {
       const user = auth.currentUser;
       if (user) {
-        await db.collection("users").doc(user.uid).set({
-          fio,
+        const userRef = doc(db, "users", user.uid);
+
+        // Public profile (no phone)
+        await setDoc(userRef, {
+          name: fio,
           birthDate: date,
-          phoneNumber: user.phoneNumber,
-          createdAt: new Date().toISOString()
+          createdAt: Date.now(),
+          updatedAt: Date.now()
         }, { merge: true });
+
+        // Private data (phone)
+        await orderService.savePrivateData(user.uid, {
+            phoneNumber: user.phoneNumber,
+            updatedAt: Date.now()
+        });
+
         navigation.navigate('RoleSelection');
       }
     } catch (err: any) {

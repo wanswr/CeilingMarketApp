@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { collection, addDoc } from 'firebase/firestore';
 import { COLORS } from '../constants/theme';
 import { db, auth } from '../services/firebase';
 
@@ -33,7 +34,7 @@ export default function VerificationScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      await db.collection("verification_requests").add({
+      await addDoc(collection(db, "verification_requests"), {
         userId: auth.currentUser?.uid,
         timestamp: Date.now(),
         status: 'pending',

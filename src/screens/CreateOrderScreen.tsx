@@ -20,11 +20,19 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { z } from 'zod';
 import { AppInput } from '../components/Input';
 import { orderService } from '../services/OrderService';
 import { COLORS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
+
+const orderSchema = z.object({
+  title: z.string().min(5, "Заголовок слишком короткий"),
+  address: z.string().min(5, "Укажите полный адрес"),
+  price: z.string().refine(v => !isNaN(Number(v)) && Number(v) > 0, "Укажите корректную сумму"),
+  details: z.string().min(10, "Добавьте больше деталей"),
+});
 
 export default function CreateOrderScreen({ navigation }: any) {
   const [form, setForm] = useState({
@@ -42,6 +50,7 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [normalizedAddress, setNormalizedAddress] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [errors, setErrors] = useState<any>({});
 
   const pickImage = async () => {
     const { status: libStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -72,7 +81,6 @@ export default function CreateOrderScreen({ navigation }: any) {
     setForm({ ...form, address: text });
     if (text.length > 2) {
       try {
-        // Broaden search to Moscow and suburbs
         const queries = [
           text,
           `Москва, ${text}`,
@@ -108,8 +116,6 @@ export default function CreateOrderScreen({ navigation }: any) {
     setForm({ ...form, address: addr });
     setSuggestions([]);
     handleGeocode(addr);
-    // Explicitly focus input or handle cursor if needed,
-    // but in RN setting state usually puts cursor at the end.
   };
 
   const handleGeocode = async (overrideAddr?: string) => {
@@ -120,9 +126,9 @@ export default function CreateOrderScreen({ navigation }: any) {
     try {
       const input = addrToUse.trim();
       const queries = [
-        input, // Try exactly what user wrote
-        `Москва, ${input}`, // Try Moscow prefix
-        `Московская область, ${input}`, // Try Region prefix
+        input,
+        `Москва, ${input}`,
+        `Московская область, ${input}`,
       ];
 
       let bestResult = null;
@@ -130,14 +136,11 @@ export default function CreateOrderScreen({ navigation }: any) {
       for (const query of queries) {
         const results = await Location.geocodeAsync(query);
         if (results.length > 0) {
-          // Check if the result is actually in the Moscow region (roughly)
-          // Lat: 54-57, Lng: 35-40
           const res = results[0];
           if (res.latitude > 54 && res.latitude < 57 && res.longitude > 35 && res.longitude < 40) {
             bestResult = res;
             break;
           }
-          // If not in Moscow region, still keep it as fallback if it's the first result
           if (!bestResult) bestResult = res;
         }
       }
@@ -149,7 +152,6 @@ export default function CreateOrderScreen({ navigation }: any) {
         };
         setCoordinates(newCoords);
 
-        // Reverse geocode to show "Normalized" address
         try {
           const rev = await Location.reverseGeocodeAsync(newCoords);
           if (rev.length > 0) {
@@ -196,7 +198,6 @@ export default function CreateOrderScreen({ navigation }: any) {
       };
       setCoordinates(coords);
 
-      // Reverse geocode to fill the address field
       const reverse = await Location.reverseGeocodeAsync(coords);
       if (reverse.length > 0) {
         const addr = reverse[0];
@@ -211,8 +212,15 @@ export default function CreateOrderScreen({ navigation }: any) {
   };
 
   const handlePublish = async () => {
-    if (!form.address || !form.price || !form.title) {
-      Alert.alert("Ошибка", "Заполните основные поля (Заголовок, Адрес, Оплата)");
+    // Validation
+    const validation = orderSchema.safeParse(form);
+    if (!validation.success) {
+      const fieldErrors: any = {};
+      validation.error.errors.forEach(err => {
+        fieldErrors[err.path[0]] = err.message;
+      });
+      setErrors(fieldErrors);
+      Alert.alert("Ошибка заполнения", "Пожалуйста, проверьте все поля.");
       return;
     }
 
@@ -222,8 +230,8 @@ export default function CreateOrderScreen({ navigation }: any) {
     }
 
     setLoading(true);
+    setErrors({});
     try {
-      // Upload images first
       let imageUrls: string[] = [];
       try {
         imageUrls = await Promise.all(
@@ -231,7 +239,6 @@ export default function CreateOrderScreen({ navigation }: any) {
         );
       } catch (storageErr) {
         console.warn("Storage upload failed, proceeding without images:", storageErr);
-        Alert.alert("Предупреждение", "Не удалось загрузить фотографии (проверьте подписку Firebase), заказ будет создан без них.");
       }
 
       const orderData = {
@@ -239,18 +246,10 @@ export default function CreateOrderScreen({ navigation }: any) {
         date: form.date.toISOString(),
         images: imageUrls,
         coordinates: coordinates,
-        location: coordinates, // Dual field for compatibility
+        location: coordinates,
       };
 
-      console.log('Publishing order with location:', orderData.location);
       await orderService.createOrder(orderData);
-
-      // Reset form
-      setForm({ title: '', address: '', price: '', details: '', date: new Date() });
-      setImages([]);
-      setCoordinates(null);
-      setNormalizedAddress(null);
-      setSuggestions([]);
 
       Alert.alert("Успех", "Заказ опубликован!");
       navigation.goBack();
@@ -294,6 +293,7 @@ export default function CreateOrderScreen({ navigation }: any) {
               placeholder={i18n.t('orders.titlePlaceholder')}
               value={form.title}
               onChangeText={(t)=>setForm({...form, title:t})}
+              error={errors.title}
             />
 
             <View style={styles.section}>
@@ -306,6 +306,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                   onChangeText={handleAddressChange}
                   onBlur={() => handleGeocode()}
                   icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
+                  error={errors.address}
                 />
                 {form.address.length > 0 && (
                   <TouchableOpacity
@@ -372,14 +373,6 @@ export default function CreateOrderScreen({ navigation }: any) {
                     />
                   )}
                 </MapView>
-                <View style={styles.mapInstruction}>
-                  <Ionicons name="information-circle-outline" size={14} color="#666" />
-                  <Text style={styles.mapHint}>
-                    {coordinates
-                      ? "Уточните положение, передвинув синюю метку"
-                      : "Нажмите на карту, чтобы поставить метку вручную"}
-                  </Text>
-                </View>
               </View>
             </View>
 
@@ -390,6 +383,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                   keyboardType="numeric"
                   value={form.price}
                   onChangeText={(t)=>setForm({...form, price:t})}
+                  error={errors.price}
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -456,6 +450,7 @@ export default function CreateOrderScreen({ navigation }: any) {
               style={{height: 100, textAlignVertical: 'top'}}
               value={form.details}
               onChangeText={(t)=>setForm({...form, details:t})}
+              error={errors.details}
             />
 
             <Text style={styles.label}>Фотографии</Text>
@@ -496,215 +491,31 @@ export default function CreateOrderScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  clearBtn: {
-    position: 'absolute',
-    right: 15,
-    top: 45,
-    zIndex: 10,
-  },
-  suggestionsContainer: {
-    backgroundColor: '#fff',
-    marginTop: -15,
-    marginBottom: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-    zIndex: 1000,
-  },
-  suggestionItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  suggestionText: {
-    fontSize: 14,
-    color: COLORS.dark,
-    marginLeft: 8,
-  },
-  normalizedContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0FFF4',
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#C6F6D5',
-  },
-  normalizedText: {
-    fontSize: 13,
-    color: '#2F855A',
-    marginLeft: 6,
-    fontWeight: '500',
-  },
-  section: {
-    marginBottom: 25,
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginBottom: 15,
-  },
-  locationActions: {
-    flexDirection: 'row',
-    marginBottom: 15,
-    marginTop: -10,
-  },
-  locationBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 15,
-    padding: 5,
-  },
-  locationBtnText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  mapPreviewContainer: {
-    height: 150,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  mapPreview: {
-    width: '100%',
-    height: '100%',
-  },
-  mapInstruction: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
-    right: 10,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  mapHint: {
-    fontSize: 12,
-    color: '#444',
-    fontWeight: '500',
-    marginLeft: 6,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.dark,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    height: 58,
-    paddingHorizontal: 15,
-  },
-  imageContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 20,
-  },
-  imageWrapper: {
-    width: 80,
-    height: 80,
-    marginRight: 10,
-    marginBottom: 10,
-    position: 'relative',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 12,
-  },
-  removeImage: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
-    backgroundColor: 'white',
-    borderRadius: 12,
-  },
-  addImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  publishButton: {
-    backgroundColor: COLORS.secondary,
-    padding: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginTop: 10,
-    shadowColor: COLORS.secondary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  publishText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 16,
-    letterSpacing: 1,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 40,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 0.5,
-    borderBottomColor: COLORS.border,
-  },
+  clearBtn: { position: 'absolute', right: 15, top: 45, zIndex: 10 },
+  suggestionsContainer: { backgroundColor: '#fff', marginTop: -15, marginBottom: 15, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', zIndex: 1000 },
+  suggestionItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center' },
+  suggestionText: { fontSize: 14, color: COLORS.dark, marginLeft: 8 },
+  normalizedContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FFF4', padding: 10, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#C6F6D5' },
+  normalizedText: { fontSize: 13, color: '#2F855A', marginLeft: 6, fontWeight: '500' },
+  section: { marginBottom: 25, backgroundColor: '#fff', padding: 15, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.dark, marginBottom: 15 },
+  locationActions: { flexDirection: 'row', marginBottom: 15, marginTop: -10 },
+  locationBtn: { flexDirection: 'row', alignItems: 'center', marginRight: 15, padding: 5 },
+  locationBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '600', marginLeft: 4 },
+  mapPreviewContainer: { height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 20, borderWidth: 1, borderColor: COLORS.border },
+  mapPreview: { width: '100%', height: '100%' },
+  title: { fontSize: 28, fontWeight: 'bold', color: COLORS.dark, marginBottom: 24 },
+  label: { fontSize: 14, fontWeight: '700', color: COLORS.dark, marginBottom: 8, marginLeft: 4 },
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1.5, borderColor: COLORS.border, height: 58, paddingHorizontal: 15 },
+  imageContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 },
+  imageWrapper: { width: 80, height: 80, marginRight: 10, marginBottom: 10, position: 'relative' },
+  image: { width: '100%', height: '100%', borderRadius: 12 },
+  removeImage: { position: 'absolute', top: -10, right: -10, backgroundColor: 'white', borderRadius: 12 },
+  addImage: { width: 80, height: 80, borderRadius: 12, borderWidth: 2, borderColor: COLORS.border, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  publishButton: { backgroundColor: COLORS.secondary, padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 10, shadowColor: COLORS.secondary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
+  publishText: { color: '#fff', fontWeight: '800', fontSize: 16, letterSpacing: 1 },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: { backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 0.5, borderBottomColor: COLORS.border },
 });

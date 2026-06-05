@@ -10,39 +10,43 @@ service cloud.firestore {
       return userData.isSubscribed == true || (userData.subscriptionUntil != null && timestamp(userData.subscriptionUntil) > request.time);
     }
 
-    // Check if the order is confirmed between requester and owner
-    function isOrderConfirmed(orderData) {
-      return (request.auth.uid == orderData.employerId || request.auth.uid == orderData.workerId) &&
-             orderData.status in ['accepted', 'in_work', 'completed', 'executing'];
+    // Helper to check if requester is involved in a specific order
+    function isInvolvedInOrder(orderData) {
+      return (orderData.employerId == request.auth.uid || orderData.workerId == request.auth.uid) &&
+             orderData.status in ['accepted', 'started', 'finished', 'completed'];
     }
 
     match /users/{userId} {
-      // Sensitivity: Hide phone number from everyone except owner or confirmed partners
-      allow read: if isAuthenticated() && (
-        isOwner(userId) ||
-        exists(/databases/$(database)/documents/orders/{orderId}) // This is complex, simplified version below
-      );
-
-      // Simplified: Allow reading profile (name, rating) but hide phone field via app logic
-      // or using separate private_profile subcollection.
-      allow get: if isAuthenticated();
-
+      allow read: if isAuthenticated();
       allow write: if isOwner(userId);
+
+      match /private/data {
+        // Only owner or confirmed partner can read private data (phone)
+        allow read: if isOwner(userId) ||
+          exists(/databases/$(database)/documents/orders) &&
+          get(/databases/$(database)/documents/orders).data.isInvolvedInOrder; // This is a conceptual rule, see below
+
+        // Real rule for partner verification:
+        // We allow reading if there exists an order where userId is either employer or worker
+        // AND the requester is the other party AND status is confirmed.
+        allow read: if isOwner(userId) ||
+          exists(/databases/$(database)/documents/orders/$(orderId)) &&
+          isInvolvedInOrder(get(/databases/$(database)/documents/orders/$(orderId)).data) &&
+          (get(/databases/$(database)/documents/orders/$(orderId)).data.employerId == userId ||
+           get(/databases/$(database)/documents/orders/$(orderId)).data.workerId == userId);
+
+        allow write: if isOwner(userId);
+      }
     }
 
     match /orders/{orderId} {
       allow read: if isAuthenticated();
-
-      // Allow any authenticated user to create an order
       allow create: if isAuthenticated();
-
-      // Allow owner to update everything, or others to update ONLY specific fields (if they are subscribed)
       allow update: if isAuthenticated() && (
-        (resource.data.employerId == request.auth.uid) ||
+        resource.data.employerId == request.auth.uid ||
         (isSubscribed() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['candidates', 'status', 'updatedAt', 'workerId']))
       );
-
-      allow delete: if isAuthenticated() && resource.data.employerId == request.auth.uid;
+      allow delete: if resource.data.employerId == request.auth.uid;
     }
 
     match /payment_requests/{reqId} {
@@ -53,6 +57,11 @@ service cloud.firestore {
     match /chats/{chatId} {
       allow read, write: if isAuthenticated() &&
         (resource == null || request.auth.uid in resource.data.participants);
+    }
+
+    match /verification_requests/{reqId} {
+      allow create: if isAuthenticated();
+      allow read: if resource.data.userId == request.auth.uid;
     }
   }
 }
