@@ -15,13 +15,13 @@ import {
   arrayUnion,
   Timestamp,
   setDoc
-} from 'firebase/firestore';
+} from '@firebase/firestore';
 import {
   ref,
   uploadBytes,
   getDownloadURL
-} from 'firebase/storage';
-import { onAuthStateChanged } from 'firebase/auth';
+} from '@firebase/storage';
+import { onAuthStateChanged } from '@firebase/auth';
 import { db, auth, storage } from './firebase';
 import { Order, OrderStatus } from '../types';
 import { notificationService } from './NotificationService';

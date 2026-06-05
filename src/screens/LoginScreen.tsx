@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
+import { PhoneAuthProvider, signInWithCredential } from '@firebase/auth';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
