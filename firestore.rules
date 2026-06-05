@@ -33,14 +33,13 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if isAuthenticated();
 
-      // Phone numbers in orders should be hidden in the UI if not confirmed.
-      // Rules protect the document itself.
-
+      // Allow any authenticated user to create an order
       allow create: if isAuthenticated();
 
+      // Allow owner to update everything, or others to update ONLY specific fields (if they are subscribed)
       allow update: if isAuthenticated() && (
-        resource.data.employerId == request.auth.uid ||
-        (isSubscribed() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['candidates', 'status', 'updatedAt']))
+        (resource.data.employerId == request.auth.uid) ||
+        (isSubscribed() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['candidates', 'status', 'updatedAt', 'workerId']))
       );
 
       allow delete: if isAuthenticated() && resource.data.employerId == request.auth.uid;

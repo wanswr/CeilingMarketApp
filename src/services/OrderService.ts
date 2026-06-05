@@ -156,10 +156,14 @@ class OrderService {
       const docRef = await db.collection("orders").add(sanitizedData);
       console.log('Order created successfully with ID:', docRef.id);
 
-      // Update employer stats
-      await db.collection("users").doc(auth.currentUser.uid).update({
-        ordersCount: firebase.firestore.FieldValue.increment(1)
-      });
+      // Update employer stats - wrap in try-catch to avoid crashing if user doc isn't perfectly initialized
+      try {
+        await db.collection("users").doc(auth.currentUser.uid).update({
+          ordersCount: firebase.firestore.FieldValue.increment(1)
+        });
+      } catch (e) {
+        console.warn("Failed to increment ordersCount (user document might not exist):", e);
+      }
 
       return docRef;
     } catch (error: any) {
