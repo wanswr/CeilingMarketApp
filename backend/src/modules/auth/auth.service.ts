@@ -19,14 +19,21 @@ export class AuthService {
     const payload = { id: user.id, phone: user.phone, role: user.role };
     return {
       access_token: this.jwtService.sign(payload),
-      user,
+      user: {
+          id: user.id,
+          phone: user.phone,
+          name: user.name,
+          role: user.role
+      },
     };
   }
 
   async register(dto: RegisterDto) {
     const user = await this.prisma.user.create({
       data: {
-        ...dto,
+        phone: dto.phone,
+        name: dto.name,
+        role: dto.role || 'WORKER',
       },
     });
     return this.login(user);

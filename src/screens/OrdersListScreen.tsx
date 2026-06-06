@@ -1,85 +1,81 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Linking, Modal, ScrollView, Image, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { SwipeListView } from 'react-native-swipe-list-view';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, SafeAreaView } from 'react-native';
+import { OrderService, Order } from '../services/OrderService';
 import { COLORS } from '../constants/theme';
-import { apiService } from '../services/ApiService';
-import { formatDate } from '../utils/date';
 
 const OrdersListScreen = ({ navigation }: any) => {
-  const [orders, setOrders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      // For list view without specific location, we might want to get all pending orders
+      const data = await OrderService.getNearbyOrders(55.7558, 37.6173, 100); // Default to Moscow for demo
+      setOrders(data);
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [fetchOrders]);
 
-  const fetchOrders = async () => {
-    try {
-      const response = await apiService.getOrders({});
-      setOrders(response.data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchOrders();
+    setRefreshing(false);
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator color={COLORS.primary}/></View>;
+  const renderItem = ({ item }: { item: Order }) => (
+    <TouchableOpacity
+      style={styles.orderCard}
+      onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
+    >
+      <Text style={styles.orderTitle}>{item.title}</Text>
+      <Text style={styles.orderPrice}>{item.price} ₽</Text>
+      <Text style={styles.orderAddress}>{item.address}</Text>
+    </TouchableOpacity>
+  );
 
   return (
-    <View style={styles.container}>
-      <SwipeListView
+    <SafeAreaView style={styles.container}>
+      <FlatList
         data={orders}
+        renderItem={renderItem}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
-            style={[styles.rowFront, item.isPinned && styles.pinnedRow]}
-          >
-            <View style={styles.cardContent}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.dateText}>{formatDate(item.date)}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: COLORS.primary }]}>
-                  <Text style={styles.statusText}>{item.status}</Text>
-                </View>
-              </View>
-
-              <Text style={styles.titleText} numberOfLines={1}>{item.title}</Text>
-
-              <View style={styles.addressRow}>
-                <Ionicons name="location-sharp" size={14} color={COLORS.gray} />
-                <Text style={styles.addressText} numberOfLines={1}>{item.address}</Text>
-              </View>
-
-              <View style={styles.cardFooter}>
-                <Text style={styles.priceText}>{item.price} ₽</Text>
-                <Ionicons name="chevron-forward" size={20} color={COLORS.border} />
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
+        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text>Заказов пока нет</Text>
+          </View>
+        }
       />
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f8f8' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  rowFront: { backgroundColor: '#FFF', borderRadius: 15, marginHorizontal: 15, marginTop: 15, padding: 15 },
-  pinnedRow: { borderColor: COLORS.primary, borderWidth: 1 },
-  cardContent: {},
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  dateText: { color: COLORS.gray, fontSize: 12 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5 },
-  statusText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  titleText: { fontSize: 18, fontWeight: 'bold', marginBottom: 5 },
-  addressRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  addressText: { fontSize: 14, color: COLORS.gray, marginLeft: 5 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10 },
-  priceText: { fontSize: 18, fontWeight: 'bold', color: COLORS.success },
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  list: { padding: 15 },
+  orderCard: {
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  orderTitle: { fontSize: 18, fontWeight: 'bold' },
+  orderPrice: { fontSize: 16, color: COLORS.primary, marginVertical: 5 },
+  orderAddress: { fontSize: 14, color: '#666' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 50 }
 });
 
 export default OrdersListScreen;

@@ -9,9 +9,16 @@ export class OrdersService {
   async create(dto: CreateOrderDto, employerId: string) {
     return this.prisma.order.create({
       data: {
-        ...dto,
+        title: dto.title,
+        address: dto.address,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        price: dto.price,
+        details: dto.details,
+        date: new Date(dto.date),
+        images: dto.images || [],
         employerId,
-        date: new DateTime(dto.date),
+        status: 'PENDING',
       },
     });
   }
@@ -19,13 +26,12 @@ export class OrdersService {
   async findAll(filters: { lat?: number; lng?: number; radius?: number; minPrice?: number; status?: string }) {
     const { lat, lng, radius, minPrice, status } = filters;
 
-    // Use raw query for Haversine or filter in application logic if dataset is small
-    // Here we use Prisma findMany with basic filters and then filter by distance
+    const where: any = {};
+    if (minPrice) where.price = { gte: minPrice };
+    if (status) where.status = status;
+
     const orders = await this.prisma.order.findMany({
-      where: {
-        price: { gte: minPrice || 0 },
-        status: (status as any) || 'PENDING',
-      },
+      where,
       include: {
         employer: {
           select: { id: true, name: true, rating: true, avatar: true }
@@ -59,8 +65,26 @@ export class OrdersService {
     return order;
   }
 
+  async update(id: string, dto: any, userId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) throw new NotFoundException();
+    if (order.employerId !== userId) throw new ForbiddenException();
+
+    return this.prisma.order.update({
+      where: { id },
+      data: dto
+    });
+  }
+
+  async remove(id: string, userId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) throw new NotFoundException();
+    if (order.employerId !== userId) throw new ForbiddenException();
+
+    return this.prisma.order.delete({ where: { id } });
+  }
+
   async apply(orderId: string, workerId: string) {
-    // Check subscription
     const sub = await this.prisma.subscription.findUnique({ where: { userId: workerId } });
     if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
       throw new ForbiddenException('Active subscription required to apply');
@@ -68,19 +92,6 @@ export class OrdersService {
 
     return this.prisma.application.create({
       data: { orderId, workerId }
-    });
-  }
-
-  async updateStatus(id: string, status: string, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException();
-
-    // Logic for status transitions and permissions (employer vs worker)
-    // ...
-
-    return this.prisma.order.update({
-      where: { id },
-      data: { status: status as any }
     });
   }
 

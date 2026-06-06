@@ -12,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { COLORS } from '../constants/theme';
 import { apiService } from '../services/ApiService';
@@ -36,7 +35,7 @@ export default function EditProfileScreen({ navigation }: any) {
 
   const fetchProfile = async () => {
     try {
-      const response = await apiService.getUserProfile('me');
+      const response = await apiService.getProfile();
       setProfile(response.data);
     } catch (e) {
       Alert.alert("Ошибка", "Не удалось загрузить данные профиля");

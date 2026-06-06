@@ -1,22 +1,37 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, Alert, SafeAreaView, ScrollView } from 'react-native';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
 import { apiService } from '../services/ApiService';
-import { COLORS } from '../constants/theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const RegisterDetailsScreen = ({ navigation }: any) => {
-  const [fio, setFio] = useState('');
-  const [date, setDate] = useState('');
+const RegisterDetailsScreen = ({ navigation, route }: any) => {
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const phone = route?.params?.phone || '';
 
   const handleNext = async () => {
+    if (!name.trim()) {
+      Alert.alert("Ошибка", "Пожалуйста, введите ФИО");
+      return;
+    }
+
     setLoading(true);
     try {
-      await apiService.register({ name: fio, birthDate: date });
-      navigation.navigate('RoleSelection');
+      const response = await apiService.register({
+        phone,
+        name,
+        role: 'WORKER' // Default, can be changed in RoleSelection
+      });
+
+      if (response.data.access_token) {
+        await AsyncStorage.setItem('userToken', response.data.access_token);
+        await AsyncStorage.setItem('userData', JSON.stringify(response.data.user));
+        navigation.navigate('RoleSelection');
+      }
     } catch (err: any) {
-      Alert.alert("Ошибка", err.message);
+      console.error(err);
+      Alert.alert("Ошибка", err.response?.data?.message || "Не удалось зарегистрироваться");
     } finally {
       setLoading(false);
     }
@@ -25,8 +40,19 @@ const RegisterDetailsScreen = ({ navigation }: any) => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <AppInput label="ФИО" value={fio} onChangeText={setFio} />
-        <Button title="Продолжить" onPress={handleNext} loading={loading} />
+        <Text style={styles.title}>Завершение регистрации</Text>
+        <AppInput
+          label="ФИО"
+          value={name}
+          onChangeText={setName}
+          placeholder="Иван Иванов"
+        />
+        <Button
+          title="Продолжить"
+          onPress={handleNext}
+          loading={loading}
+          style={styles.button}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -34,7 +60,9 @@ const RegisterDetailsScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20 }
+  content: { padding: 20 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 30, color: '#333' },
+  button: { marginTop: 20 }
 });
 
 export default RegisterDetailsScreen;

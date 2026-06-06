@@ -30,7 +30,7 @@ export default function Navigation() {
     try {
       const token = await AsyncStorage.getItem('userToken');
       if (token) {
-        const response = await apiService.getUserProfile('me');
+        const response = await apiService.getProfile();
         setUser(response.data);
       }
     } catch (e) {

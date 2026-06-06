@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Param, Patch, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req, ForbiddenException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -36,14 +36,20 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post(':id/apply')
-  apply(@Param('id') id: string, @Req() req) {
-    return this.ordersService.apply(id, req.user.id);
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateDto: any, @Req() req) {
+    return this.ordersService.update(id, updateDto, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: string, @Req() req) {
-    return this.ordersService.updateStatus(id, status, req.user.id);
+  @Delete(':id')
+  remove(@Param('id') id: string, @Req() req) {
+    return this.ordersService.remove(id, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/apply')
+  apply(@Param('id') id: string, @Req() req) {
+    return this.ordersService.apply(id, req.user.id);
   }
 }
