@@ -1,47 +1,60 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Linking, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Linking, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, onSnapshot } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants/theme';
 import { orderService } from '../services/OrderService';
-import { auth, db } from '../services/firebase';
-import { UserProfile } from '../types';
+import { apiService } from '../services/ApiService';
 
 const ProfileScreen = ({ navigation }: any) => {
   const [role, setRole] = useState(orderService.getCurrentRole());
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const sync = (r: any) => setRole(r);
-    orderService.on('roleChanged', sync);
-
-    if (auth.currentUser) {
-      const userRef = doc(db, "users", auth.currentUser.uid);
-      const unsub = onSnapshot(userRef, (snapshot) => {
-        if (snapshot.exists()) {
-          setProfile(snapshot.data() as UserProfile);
-        }
-      });
-      return () => {
-        orderService.off('roleChanged', sync);
-        unsub();
-      };
-    }
-    return () => { orderService.off('roleChanged', sync); };
+    fetchProfile();
   }, []);
 
-  const toggle = () => {
-    const next = role === 'employer' ? 'worker' : 'employer';
-    orderService.setRole(next);
-    Alert.alert("Роль изменена", `Вы вошли как ${next === 'employer' ? 'Заказчик' : 'Мастер'}`);
+  const fetchProfile = async () => {
+    try {
+      // In a real app, 'me' would be handled by JWT on backend
+      const response = await apiService.getUserProfile('me');
+      setProfile(response.data);
+    } catch (e) {
+      console.error("Error fetching profile:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleLogout = () => {
+  const toggle = async () => {
+    const next = role === 'employer' ? 'worker' : 'employer';
+    try {
+      await orderService.setRole(next);
+      setRole(next);
+      fetchProfile();
+      Alert.alert("Роль изменена", `Вы вошли как ${next === 'employer' ? 'Заказчик' : 'Мастер'}`);
+    } catch (e) {
+      Alert.alert("Ошибка", "Не удалось сменить роль");
+    }
+  };
+
+  const handleLogout = async () => {
     Alert.alert("Выход", "Вы уверены, что хотите выйти?", [
       { text: "Отмена", style: "cancel" },
-      { text: "Выйти", onPress: () => auth.signOut(), style: "destructive" }
+      {
+        text: "Выйти",
+        onPress: async () => {
+          await AsyncStorage.removeItem('userToken');
+          // Reset navigation or handle logout state
+          navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+        },
+        style: "destructive"
+      }
     ]);
   };
+
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
 
   return (
     <ScrollView style={styles.container}>
@@ -67,7 +80,7 @@ const ProfileScreen = ({ navigation }: any) => {
 
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{profile?.rating ? (Number(profile.rating) * 2).toFixed(1) : '10.0'}</Text>
+            <Text style={styles.statValue}>{profile?.rating?.toFixed(1) || '5.0'}</Text>
             <Text style={styles.statLabel}>Рейтинг</Text>
           </View>
           <View style={styles.statDivider} />
@@ -81,50 +94,13 @@ const ProfileScreen = ({ navigation }: any) => {
             <Text style={styles.statLabel}>{role === 'employer' ? 'Заказов' : 'Выполнено'}</Text>
           </View>
         </View>
-
-        <View style={styles.socialIcons}>
-          {profile?.instagram && (
-            <TouchableOpacity onPress={() => Linking.openURL(`https://instagram.com/${profile?.instagram?.replace('@', '')}`)}>
-              <Ionicons name="logo-instagram" size={28} color="#E1306C" style={{ marginHorizontal: 15 }} />
-            </TouchableOpacity>
-          )}
-          {profile?.telegram && (
-            <TouchableOpacity onPress={() => Linking.openURL(`https://t.me/${profile?.telegram?.replace('@', '')}`)}>
-              <Ionicons name="send" size={28} color="#0088cc" style={{ marginHorizontal: 15 }} />
-            </TouchableOpacity>
-          )}
-        </View>
       </View>
+
       <TouchableOpacity style={styles.btn} onPress={toggle}>
         <Text>Сменить роль</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => navigation.navigate('Subscription')}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Ionicons name="card-outline" size={20} color={COLORS.success} style={{ marginRight: 10 }} />
-          <Text style={{ fontWeight: '700' }}>Активировать подписку</Text>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => navigation.navigate('Verification')}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.secondary} style={{ marginRight: 10 }} />
-          <Text>Пройти верификацию</Text>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => navigation.navigate('InviteFriends')}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Ionicons name="people-outline" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
-          <Text>Пригласить коллег</Text>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={() => Linking.openURL('https://ceilingsapp.example.com/privacy')}>
-        <Text style={{ color: COLORS.gray, fontSize: 12 }}>Политика конфиденциальности</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={[styles.btn, { marginTop: 0 }]} onPress={handleLogout}>
+      <TouchableOpacity style={styles.btn} onPress={handleLogout}>
         <Text style={{ color: '#FF3B30', fontWeight: 'bold' }}>Выйти из аккаунта</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -133,7 +109,8 @@ const ProfileScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgLight },
-  header: { alignItems: 'center', paddingVertical: 30, backgroundColor: '#fff', borderBottomLeftRadius: 30, borderBottomRightRadius: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { alignItems: 'center', paddingVertical: 30, backgroundColor: '#fff', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   avatarContainer: { width: 110, height: 110, borderRadius: 55, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f0f0', borderWidth: 3, position: 'relative' },
   avatar: { width: '100%', height: '100%', borderRadius: 55 },
   verifiedBadge: { position: 'absolute', bottom: -5, right: -5, backgroundColor: '#fff', borderRadius: 12 },
@@ -145,7 +122,7 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 18, fontWeight: '800', color: COLORS.dark },
   statLabel: { fontSize: 12, color: COLORS.gray, marginTop: 4 },
   statDivider: { width: 1, height: 30, backgroundColor: COLORS.border, alignSelf: 'center' },
-  socialIcons: { flexDirection: 'row', marginTop: 25 },
-  btn: { marginHorizontal: 20, marginTop: 15, padding: 18, backgroundColor: '#fff', borderRadius: 20, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 1 }
+  btn: { marginHorizontal: 20, marginTop: 15, padding: 18, backgroundColor: '#fff', borderRadius: 20, alignItems: 'center' }
 });
+
 export default ProfileScreen;

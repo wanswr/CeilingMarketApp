@@ -22,7 +22,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { z } from 'zod';
 import { AppInput } from '../components/Input';
-import { orderService } from '../services/OrderService';
+import { apiService } from '../services/ApiService';
 import { COLORS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
@@ -232,24 +232,16 @@ export default function CreateOrderScreen({ navigation }: any) {
     setLoading(true);
     setErrors({});
     try {
-      let imageUrls: string[] = [];
-      try {
-        imageUrls = await Promise.all(
-          images.map(uri => orderService.uploadImage(uri))
-        );
-      } catch (storageErr) {
-        console.warn("Storage upload failed, proceeding without images:", storageErr);
-      }
-
       const orderData = {
         ...form,
         date: form.date.toISOString(),
-        images: imageUrls,
-        coordinates: coordinates,
-        location: coordinates,
+        images: [],
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        price: Number(form.price),
       };
 
-      await orderService.createOrder(orderData);
+      await apiService.createOrder(orderData);
 
       Alert.alert("Успех", "Заказ опубликован!");
       navigation.goBack();
@@ -292,7 +284,7 @@ export default function CreateOrderScreen({ navigation }: any) {
               label={i18n.t('orders.title')}
               placeholder={i18n.t('orders.titlePlaceholder')}
               value={form.title}
-              onChangeText={(t)=>setForm({...form, title:t})}
+              onChangeText={(t:any)=>setForm({...form, title:t})}
               error={errors.title}
             />
 
@@ -344,13 +336,6 @@ export default function CreateOrderScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
 
-              {normalizedAddress && (
-                <View style={styles.normalizedContainer}>
-                  <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-                  <Text style={styles.normalizedText}>Найдено: {normalizedAddress}</Text>
-                </View>
-              )}
-
               <View style={styles.mapPreviewContainer}>
                 <MapView
                   ref={mapRef}
@@ -382,7 +367,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                   label={i18n.t('orders.price')}
                   keyboardType="numeric"
                   value={form.price}
-                  onChangeText={(t)=>setForm({...form, price:t})}
+                  onChangeText={(t:any)=>setForm({...form, price:t})}
                   error={errors.price}
                 />
               </View>
@@ -401,78 +386,15 @@ export default function CreateOrderScreen({ navigation }: any) {
               </View>
             </View>
 
-            {/* iOS Date Picker Modal */}
-            {Platform.OS === 'ios' && (
-              <Modal
-                transparent={true}
-                visible={showDatePicker}
-                animationType="slide"
-              >
-                <View style={styles.modalOverlay}>
-                  <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                        <Text style={{color: COLORS.danger, fontWeight: '600'}}>Отмена</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={confirmIosDate}>
-                        <Text style={{color: COLORS.primary, fontWeight: '600'}}>Готово</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <DateTimePicker
-                      value={tempDate}
-                      mode="date"
-                      display="spinner"
-                      onChange={onDateChange}
-                      minimumDate={new Date()}
-                      style={{ height: 216 }}
-                      textColor={COLORS.dark}
-                    />
-                  </View>
-                </View>
-              </Modal>
-            )}
-
-            {/* Android Date Picker */}
-            {Platform.OS === 'android' && showDatePicker && (
-              <DateTimePicker
-                value={form.date}
-                mode="date"
-                display="default"
-                onChange={onDateChange}
-                minimumDate={new Date()}
-              />
-            )}
-
             <AppInput
               label={i18n.t('orders.details')}
               placeholder={i18n.t('orders.detailsPlaceholder')}
               multiline
               style={{height: 100, textAlignVertical: 'top'}}
               value={form.details}
-              onChangeText={(t)=>setForm({...form, details:t})}
+              onChangeText={(t:any)=>setForm({...form, details:t})}
               error={errors.details}
             />
-
-            <Text style={styles.label}>Фотографии</Text>
-            <View style={styles.imageContainer}>
-              {images.map((uri, index) => (
-                <View key={index} style={styles.imageWrapper}>
-                  <Image source={{ uri }} style={styles.image} />
-                  <TouchableOpacity
-                    style={styles.removeImage}
-                    onPress={() => removeImage(index)}
-                  >
-                    <Ionicons name="close-circle" size={24} color={COLORS.danger} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              {images.length < 5 && (
-                <TouchableOpacity style={styles.addImage} onPress={pickImage}>
-                  <Ionicons name="camera-outline" size={32} color={COLORS.gray} />
-                  <Text style={{ fontSize: 12, color: COLORS.gray, marginTop: 4 }}>Добавить</Text>
-                </TouchableOpacity>
-              )}
-            </View>
 
             <TouchableOpacity
               style={[styles.publishButton, loading && { opacity: 0.7 }]}
@@ -495,8 +417,6 @@ const styles = StyleSheet.create({
   suggestionsContainer: { backgroundColor: '#fff', marginTop: -15, marginBottom: 15, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', zIndex: 1000 },
   suggestionItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center' },
   suggestionText: { fontSize: 14, color: COLORS.dark, marginLeft: 8 },
-  normalizedContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FFF4', padding: 10, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#C6F6D5' },
-  normalizedText: { fontSize: 13, color: '#2F855A', marginLeft: 6, fontWeight: '500' },
   section: { marginBottom: 25, backgroundColor: '#fff', padding: 15, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.dark, marginBottom: 15 },
   locationActions: { flexDirection: 'row', marginBottom: 15, marginTop: -10 },
@@ -508,14 +428,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '700', color: COLORS.dark, marginBottom: 8, marginLeft: 4 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1.5, borderColor: COLORS.border, height: 58, paddingHorizontal: 15 },
-  imageContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 },
-  imageWrapper: { width: 80, height: 80, marginRight: 10, marginBottom: 10, position: 'relative' },
-  image: { width: '100%', height: '100%', borderRadius: 12 },
-  removeImage: { position: 'absolute', top: -10, right: -10, backgroundColor: 'white', borderRadius: 12 },
-  addImage: { width: 80, height: 80, borderRadius: 12, borderWidth: 2, borderColor: COLORS.border, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   publishButton: { backgroundColor: COLORS.secondary, padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 10, shadowColor: COLORS.secondary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
   publishText: { color: '#fff', fontWeight: '800', fontSize: 16, letterSpacing: 1 },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalContent: { backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 0.5, borderBottomColor: COLORS.border },
 });
