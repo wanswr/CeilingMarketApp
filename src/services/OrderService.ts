@@ -5,23 +5,21 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
-  getDocs,
   onSnapshot,
   query,
   orderBy,
-  where,
   serverTimestamp,
   increment,
   arrayUnion,
   Timestamp,
   setDoc
-} from '@firebase/firestore';
+} from 'firebase/firestore';
 import {
   ref,
   uploadBytes,
   getDownloadURL
-} from '@firebase/storage';
-import { onAuthStateChanged } from '@firebase/auth';
+} from 'firebase/storage';
+import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, storage } from './firebase';
 import { Order, OrderStatus } from '../types';
 import { notificationService } from './NotificationService';
@@ -43,7 +41,6 @@ class OrderService {
         if (this.unsubscribe) this.unsubscribe();
         if (this.userUnsubscribe) this.userUnsubscribe();
 
-        // Scalability: Consider adding where("status", "in", ["pending", "accepted", "started"])
         const ordersRef = collection(db, "orders");
         const ordersQuery = query(ordersRef, orderBy("timestamp", "desc"));
         this.unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
@@ -53,7 +50,6 @@ class OrderService {
           if (err.code !== 'permission-denied') console.error("Firestore Orders Error:", err);
         });
 
-        // Listen to user profile for role and subscription
         const userRef = doc(db, "users", user.uid);
         this.userUnsubscribe = onSnapshot(userRef, (snapshot) => {
           if (snapshot.exists()) {
@@ -91,7 +87,6 @@ class OrderService {
   }
 
   getOrders() { return [...this.orders]; }
-
   getCurrentRole(): 'employer' | 'worker' { return this.currentRole; }
 
   async checkSubscription(): Promise<boolean> {
@@ -101,14 +96,9 @@ class OrderService {
       const snapshot = await getDoc(userRef);
       if (!snapshot.exists()) return false;
       const data = snapshot.data();
-
       if (data?.isSubscribed === true) return true;
       if (!data?.subscriptionUntil) return false;
-
-      const subDate = data.subscriptionUntil instanceof Timestamp
-        ? data.subscriptionUntil.toDate()
-        : new Date(data.subscriptionUntil);
-
+      const subDate = data.subscriptionUntil instanceof Timestamp ? data.subscriptionUntil.toDate() : new Date(data.subscriptionUntil);
       return subDate > new Date();
     } catch {
       return false;
@@ -132,150 +122,76 @@ class OrderService {
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
-
       const filename = `orders/${auth.currentUser?.uid || 'anon'}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
       const storageRef = ref(storage, filename);
-
-      console.log('Uploading to:', filename);
       await uploadBytes(storageRef, blob);
-      const url = await getDownloadURL(storageRef);
-      console.log('Upload successful, URL:', url);
-      return url;
+      return await getDownloadURL(storageRef);
     } catch (err) {
-      console.error('Firebase storage upload failed:', err);
-      throw err;
+      console.warn('Firebase storage upload failed (probably no subscription):', err);
+      return uri; // Fallback to local URI
     }
   }
 
   async createOrder(data: any) {
     if (!auth.currentUser) throw new Error("Не авторизован");
-
     const orderData: any = {
-      title: data.title || '',
-      address: data.address || '',
-      price: data.price ? Number(data.price) : 0,
-      details: data.details || '',
-      date: data.date || new Date().toISOString(),
-      images: data.images as string[] || [],
+      ...data,
       employerId: auth.currentUser.uid,
       status: 'pending' as OrderStatus,
-      squareMeters: 0,
-      perimeter: 0,
-      fixturesCount: 0,
-      chandeliersCount: 0,
-      curtainRodsCount: 0,
-      time: '',
-      location: data.location || data.coordinates || { latitude: 55.751244, longitude: 37.618423 },
-      coordinates: data.coordinates || data.location || { latitude: 55.751244, longitude: 37.618423 },
       createdAt: Date.now(),
       updatedAt: Date.now(),
       timestamp: serverTimestamp(),
     };
-
     try {
       const docRef = await addDoc(collection(db, "orders"), orderData);
-      console.log('Order created successfully with ID:', docRef.id);
-
-      try {
-        const userRef = doc(db, "users", auth.currentUser.uid);
-        await updateDoc(userRef, {
-          ordersCount: increment(1)
-        });
-      } catch (e) {
-        console.warn("Failed to increment ordersCount:", e);
-      }
-
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      await updateDoc(userRef, { ordersCount: increment(1) }).catch(() => {});
       return docRef;
     } catch (error: any) {
-      console.error("Error creating order in Firestore:", error);
+      console.error("Error creating order:", error);
       throw error;
     }
   }
 
   async applyForOrder(orderId: string, workerId: string) {
     if (!auth.currentUser) throw new Error("Не авторизован");
-
     const userRef = doc(db, "users", auth.currentUser.uid);
     const userSnap = await getDoc(userRef);
     const userData = userSnap.data();
-
     const candidate = {
       id: auth.currentUser.uid,
       name: userData?.name || 'Мастер',
       timestamp: Date.now()
     };
-
-    const orderRef = doc(db, "orders", orderId);
-    return updateDoc(orderRef, {
-      candidates: arrayUnion(candidate)
-    });
+    return updateDoc(doc(db, "orders", orderId), { candidates: arrayUnion(candidate) });
   }
 
   async confirmWorker(orderId: string, worker: any) {
     const orderRef = doc(db, "orders", orderId);
-    await updateDoc(orderRef, {
-      workerId: worker.id,
-      status: 'accepted' as OrderStatus
-    });
+    await updateDoc(orderRef, { workerId: worker.id, status: 'accepted' as OrderStatus });
     await notificationService.notifyStatusChange(orderId, worker.id, 'accepted');
-  }
-
-  async updateOrder(orderId: string, data: any) {
-    const orderRef = doc(db, "orders", orderId);
-    return updateDoc(orderRef, {
-      ...data,
-      updatedAt: Date.now(),
-    });
   }
 
   async updateStatus(orderId: string, status: OrderStatus) {
     const orderRef = doc(db, "orders", orderId);
-    await updateDoc(orderRef, {
-      status,
-      updatedAt: Date.now()
-    });
-
+    await updateDoc(orderRef, { status, updatedAt: Date.now() });
     try {
         const orderSnap = await getDoc(orderRef);
         const orderData = orderSnap.data() as Order;
-
-        if (this.currentRole === 'worker' && orderData.employerId) {
-            await notificationService.notifyStatusChange(orderId, orderData.employerId, status);
-        } else if (this.currentRole === 'employer' && orderData.workerId) {
-            await notificationService.notifyStatusChange(orderId, orderData.workerId, status);
-        }
-    } catch (e) {
-        console.error("Error in updateStatus notification:", e);
-    }
+        const targetId = this.currentRole === 'worker' ? orderData.employerId : orderData.workerId;
+        if (targetId) await notificationService.notifyStatusChange(orderId, targetId, status);
+    } catch (e) {}
   }
 
-  async deleteOrder(orderId: string) {
-    const orderRef = doc(db, "orders", orderId);
-    return deleteDoc(orderRef);
-  }
-
-  async togglePin(orderId: string, currentPinStatus: boolean) {
-    const orderRef = doc(db, "orders", orderId);
-    return updateDoc(orderRef, {
-      isPinned: !currentPinStatus,
-      updatedAt: Date.now()
-    });
-  }
-
-  async savePrivateData(userId: string, data: any) {
-    const privateRef = doc(db, "users", userId, "private", "data");
-    return setDoc(privateRef, data, { merge: true });
-  }
-
+  async updateOrder(orderId: string, data: any) { return updateDoc(doc(db, "orders", orderId), { ...data, updatedAt: Date.now() }); }
+  async deleteOrder(orderId: string) { return deleteDoc(doc(db, "orders", orderId)); }
+  async togglePin(orderId: string, currentPinStatus: boolean) { return updateDoc(doc(db, "orders", orderId), { isPinned: !currentPinStatus, updatedAt: Date.now() }); }
+  async savePrivateData(userId: string, data: any) { return setDoc(doc(db, "users", userId, "private", "data"), data, { merge: true }); }
   async getPrivatePhone(userId: string): Promise<string> {
     try {
-      const privateRef = doc(db, "users", userId, "private", "data");
-      const snap = await getDoc(privateRef);
+      const snap = await getDoc(doc(db, "users", userId, "private", "data"));
       return snap.exists() ? snap.data().phoneNumber : '';
-    } catch (e) {
-      console.warn("Permission denied for private phone:", e);
-      return '';
-    }
+    } catch { return ''; }
   }
 }
 

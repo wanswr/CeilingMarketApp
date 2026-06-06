@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { doc, getDoc, updateDoc } from '@firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { z } from 'zod';
 import { COLORS } from '../constants/theme';
 import { db, auth } from '../services/firebase';

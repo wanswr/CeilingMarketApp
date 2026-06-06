@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import { doc, setDoc } from '@firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
 import { db, auth } from '../services/firebase';

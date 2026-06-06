@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Alert, SafeAreaView, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
-import { PhoneAuthProvider, signInWithCredential } from '@firebase/auth';
+import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';

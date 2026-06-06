@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Linking, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, onSnapshot } from '@firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { COLORS } from '../constants/theme';
 import { orderService } from '../services/OrderService';
 import { auth, db } from '../services/firebase';

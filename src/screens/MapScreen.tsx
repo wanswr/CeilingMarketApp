@@ -20,7 +20,7 @@ import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { doc, getDoc } from '@firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { COLORS } from '../constants/theme';
 import { db } from '../services/firebase';
 import { orderService, Order } from '../services/OrderService';
