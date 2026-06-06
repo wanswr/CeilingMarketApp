@@ -4,16 +4,9 @@ service cloud.firestore {
     function isAuthenticated() { return request.auth != null; }
     function isOwner(userId) { return isAuthenticated() && request.auth.uid == userId; }
 
-    // Check if a user is subscribed or has an active trial
     function isSubscribed() {
       let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       return userData.isSubscribed == true || (userData.subscriptionUntil != null && timestamp(userData.subscriptionUntil) > request.time);
-    }
-
-    // Helper to check if requester is involved in a specific order
-    function isInvolvedInOrder(orderData) {
-      return (orderData.employerId == request.auth.uid || orderData.workerId == request.auth.uid) &&
-             orderData.status in ['accepted', 'started', 'finished', 'completed'];
     }
 
     match /users/{userId} {
@@ -21,14 +14,9 @@ service cloud.firestore {
       allow write: if isOwner(userId);
 
       match /private/data {
-        // Only owner or confirmed partner can read private data (phone)
-        allow read: if isOwner(userId) ||
-          exists(/databases/$(database)/documents/orders/{orderId}) &&
-          isInvolvedInOrder(get(/databases/$(database)/documents/orders/{orderId}).data) &&
-          (get(/databases/$(database)/documents/orders/{orderId}).data.employerId == userId ||
-           get(/databases/$(database)/documents/orders/{orderId}).data.workerId == userId);
-
-        allow write: if isOwner(userId);
+        // Restricted to owner for now.
+        // Partner logic requires order document ID which isn't always available in rules.
+        allow read, write: if isOwner(userId);
       }
     }
 

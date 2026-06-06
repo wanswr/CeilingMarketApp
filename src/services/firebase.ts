@@ -1,9 +1,10 @@
 import { initializeApp, getApps, getApp } from '@firebase/app';
 import {
+  // @ts-ignore
   initializeAuth,
-  getAuth,
   // @ts-ignore
   getReactNativePersistence,
+  getAuth,
   Auth
 } from '@firebase/auth';
 import { getFirestore } from '@firebase/firestore';
@@ -22,22 +23,14 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// In React Native, we must use initializeAuth with getReactNativePersistence
-// to ensure the auth state persists between app restarts.
-// We use a singleton pattern to avoid "Auth already initialized" errors.
+// Robust initialization for Auth in React Native
 let auth: Auth;
-if (getApps().length === 0) {
-    auth = initializeAuth(app, {
-        persistence: getReactNativePersistence(AsyncStorage)
-    });
-} else {
-    try {
-        auth = getAuth(app);
-    } catch (e) {
-        auth = initializeAuth(app, {
-            persistence: getReactNativePersistence(AsyncStorage)
-        });
-    }
+try {
+  auth = getAuth(app);
+} catch (e) {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
 }
 
 const db = getFirestore(app);

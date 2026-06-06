@@ -94,8 +94,8 @@ const OrdersListScreen = ({ navigation }: any) => {
                     {formatDate(item.date || item.timestamp)}
                   </Text>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: ['started', 'finished', 'completed'].includes(item.status) ? COLORS.warning : COLORS.primary }]}>
-                  <Text style={styles.statusText}>{['started', 'finished', 'completed'].includes(item.status) ? 'В РАБОТЕ' : 'ОЖИДАНИЕ'}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: (['started', 'finished', 'completed'] as string[]).includes(item.status) ? COLORS.warning : COLORS.primary }]}>
+                  <Text style={styles.statusText}>{(['started', 'finished', 'completed'] as string[]).includes(item.status) ? 'В РАБОТЕ' : 'ОЖИДАНИЕ'}</Text>
                 </View>
               </View>
 

@@ -7,7 +7,7 @@ export interface UserProfile {
   role: 'worker' | 'employer';
   avatar?: string;
   rating: number;
-  experience?: number; // years
+  experience?: number;
   ordersCount: number;
   completedOrders: number;
   instagram?: string;
