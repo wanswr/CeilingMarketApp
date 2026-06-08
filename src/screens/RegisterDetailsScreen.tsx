@@ -3,12 +3,12 @@ import { View, Text, StyleSheet, Alert, SafeAreaView, ScrollView } from 'react-n
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
 import { apiService } from '../services/ApiService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
 
-const RegisterDetailsScreen = ({ navigation, route }: any) => {
+const RegisterDetailsScreen = ({ navigation }: any) => {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
-  const phone = route?.params?.phone || '';
+  const { updateUser } = useAuth();
 
   const handleNext = async () => {
     if (!name.trim()) {
@@ -18,17 +18,12 @@ const RegisterDetailsScreen = ({ navigation, route }: any) => {
 
     setLoading(true);
     try {
-      const response = await apiService.register({
-        phone,
-        name,
-        role: 'WORKER' // Default, can be changed in RoleSelection
+      const response = await apiService.updateProfile({
+        name
       });
 
-      if (response.data.access_token) {
-        await AsyncStorage.setItem('userToken', response.data.access_token);
-        await AsyncStorage.setItem('userData', JSON.stringify(response.data.user));
-        navigation.navigate('RoleSelection');
-      }
+      updateUser(response.data);
+      navigation.navigate('RoleSelection');
     } catch (err: any) {
       console.error(err);
       Alert.alert("Ошибка", err.response?.data?.message || "Не удалось зарегистрироваться");

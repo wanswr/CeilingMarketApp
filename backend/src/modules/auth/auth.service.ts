@@ -11,7 +11,19 @@ export class AuthService {
   ) {}
 
   async validateUser(phone: string): Promise<any> {
-    const user = await this.prisma.user.findUnique({ where: { phone } });
+    let user = await this.prisma.user.findUnique({ where: { phone } });
+
+    // If user doesn't exist, create one automatically (Login-as-Registration)
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          phone,
+          name: `User ${phone.slice(-4)}`,
+          // We don't set a default role here to allow the frontend to trigger role selection
+        },
+      });
+    }
+
     return user;
   }
 

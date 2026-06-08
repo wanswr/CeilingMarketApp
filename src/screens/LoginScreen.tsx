@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
 import { apiService } from '../services/ApiService';
@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 export default function LoginScreen({ navigation }: any) {
   const [phone, setPhone] = useState('+7');
   const [loading, setLoading] = useState(false);
+  const { signIn } = useAuth();
 
   const handleLogin = async () => {
     if (phone.length < 12) {
@@ -21,20 +22,12 @@ export default function LoginScreen({ navigation }: any) {
       // In this new architecture, we call our own backend
       const response = await apiService.login(phone);
       if (response.data.access_token) {
-        await AsyncStorage.setItem('userToken', response.data.access_token);
-        // Navigate or reset to main app
-        navigation.replace('MainTabs');
-      } else {
-        // If backend returns a flag that user is not registered, go to Register
-        navigation.navigate('RegisterDetails', { phone });
+        await signIn(response.data.access_token, response.data.user);
+        // Note: useAuth will trigger Navigation re-render
       }
     } catch (err: any) {
       console.error(err);
-      if (err.response?.status === 401) {
-          navigation.navigate('RegisterDetails', { phone });
-      } else {
-          Alert.alert("Ошибка", "Не удалось войти. " + (err.response?.data?.message || err.message));
-      }
+      Alert.alert("Ошибка", "Не удалось войти. " + (err.response?.data?.message || err.message));
     }
     finally { setLoading(false); }
   };

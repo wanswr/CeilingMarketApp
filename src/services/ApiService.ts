@@ -1,7 +1,10 @@
 import axios, { InternalAxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Base URL for the API. Change this to your production server URL when deploying.
+// Base URL for the API.
+// For Android Emulator, use 'http://10.0.2.2:3000/api'
+// For iOS Simulator, 'http://localhost:3000/api' works
+// For physical devices, use your machine's local IP address (e.g., 'http://192.168.1.50:3000/api')
 const API_URL = 'http://localhost:3000/api';
 
 const api = axios.create({

@@ -2,22 +2,18 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
 import { COLORS } from '../constants/theme';
 import { apiService } from '../services/ApiService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
 
 const RoleSelectionScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(false);
+  const { updateUser } = useAuth();
 
   const selectRole = async (role: 'WORKER' | 'EMPLOYER') => {
     setLoading(true);
     try {
-      await apiService.updateProfile({ role });
-      const userData = await AsyncStorage.getItem('userData');
-      if (userData) {
-        const user = JSON.parse(userData);
-        user.role = role;
-        await AsyncStorage.setItem('userData', JSON.stringify(user));
-      }
-      navigation.replace('MainTabs');
+      const response = await apiService.updateProfile({ role });
+      updateUser(response.data);
+      // navigation.replace('MainTabs') is not needed, useAuth re-renders Navigation
     } catch (error) {
       Alert.alert('Ошибка', 'Не удалось сохранить выбор роли');
     } finally {

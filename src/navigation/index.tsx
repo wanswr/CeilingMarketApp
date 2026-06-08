@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { apiService } from '../services/ApiService';
+import { useAuth } from '../context/AuthContext';
 
 import BottomTabNavigator from './BottomTabNavigator';
 import LoginScreen from '../screens/LoginScreen';
@@ -19,27 +18,7 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 const Stack = createStackNavigator();
 
 export default function Navigation() {
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (token) {
-        const response = await apiService.getProfile();
-        setUser(response.data);
-      }
-    } catch (e) {
-      console.error("Auth check failed:", e);
-      await AsyncStorage.removeItem('userToken');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { user, loading } = useAuth();
 
   if (loading) return <View style={{flex:1, justifyContent:'center'}}><ActivityIndicator size="large" color="#5856D6"/></View>;
 
