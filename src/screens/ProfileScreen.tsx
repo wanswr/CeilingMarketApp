@@ -6,17 +6,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Button } from '../components/Button';
 
-const ProfileScreen = ({ navigation }: any) => {
+const ProfileScreen = ({ route, navigation }: any) => {
+  const userId = route.params?.userId;
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [userId]);
 
   const fetchProfile = async () => {
     try {
-      const response = await apiService.getProfile();
+      const response = userId
+        ? await apiService.getUserProfile(userId)
+        : await apiService.getProfile();
       setUser(response.data);
     } catch (error) {
       console.error(error);

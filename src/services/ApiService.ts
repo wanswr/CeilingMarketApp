@@ -41,6 +41,8 @@ export const apiService = {
   // Users
   getProfile: () => api.get('/users/profile'),
 
+  getUserProfile: (id: string) => api.get(`/users/${id}`),
+
   updateProfile: (data: any) => api.patch('/users/profile', data),
 
   // Auth

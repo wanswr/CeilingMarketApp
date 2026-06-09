@@ -113,6 +113,7 @@ const MapScreen = ({ navigation }: any) => {
             showsUserLocation={true}
             onPress={() => setSelectedOrder(null)}
             customMapStyle={mapStyle}
+            mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
           >
             {orders.map(order => (
               <Marker
@@ -174,36 +175,70 @@ const MapScreen = ({ navigation }: any) => {
       )}
 
       {selectedOrder && (
-        <BlurView intensity={95} tint="light" style={styles.previewCard}>
-           <View style={styles.previewRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.previewTitle} numberOfLines={1}>{selectedOrder.title || selectedOrder.address}</Text>
-                <View style={styles.previewMeta}>
-                  <Ionicons name="location" size={14} color={COLORS.primary} />
-                  <Text style={styles.previewAddress} numberOfLines={1}>{selectedOrder.address}</Text>
+        <BlurView intensity={100} tint="light" style={styles.previewCard}>
+           <View style={styles.previewContent}>
+              <View style={styles.previewHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.previewTitle} numberOfLines={1}>{selectedOrder.title || selectedOrder.address}</Text>
+                  <View style={styles.previewInfoRow}>
+                    <View style={styles.infoBadge}>
+                      <Ionicons name="calendar-outline" size={12} color={COLORS.gray} />
+                      <Text style={styles.infoBadgeText}>{formatDate(selectedOrder.date)}</Text>
+                    </View>
+                    <View style={styles.infoBadge}>
+                      <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
+                      <Text style={[styles.infoBadgeText, { color: COLORS.primary }]}>{selectedOrder.distance?.toFixed(1) || '0.0'} км</Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.priceBadge}>
+                  <Text style={styles.previewPrice}>{selectedOrder.price} ₽</Text>
                 </View>
               </View>
-              <View style={styles.priceBadge}>
-                <Text style={styles.previewPrice}>{selectedOrder.price} ₽</Text>
-              </View>
-           </View>
 
-           <View style={styles.previewFooter}>
-             <View style={styles.employerInfo}>
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>{(selectedOrder.employer?.name || 'U')[0]}</Text>
-                </View>
-                <Text style={styles.employerName}>{selectedOrder.employer?.name || 'Заказчик'}</Text>
-                <Ionicons name="star" size={14} color={COLORS.warning} style={{ marginLeft: 4 }} />
-                <Text style={styles.ratingText}>{selectedOrder.employer?.rating?.toFixed(1) || '5.0'}</Text>
-             </View>
-
-             <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={() => navigation.navigate('OrderDetail', { orderId: selectedOrder.id })}
+              <TouchableOpacity
+                style={styles.employerLink}
+                onPress={() => navigation.navigate('Profile', { userId: selectedOrder.employerId })}
               >
-                <Text style={styles.actionBtnText}>Откликнуться</Text>
+                <View style={styles.avatarSmall}>
+                  <Text style={styles.avatarTextSmall}>{(selectedOrder.employer?.name || 'U')[0]}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.employerNameSmall}>{selectedOrder.employer?.name || 'Заказчик'}</Text>
+                  <View style={styles.ratingRowSmall}>
+                    <Ionicons name="star" size={12} color={COLORS.warning} />
+                    <Text style={styles.ratingTextSmall}>{selectedOrder.employer?.rating?.toFixed(1) || '5.0'}</Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.placeholder} />
               </TouchableOpacity>
+
+              <View style={styles.previewActions}>
+                <View style={styles.secondaryActions}>
+                  <TouchableOpacity
+                    style={styles.iconButton}
+                    onPress={() => navigation.navigate('Chats', { orderId: selectedOrder.id })}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={24} color={COLORS.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.iconButton}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      navigation.navigate('Orders');
+                    }}
+                  >
+                    <Ionicons name="star-outline" size={24} color={COLORS.warning} />
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.mainActionBtn}
+                  onPress={() => navigation.navigate('OrderDetail', { orderId: selectedOrder.id })}
+                >
+                  <Text style={styles.mainActionText}>Откликнуться</Text>
+                </TouchableOpacity>
+              </View>
            </View>
         </BlurView>
       )}
@@ -277,30 +312,61 @@ const styles = StyleSheet.create({
   },
   previewCard: {
     position: 'absolute',
-    bottom: 40,
-    left: 15,
-    right: 15,
-    borderRadius: 24,
-    padding: 20,
+    bottom: Platform.OS === 'ios' ? 90 : 70,
+    left: 12,
+    right: 12,
+    borderRadius: 28,
     ...SHADOWS.heavy,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: 'rgba(255,255,255,0.8)',
     overflow: 'hidden'
   },
-  previewRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
-  previewTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 4 },
-  previewMeta: { flexDirection: 'row', alignItems: 'center' },
-  previewAddress: { fontSize: 13, color: COLORS.gray, marginLeft: 4, flex: 1 },
-  priceBadge: { backgroundColor: 'rgba(45, 91, 255, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  previewPrice: { fontSize: 18, color: COLORS.primary, fontWeight: '800' },
-  previewFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)', paddingTop: 15 },
-  employerInfo: { flexDirection: 'row', alignItems: 'center' },
-  avatarPlaceholder: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.secondary, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
-  avatarText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
-  employerName: { fontSize: 14, fontWeight: '600', color: COLORS.dark },
-  ratingText: { fontSize: 13, color: COLORS.gray, fontWeight: '500' },
-  actionBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 15, ...SHADOWS.soft },
-  actionBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  previewContent: { padding: 20 },
+  previewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
+  previewTitle: { fontSize: 19, fontWeight: '900', color: COLORS.dark, marginBottom: 6, letterSpacing: -0.5 },
+  previewInfoRow: { flexDirection: 'row', gap: 12 },
+  infoBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  infoBadgeText: { fontSize: 12, fontWeight: '600', color: COLORS.gray },
+  priceBadge: { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, ...SHADOWS.soft },
+  previewPrice: { fontSize: 18, color: '#fff', fontWeight: '900' },
+  employerLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    padding: 12,
+    borderRadius: 18,
+    marginBottom: 20
+  },
+  avatarSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.secondary, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  avatarTextSmall: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  employerNameSmall: { fontSize: 14, fontWeight: '700', color: COLORS.dark },
+  ratingRowSmall: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  ratingTextSmall: { fontSize: 12, color: COLORS.gray, fontWeight: '600', marginLeft: 3 },
+  previewActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  secondaryActions: { flexDirection: 'row', gap: 8 },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.soft
+  },
+  mainActionBtn: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    height: 52,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.medium,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3
+  },
+  mainActionText: { color: '#fff', fontWeight: '900', fontSize: 16, letterSpacing: 0.5 },
   listItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   listHeader: { flexDirection: 'row', justifyContent: 'space-between' },
   listTitle: { fontSize: 16, fontWeight: 'bold' },
