@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, ActivityIndicator, Image, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { apiService } from '../services/ApiService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS } from '../constants/theme';
+import { COLORS, SHADOWS } from '../constants/theme';
 import { Button } from '../components/Button';
 
 const ProfileScreen = ({ navigation }: any) => {
@@ -35,61 +36,109 @@ const ProfileScreen = ({ navigation }: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.avatarPlaceholder}>
-          <Text style={styles.avatarText}>{user?.name?.[0] || 'U'}</Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.profileHeader}>
+          <View style={styles.avatarContainer}>
+             <View style={styles.avatarWrapper}>
+                <Text style={styles.avatarText}>{user?.name ? user.name[0] : 'U'}</Text>
+             </View>
+             {user?.isVerified && (
+               <View style={styles.verifiedBadge}>
+                 <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+               </View>
+             )}
+          </View>
+
+          <Text style={styles.name}>{user?.name || 'Пользователь'}</Text>
+          <Text style={styles.phone}>{user?.phone}</Text>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{user?.rating?.toFixed(1) || '5.0'}</Text>
+              <Text style={styles.statLabel}>Рейтинг</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{user?.completedOrders || 0}</Text>
+              <Text style={styles.statLabel}>Заказы</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{user?.experience || 0}</Text>
+              <Text style={styles.statLabel}>Опыт (лет)</Text>
+            </View>
+          </View>
         </View>
-        <Text style={styles.name}>{user?.name}</Text>
-        <Text style={styles.phone}>{user?.phone}</Text>
-        <Text style={styles.role}>{user?.role === 'WORKER' ? 'Исполнитель' : 'Заказчик'}</Text>
-      </View>
 
-      <View style={styles.menu}>
-        <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Subscription')}>
-          <Text style={styles.menuText}>Подписка</Text>
-          <Text style={styles.menuSubtext}>
-            {user?.subscription?.isActive ? 'Активна' : 'Не активна'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.content}>
+          <Text style={styles.sectionTitle}>Управление</Text>
+          <View style={styles.menuCard}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('EditProfile')}>
+              <View style={[styles.iconBox, { backgroundColor: 'rgba(45, 91, 255, 0.1)' }]}>
+                <Ionicons name="person" size={20} color={COLORS.primary} />
+              </View>
+              <Text style={styles.menuText}>Личные данные</Text>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.placeholder} />
+            </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => Alert.alert('В разработке')}>
-          <Text style={styles.menuText}>История заказов</Text>
-        </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Subscription')}>
+              <View style={[styles.iconBox, { backgroundColor: 'rgba(130, 87, 229, 0.1)' }]}>
+                <Ionicons name="card" size={20} color={COLORS.secondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuText}>Подписка</Text>
+                <Text style={[styles.menuSubtext, { color: user?.subscription?.isActive ? COLORS.success : COLORS.danger }]}>
+                  {user?.subscription?.isActive ? 'Активна' : 'Не активна'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.placeholder} />
+            </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => Alert.alert('В разработке')}>
-          <Text style={styles.menuText}>Настройки</Text>
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity style={styles.menuItem} onPress={() => Alert.alert('В разработке')}>
+              <View style={[styles.iconBox, { backgroundColor: 'rgba(0, 200, 151, 0.1)' }]}>
+                <Ionicons name="list" size={20} color={COLORS.success} />
+              </View>
+              <Text style={styles.menuText}>История заказов</Text>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.placeholder} />
+            </TouchableOpacity>
+          </View>
 
-      <Button
-        title="Выйти"
-        onPress={handleLogout}
-        style={styles.logoutBtn}
-        variant="outline"
-      />
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+             <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
+             <Text style={styles.logoutText}>Выйти из аккаунта</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.version}>Версия 2.4.0 (2026.1)</Text>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  header: { alignItems: 'center', padding: 30, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  avatarPlaceholder: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primary,
-    justifyContent: 'center', alignItems: 'center', marginBottom: 15
-  },
-  avatarText: { color: '#fff', fontSize: 32, fontWeight: 'bold' },
-  name: { fontSize: 22, fontWeight: 'bold' },
-  phone: { fontSize: 16, color: '#666', marginTop: 5 },
-  role: { fontSize: 14, color: COLORS.primary, marginTop: 5, fontWeight: '600' },
-  menu: { padding: 20 },
-  menuItem: {
-    paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0',
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'
-  },
-  menuText: { fontSize: 16, color: '#333' },
-  menuSubtext: { fontSize: 14, color: COLORS.primary },
-  logoutBtn: { margin: 20, marginTop: 'auto' }
+  container: { flex: 1, backgroundColor: COLORS.background },
+  profileHeader: { alignItems: 'center', paddingTop: 40, paddingBottom: 30, backgroundColor: COLORS.white, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, ...SHADOWS.soft },
+  avatarContainer: { position: 'relative', marginBottom: 20 },
+  avatarWrapper: { width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', ...SHADOWS.medium },
+  avatarText: { color: '#fff', fontSize: 40, fontWeight: '900' },
+  verifiedBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: COLORS.white, borderRadius: 12, padding: 2, ...SHADOWS.soft },
+  name: { fontSize: 24, fontWeight: '900', color: COLORS.dark, letterSpacing: -0.5 },
+  phone: { fontSize: 15, color: COLORS.gray, marginTop: 4, fontWeight: '500' },
+  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 25, paddingHorizontal: 30 },
+  statItem: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 18, fontWeight: '800', color: COLORS.dark },
+  statLabel: { fontSize: 11, color: COLORS.gray, marginTop: 4, fontWeight: '700', textTransform: 'uppercase' },
+  statDivider: { width: 1, height: 24, backgroundColor: COLORS.border, marginHorizontal: 10 },
+  content: { padding: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 16, letterSpacing: -0.5 },
+  menuCard: { backgroundColor: COLORS.white, borderRadius: 28, padding: 10, ...SHADOWS.soft },
+  menuItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.background },
+  iconBox: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  menuText: { flex: 1, fontSize: 16, fontWeight: '600', color: COLORS.dark },
+  menuSubtext: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 30, padding: 20, borderRadius: 20, backgroundColor: 'rgba(255, 71, 87, 0.05)' },
+  logoutText: { marginLeft: 10, fontSize: 16, fontWeight: '700', color: COLORS.danger },
+  version: { textAlign: 'center', marginTop: 30, color: COLORS.placeholder, fontSize: 12, fontWeight: '500' }
 });
 
 export default ProfileScreen;

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard, ImageBackground } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
 import { apiService } from '../services/ApiService';
-import { COLORS } from '../constants/theme';
+import { COLORS, SHADOWS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }: any) {
@@ -33,47 +35,71 @@ export default function LoginScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.content}
-        >
-          <View style={styles.header}>
-            <View style={styles.logoContainer}>
-              <Ionicons name="construct" size={50} color={COLORS.primary} />
-            </View>
-            <Text style={styles.title}>Добро пожаловать</Text>
-            <Text style={styles.subtitle}>Войдите по номеру телефона</Text>
-          </View>
+    <View style={styles.container}>
+      <LinearGradient colors={['#F8FAFC', '#F1F5F9']} style={styles.gradient}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <SafeAreaView style={{ flex: 1 }}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.content}
+            >
+              <View style={styles.header}>
+                <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.logoContainer}>
+                  <Ionicons name="construct" size={50} color="#fff" />
+                </LinearGradient>
+                <Text style={styles.title}>CeilingsApp</Text>
+                <Text style={styles.subtitle}>Профессиональный маркетплейс мастеров по потолкам</Text>
+              </View>
 
-          <View style={styles.form}>
-            <AppInput
-              label="Номер телефона"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              placeholder="+7 (___) ___-__-__"
-              icon={<Ionicons name="call-outline" size={20} color={COLORS.gray} />}
-            />
-            <Button
-              title="Войти / Регистрация"
-              onPress={handleLogin}
-              loading={loading}
-            />
-          </View>
-        </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
-    </SafeAreaView>
+              <BlurView intensity={90} tint="light" style={styles.formCard}>
+                <Text style={styles.formTitle}>Вход или регистрация</Text>
+                <AppInput
+                  label="Номер телефона"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  placeholder="+7 (___) ___-__-__"
+                  icon={<Ionicons name="call-outline" size={20} color={COLORS.primary} />}
+                />
+                <Button
+                  title="Продолжить"
+                  onPress={handleLogin}
+                  loading={loading}
+                  style={styles.loginBtn}
+                />
+                <Text style={styles.termsText}>
+                  Нажимая кнопку, вы соглашаетесь с условиями{"\n"}
+                  <Text style={styles.termsLink}>Публичной оферты</Text>
+                </Text>
+              </BlurView>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        </TouchableWithoutFeedback>
+      </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.white },
-  content: { flex: 1, padding: 24, justifyContent: 'center' },
-  header: { alignItems: 'center', marginBottom: 40 },
-  logoContainer: { width: 100, height: 100, borderRadius: 30, backgroundColor: COLORS.light, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 28, fontWeight: '800', color: COLORS.dark, marginBottom: 8 },
-  subtitle: { fontSize: 16, color: COLORS.gray, textAlign: 'center' },
-  form: { width: '100%' }
+  gradient: { flex: 1 },
+  content: { flex: 1, padding: 30, justifyContent: 'center' },
+  header: { alignItems: 'center', marginBottom: 50 },
+  logoContainer: {
+    width: 100, height: 100, borderRadius: 32,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 24, ...SHADOWS.medium
+  },
+  title: { fontSize: 36, fontWeight: '900', color: COLORS.dark, letterSpacing: -1.5 },
+  subtitle: { fontSize: 16, color: COLORS.gray, textAlign: 'center', marginTop: 10, paddingHorizontal: 20, lineHeight: 22 },
+  formCard: {
+    width: '100%', padding: 24, borderRadius: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.5)',
+    ...SHADOWS.heavy
+  },
+  formTitle: { fontSize: 20, fontWeight: '800', color: COLORS.dark, marginBottom: 24, textAlign: 'center' },
+  loginBtn: { marginTop: 10, height: 60, borderRadius: 18 },
+  termsText: { fontSize: 12, color: COLORS.gray, textAlign: 'center', marginTop: 20, lineHeight: 18 },
+  termsLink: { color: COLORS.primary, fontWeight: '700' }
 });

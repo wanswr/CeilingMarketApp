@@ -7,7 +7,8 @@ export class OrdersService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateOrderDto, employerId: string) {
-    return this.prisma.order.create({
+    console.log(`[OrdersService] Creating order for employer: ${employerId}`, dto);
+    const order = await this.prisma.order.create({
       data: {
         title: dto.title,
         address: dto.address,
@@ -21,14 +22,20 @@ export class OrdersService {
         status: 'PENDING',
       },
     });
+    console.log(`[OrdersService] Order created successfully: ${order.id}`);
+    return order;
   }
 
   async findAll(filters: { lat?: number; lng?: number; radius?: number; minPrice?: number; status?: string }) {
+    console.log('[OrdersService] Finding orders with filters:', filters);
     const { lat, lng, radius, minPrice, status } = filters;
 
     const where: any = {};
     if (minPrice) where.price = { gte: minPrice };
-    if (status) where.status = status;
+    if (status) {
+      // Ensure we match the enum casing
+      where.status = status.toUpperCase();
+    }
 
     const orders = await this.prisma.order.findMany({
       where,
@@ -36,15 +43,21 @@ export class OrdersService {
         employer: {
           select: { id: true, name: true, rating: true, avatar: true }
         }
-      }
+      },
+      orderBy: { createdAt: 'desc' }
     });
 
+    console.log(`[OrdersService] Total orders found in DB: ${orders.length}`);
+
     if (lat && lng && radius) {
-      return orders.filter(order => {
+      const filtered = orders.filter(order => {
         const distance = this.calculateDistance(lat, lng, order.latitude, order.longitude);
         (order as any).distance = distance;
-        return distance <= radius;
+        const isWithin = distance <= radius;
+        return isWithin;
       });
+      console.log(`[OrdersService] Orders after distance filtering (${radius}km): ${filtered.length}`);
+      return filtered;
     }
 
     return orders;

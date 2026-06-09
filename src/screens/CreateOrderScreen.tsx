@@ -23,7 +23,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { z } from 'zod';
 import { AppInput } from '../components/Input';
 import { apiService } from '../services/ApiService';
-import { COLORS } from '../constants/theme';
+import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
 
@@ -271,24 +271,40 @@ export default function CreateOrderScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bgLight }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={{ padding: 20 }}>
-            <Text style={styles.title}>{i18n.t('orders.new')}</Text>
+          <ScrollView contentContainerStyle={{ padding: 24 }}>
+            <View style={styles.header}>
+              <Text style={styles.title}>{i18n.t('orders.new')}</Text>
+              <Text style={styles.subtitle}>Опишите задачу максимально подробно</Text>
+            </View>
 
-            <AppInput
-              label={i18n.t('orders.title')}
-              placeholder={i18n.t('orders.titlePlaceholder')}
-              value={form.title}
-              onChangeText={(t:any)=>setForm({...form, title:t})}
-              error={errors.title}
-            />
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Основная информация</Text>
+              <AppInput
+                label={i18n.t('orders.title')}
+                placeholder={i18n.t('orders.titlePlaceholder')}
+                value={form.title}
+                onChangeText={(t:any)=>setForm({...form, title:t})}
+                error={errors.title}
+              />
 
-            <View style={styles.section}>
+              <AppInput
+                label={i18n.t('orders.details')}
+                placeholder={i18n.t('orders.detailsPlaceholder')}
+                multiline
+                style={{height: 100, textAlignVertical: 'top'}}
+                value={form.details}
+                onChangeText={(t:any)=>setForm({...form, details:t})}
+                error={errors.details}
+              />
+            </View>
+
+            <View style={styles.card}>
               <Text style={styles.sectionTitle}>{i18n.t('orders.location')}</Text>
               <View style={{ position: 'relative' }}>
                 <AppInput
@@ -326,13 +342,13 @@ export default function CreateOrderScreen({ navigation }: any) {
                   {isGeocoding ? <ActivityIndicator size="small" color={COLORS.primary} /> : (
                     <>
                       <Ionicons name="search-outline" size={16} color={COLORS.primary} />
-                      <Text style={styles.locationBtnText}>Найти адрес</Text>
+                      <Text style={styles.locationBtnText}>Найти</Text>
                     </>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.locationBtn} onPress={handleUseCurrentLocation}>
                   <Ionicons name="navigate-outline" size={16} color={COLORS.primary} />
-                  <Text style={styles.locationBtnText}>Моё местоположение</Text>
+                  <Text style={styles.locationBtnText}>Местоположение</Text>
                 </TouchableOpacity>
               </View>
 
@@ -361,50 +377,49 @@ export default function CreateOrderScreen({ navigation }: any) {
               </View>
             </View>
 
-            <View style={styles.row}>
-              <View style={{ flex: 1, marginRight: 10 }}>
-                <AppInput
-                  label={i18n.t('orders.price')}
-                  keyboardType="numeric"
-                  value={form.price}
-                  onChangeText={(t:any)=>setForm({...form, price:t})}
-                  error={errors.price}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>{i18n.t('orders.date')}</Text>
-                <TouchableOpacity
-                  style={styles.dateButton}
-                  onPress={() => {
-                    setTempDate(form.date);
-                    setShowDatePicker(true);
-                  }}
-                >
-                  <Ionicons name="calendar-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
-                  <Text>{formatDate(form.date)}</Text>
-                </TouchableOpacity>
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Условия</Text>
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <AppInput
+                    label={i18n.t('orders.price')}
+                    keyboardType="numeric"
+                    value={form.price}
+                    onChangeText={(t:any)=>setForm({...form, price:t})}
+                    error={errors.price}
+                  />
+                </View>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={styles.label}>{i18n.t('orders.date')}</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.dateButton}
+                    onPress={() => {
+                      setTempDate(form.date);
+                      setShowDatePicker(true);
+                    }}
+                  >
+                    <Ionicons name="calendar-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+                    <Text style={styles.dateText}>{formatDate(form.date)}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 
-            <AppInput
-              label={i18n.t('orders.details')}
-              placeholder={i18n.t('orders.detailsPlaceholder')}
-              multiline
-              style={{height: 100, textAlignVertical: 'top'}}
-              value={form.details}
-              onChangeText={(t:any)=>setForm({...form, details:t})}
-              error={errors.details}
-            />
-
             <TouchableOpacity
+              activeOpacity={0.9}
               style={[styles.publishButton, loading && { opacity: 0.7 }]}
               onPress={handlePublish}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishText}>{i18n.t('orders.publish')}</Text>}
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishText}>{i18n.t('orders.publish')}</Text>
+              )}
             </TouchableOpacity>
 
-            <View style={{ height: 40 }} />
+            <View style={{ height: 60 }} />
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
@@ -413,21 +428,79 @@ export default function CreateOrderScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  clearBtn: { position: 'absolute', right: 15, top: 45, zIndex: 10 },
-  suggestionsContainer: { backgroundColor: '#fff', marginTop: -15, marginBottom: 15, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', zIndex: 1000 },
-  suggestionItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center' },
-  suggestionText: { fontSize: 14, color: COLORS.dark, marginLeft: 8 },
-  section: { marginBottom: 25, backgroundColor: '#fff', padding: 15, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.dark, marginBottom: 15 },
-  locationActions: { flexDirection: 'row', marginBottom: 15, marginTop: -10 },
-  locationBtn: { flexDirection: 'row', alignItems: 'center', marginRight: 15, padding: 5 },
-  locationBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '600', marginLeft: 4 },
-  mapPreviewContainer: { height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 20, borderWidth: 1, borderColor: COLORS.border },
+  header: { marginBottom: 30 },
+  title: { fontSize: 32, fontWeight: '900', color: COLORS.dark, letterSpacing: -1 },
+  subtitle: { fontSize: 16, color: COLORS.gray, marginTop: 8, fontWeight: '500' },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 20,
+    ...SHADOWS.soft,
+    borderWidth: 1,
+    borderColor: 'rgba(226, 232, 240, 0.5)'
+  },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 20, letterSpacing: -0.5 },
+  clearBtn: { position: 'absolute', right: 15, top: 42, zIndex: 10 },
+  suggestionsContainer: {
+    backgroundColor: '#fff',
+    marginTop: -10,
+    marginBottom: 15,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+    ...SHADOWS.medium
+  },
+  suggestionItem: {
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  suggestionText: { fontSize: 14, color: COLORS.dark, marginLeft: 10, fontWeight: '500' },
+  locationActions: { flexDirection: 'row', marginBottom: 20, marginTop: -5 },
+  locationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 20,
+    backgroundColor: 'rgba(45, 91, 255, 0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12
+  },
+  locationBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginLeft: 6 },
+  mapPreviewContainer: {
+    height: 180,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border
+  },
   mapPreview: { width: '100%', height: '100%' },
-  title: { fontSize: 28, fontWeight: 'bold', color: COLORS.dark, marginBottom: 24 },
-  label: { fontSize: 14, fontWeight: '700', color: COLORS.dark, marginBottom: 8, marginLeft: 4 },
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1.5, borderColor: COLORS.border, height: 58, paddingHorizontal: 15 },
-  publishButton: { backgroundColor: COLORS.secondary, padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 10, shadowColor: COLORS.secondary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
-  publishText: { color: '#fff', fontWeight: '800', fontSize: 16, letterSpacing: 1 },
+  label: { fontSize: 14, fontWeight: '800', color: COLORS.dark, marginBottom: 10, marginLeft: 4 },
+  row: { flexDirection: 'row', alignItems: 'flex-end' },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    height: 58,
+    paddingHorizontal: 15
+  },
+  dateText: { fontSize: 15, color: COLORS.dark, fontWeight: '600' },
+  publishButton: {
+    backgroundColor: COLORS.primary,
+    padding: 20,
+    borderRadius: 20,
+    alignItems: 'center',
+    marginTop: 10,
+    ...SHADOWS.medium,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3
+  },
+  publishText: { color: '#fff', fontWeight: '900', fontSize: 18, letterSpacing: 0.5 },
 });

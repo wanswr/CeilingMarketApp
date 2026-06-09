@@ -25,6 +25,7 @@
     "axios": "^1.17.0",
     "expo": "~54.0.35",
     "expo-auth-session": "~7.0.11",
+    "expo-blur": "~15.0.8",
     "expo-contacts": "~15.0.11",
     "expo-crypto": "~15.0.9",
     "expo-firebase-recaptcha": "^2.3.1",
