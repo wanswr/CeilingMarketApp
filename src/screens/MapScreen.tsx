@@ -122,7 +122,12 @@ const MapScreen = ({ navigation }: any) => {
                   latitude: order.latitude,
                   longitude: order.longitude
                 }}
-                onPress={() => setSelectedOrder(order)}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  console.log("[MapScreen] Marker pressed for order:", order.id);
+                  setSelectedOrder(order);
+                }}
+                tracksViewChanges={false}
               >
                 <View style={[styles.customMarker, selectedOrder?.id === order.id && styles.customMarkerActive]}>
                   <Text style={[styles.markerPrice, selectedOrder?.id === order.id && styles.markerPriceActive]}>
@@ -319,7 +324,9 @@ const styles = StyleSheet.create({
     ...SHADOWS.heavy,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.8)',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    zIndex: 1000,
+    elevation: 10,
   },
   previewContent: { padding: 20 },
   previewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
