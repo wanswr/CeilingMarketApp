@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 import { OrderService, Order } from '../services/OrderService';
-import { COLORS } from '../constants/theme';
+import { COLORS, SHADOWS } from '../constants/theme';
 
 const OrdersListScreen = ({ navigation }: any) => {
   const [orders, setOrders] = useState<Order[]>([]);
