@@ -36,3 +36,6 @@ config.js
 # typescript
 *.tsbuildinfo
 esc/
+
+# testing
+coverage/

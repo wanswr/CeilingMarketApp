@@ -1,35 +1,506 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
+  Image,
+  Modal
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { z } from 'zod';
 import { AppInput } from '../components/Input';
-import { orderService } from '../services/OrderService';
+import { apiService } from '../services/ApiService';
+import { COLORS, SHADOWS } from '../constants/theme';
+import { formatDate } from '../utils/date';
+import i18n from '../constants/i18n';
+
+const orderSchema = z.object({
+  title: z.string().min(5, "Заголовок слишком короткий"),
+  address: z.string().min(5, "Укажите полный адрес"),
+  price: z.string().refine(v => !isNaN(Number(v)) && Number(v) > 0, "Укажите корректную сумму"),
+  details: z.string().min(10, "Добавьте больше деталей"),
+});
 
 export default function CreateOrderScreen({ navigation }: any) {
-  const [form, setForm] = useState({ address: '', price: '', details: '' });
+  const [form, setForm] = useState({
+    title: '',
+    address: '',
+    price: '',
+    details: '',
+    date: new Date(),
+  });
+  const [images, setImages] = useState<string[]>([]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date());
   const [loading, setLoading] = useState(false);
+  const [coordinates, setCoordinates] = useState<{latitude: number, longitude: number} | null>(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [normalizedAddress, setNormalizedAddress] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [errors, setErrors] = useState<any>({});
 
-  const handlePublish = async () => {
-    if (!form.address || !form.price) { Alert.alert("Ошибка", "Заполните все поля"); return; }
+  const pickImage = async () => {
+    const { status: libStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (libStatus !== 'granted') {
+      Alert.alert('Доступ запрещен', 'Для выбора фото требуется разрешение на доступ к галерее. Вы можете включить его в настройках.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setImages([...images, result.assets[0].uri]);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setImages(images.filter((_, i) => i !== index));
+  };
+
+  const mapRef = React.useRef<MapView>(null);
+
+  const handleAddressChange = async (text: string) => {
+    setForm({ ...form, address: text });
+    if (text.length > 2) {
+      try {
+        const queries = [
+          text,
+          `Москва, ${text}`,
+          `Московская область, ${text}`
+        ];
+
+        let foundSuggestions: string[] = [];
+        for (const q of queries) {
+          const results = await Location.geocodeAsync(q);
+          if (results.length > 0) {
+            const rev = await Location.reverseGeocodeAsync({
+              latitude: results[0].latitude,
+              longitude: results[0].longitude
+            });
+            if (rev.length > 0) {
+              const r = rev[0];
+              const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
+              if (formatted && !foundSuggestions.includes(formatted)) {
+                foundSuggestions.push(formatted);
+              }
+            }
+          }
+          if (foundSuggestions.length > 2) break;
+        }
+        setSuggestions(foundSuggestions);
+      } catch (e) {}
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const selectSuggestion = (addr: string) => {
+    setForm({ ...form, address: addr });
+    setSuggestions([]);
+    handleGeocode(addr);
+  };
+
+  const handleGeocode = async (overrideAddr?: string) => {
+    const addrToUse = overrideAddr || form.address;
+    if (!addrToUse || addrToUse.length < 3) return;
+
+    setIsGeocoding(true);
+    try {
+      const input = addrToUse.trim();
+      const queries = [
+        input,
+        `Москва, ${input}`,
+        `Московская область, ${input}`,
+      ];
+
+      let bestResult = null;
+
+      for (const query of queries) {
+        const results = await Location.geocodeAsync(query);
+        if (results.length > 0) {
+          const res = results[0];
+          if (res.latitude > 54 && res.latitude < 57 && res.longitude > 35 && res.longitude < 40) {
+            bestResult = res;
+            break;
+          }
+          if (!bestResult) bestResult = res;
+        }
+      }
+
+      if (bestResult) {
+        const newCoords = {
+          latitude: bestResult.latitude,
+          longitude: bestResult.longitude,
+        };
+        setCoordinates(newCoords);
+
+        try {
+          const rev = await Location.reverseGeocodeAsync(newCoords);
+          if (rev.length > 0) {
+            const r = rev[0];
+            const normalized = [r.city, r.street, r.name].filter(Boolean).join(', ');
+            setNormalizedAddress(normalized);
+          } else {
+            setNormalizedAddress(null);
+          }
+        } catch (e) {
+          setNormalizedAddress(null);
+        }
+
+        if (mapRef.current) {
+          mapRef.current.animateToRegion({
+            ...newCoords,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 1000);
+        }
+      } else {
+        Alert.alert("Адрес не найден", "Попробуйте уточнить город или район, либо поставьте метку на карте вручную.");
+      }
+    } catch (err) {
+      console.warn("Geocoding failed:", err);
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Ошибка', 'Нет доступа к местоположению');
+      return;
+    }
+
     setLoading(true);
     try {
-      await orderService.createOrder(form);
+      const loc = await Location.getCurrentPositionAsync({});
+      const coords = {
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      };
+      setCoordinates(coords);
+
+      const reverse = await Location.reverseGeocodeAsync(coords);
+      if (reverse.length > 0) {
+        const addr = reverse[0];
+        const formatted = [addr.city, addr.street, addr.name].filter(Boolean).join(', ');
+        setForm(f => ({ ...f, address: formatted }));
+      }
+    } catch (err) {
+      Alert.alert('Ошибка', 'Не удалось получить координаты');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    // Validation
+    const validation = orderSchema.safeParse(form);
+    if (!validation.success) {
+      const fieldErrors: any = {};
+      validation.error.errors.forEach(err => {
+        fieldErrors[err.path[0]] = err.message;
+      });
+      setErrors(fieldErrors);
+      Alert.alert("Ошибка заполнения", "Пожалуйста, проверьте все поля.");
+      return;
+    }
+
+    if (!coordinates) {
+      Alert.alert("Ошибка", "Не удалось определить координаты адреса. Пожалуйста, проверьте адрес или используйте текущее местоположение.");
+      return;
+    }
+
+    setLoading(true);
+    setErrors({});
+    try {
+      const orderData = {
+        ...form,
+        date: form.date.toISOString(),
+        images: [],
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        price: Number(form.price),
+      };
+
+      await apiService.createOrder(orderData);
+
       Alert.alert("Успех", "Заказ опубликован!");
-      navigation.navigate('Map');
-    } catch (e) { Alert.alert("Ошибка сохранения"); } 
+      navigation.goBack();
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert("Ошибка сохранения", e.message || "Произошла неизвестная ошибка");
+    }
     finally { setLoading(false); }
   };
 
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      if (selectedDate) {
+        setForm({ ...form, date: selectedDate });
+      }
+    } else {
+      if (selectedDate) {
+        setTempDate(selectedDate);
+      }
+    }
+  };
+
+  const confirmIosDate = () => {
+    setForm({ ...form, date: tempDate });
+    setShowDatePicker(false);
+  };
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#EEF2FF' }}>
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 20 }}>Новый заказ</Text>
-        <AppInput label="Адрес объекта" value={form.address} onChangeText={(t:any)=>setForm({...form, address:t})} />
-        <AppInput label="Оплата (₽)" keyboardType="numeric" value={form.price} onChangeText={(t:any)=>setForm({...form, price:t})} />
-        <AppInput label="Описание" multiline style={{height:120, textAlignVertical:'top'}} value={form.details} onChangeText={(t:any)=>setForm({...form, details:t})} />
-        <TouchableOpacity style={{backgroundColor:'#5856D6', padding:18, borderRadius:12, alignItems:'center', marginTop:10}} onPress={handlePublish} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={{color:'#fff', fontWeight:'bold'}}>ОПУБЛИКОВАТЬ</Text>}
-        </TouchableOpacity>
-      </ScrollView>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView contentContainerStyle={{ padding: 24 }}>
+            <View style={styles.header}>
+              <Text style={styles.title}>{i18n.t('orders.new')}</Text>
+              <Text style={styles.subtitle}>Опишите задачу максимально подробно</Text>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Основная информация</Text>
+              <AppInput
+                label={i18n.t('orders.title')}
+                placeholder={i18n.t('orders.titlePlaceholder')}
+                value={form.title}
+                onChangeText={(t:any)=>setForm({...form, title:t})}
+                error={errors.title}
+              />
+
+              <AppInput
+                label={i18n.t('orders.details')}
+                placeholder={i18n.t('orders.detailsPlaceholder')}
+                multiline
+                style={{height: 100, textAlignVertical: 'top'}}
+                value={form.details}
+                onChangeText={(t:any)=>setForm({...form, details:t})}
+                error={errors.details}
+              />
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>{i18n.t('orders.location')}</Text>
+              <View style={{ position: 'relative' }}>
+                <AppInput
+                  label={i18n.t('orders.address')}
+                  placeholder="Улица, дом..."
+                  value={form.address}
+                  onChangeText={handleAddressChange}
+                  onBlur={() => handleGeocode()}
+                  icon={<Ionicons name="location-outline" size={20} color={COLORS.primary} />}
+                  error={errors.address}
+                />
+                {form.address.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.clearBtn}
+                    onPress={() => { setForm({...form, address: ''}); setSuggestions([]); setCoordinates(null); }}
+                  >
+                    <Ionicons name="close-circle" size={20} color={COLORS.gray} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {suggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  {suggestions.map((s, i) => (
+                    <TouchableOpacity key={i} style={styles.suggestionItem} onPress={() => selectSuggestion(s)}>
+                      <Ionicons name="search-outline" size={14} color={COLORS.gray} />
+                      <Text style={styles.suggestionText}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.locationActions}>
+                <TouchableOpacity style={styles.locationBtn} onPress={() => handleGeocode()} disabled={isGeocoding}>
+                  {isGeocoding ? <ActivityIndicator size="small" color={COLORS.primary} /> : (
+                    <>
+                      <Ionicons name="search-outline" size={16} color={COLORS.primary} />
+                      <Text style={styles.locationBtnText}>Найти</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.locationBtn} onPress={handleUseCurrentLocation}>
+                  <Ionicons name="navigate-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.locationBtnText}>Местоположение</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.mapPreviewContainer}>
+                <MapView
+                  ref={mapRef}
+                  provider={PROVIDER_GOOGLE}
+                  style={styles.mapPreview}
+                  initialRegion={{
+                    latitude: coordinates?.latitude || 55.751244,
+                    longitude: coordinates?.longitude || 37.618423,
+                    latitudeDelta: 0.1,
+                    longitudeDelta: 0.1,
+                  }}
+                  onPress={(e) => setCoordinates(e.nativeEvent.coordinate)}
+                >
+                  {coordinates && (
+                    <Marker
+                      coordinate={coordinates}
+                      draggable
+                      onDragEnd={(e) => setCoordinates(e.nativeEvent.coordinate)}
+                      pinColor={COLORS.primary}
+                    />
+                  )}
+                </MapView>
+              </View>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Условия</Text>
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <AppInput
+                    label={i18n.t('orders.price')}
+                    keyboardType="numeric"
+                    value={form.price}
+                    onChangeText={(t:any)=>setForm({...form, price:t})}
+                    error={errors.price}
+                  />
+                </View>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={styles.label}>{i18n.t('orders.date')}</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.dateButton}
+                    onPress={() => {
+                      setTempDate(form.date);
+                      setShowDatePicker(true);
+                    }}
+                  >
+                    <Ionicons name="calendar-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+                    <Text style={styles.dateText}>{formatDate(form.date)}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[styles.publishButton, loading && { opacity: 0.7 }]}
+              onPress={handlePublish}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.publishText}>{i18n.t('orders.publish')}</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={{ height: 60 }} />
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  header: { marginBottom: 30 },
+  title: { fontSize: 32, fontWeight: '900', color: COLORS.dark, letterSpacing: -1 },
+  subtitle: { fontSize: 16, color: COLORS.gray, marginTop: 8, fontWeight: '500' },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 20,
+    ...SHADOWS.soft,
+    borderWidth: 1,
+    borderColor: 'rgba(226, 232, 240, 0.5)'
+  },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 20, letterSpacing: -0.5 },
+  clearBtn: { position: 'absolute', right: 15, top: 42, zIndex: 10 },
+  suggestionsContainer: {
+    backgroundColor: '#fff',
+    marginTop: -10,
+    marginBottom: 15,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+    ...SHADOWS.medium
+  },
+  suggestionItem: {
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  suggestionText: { fontSize: 14, color: COLORS.dark, marginLeft: 10, fontWeight: '500' },
+  locationActions: { flexDirection: 'row', marginBottom: 20, marginTop: -5 },
+  locationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 20,
+    backgroundColor: 'rgba(45, 91, 255, 0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12
+  },
+  locationBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '700', marginLeft: 6 },
+  mapPreviewContainer: {
+    height: 180,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border
+  },
+  mapPreview: { width: '100%', height: '100%' },
+  label: { fontSize: 14, fontWeight: '800', color: COLORS.dark, marginBottom: 10, marginLeft: 4 },
+  row: { flexDirection: 'row', alignItems: 'flex-end' },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    height: 58,
+    paddingHorizontal: 15
+  },
+  dateText: { fontSize: 15, color: COLORS.dark, fontWeight: '600' },
+  publishButton: {
+    backgroundColor: COLORS.primary,
+    padding: 20,
+    borderRadius: 20,
+    alignItems: 'center',
+    marginTop: 10,
+    ...SHADOWS.medium,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3
+  },
+  publishText: { color: '#fff', fontWeight: '900', fontSize: 18, letterSpacing: 0.5 },
+});

@@ -1,32 +1,68 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+import { COLORS } from '../constants/theme';
+import { apiService } from '../services/ApiService';
+import { useAuth } from '../context/AuthContext';
 
 const RoleSelectionScreen = ({ navigation }: any) => {
-  const selectRole = (role: string) => {
-    // В будущем здесь будет сохранение роли в базу
-    navigation.replace('MainApp');
+  const [loading, setLoading] = useState(false);
+  const { updateUser } = useAuth();
+
+  const selectRole = async (role: 'WORKER' | 'EMPLOYER') => {
+    setLoading(true);
+    try {
+      const response = await apiService.updateProfile({ role });
+      updateUser(response.data);
+      // navigation.replace('MainTabs') is not needed, useAuth re-renders Navigation
+    } catch (error) {
+      Alert.alert('Ошибка', 'Не удалось сохранить выбор роли');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Кто вы?</Text>
-      <TouchableOpacity style={styles.card} onPress={() => selectRole('worker')}>
-        <Text style={styles.cardTitle}>Монтажник</Text>
-        <Text>Ищу заказы</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.card} onPress={() => selectRole('employer')}>
-        <Text style={styles.cardTitle}>Работодатель</Text>
-        <Text>Создаю заказы</Text>
-      </TouchableOpacity>
-    </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Выберите вашу роль</Text>
+
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => selectRole('WORKER')}
+          disabled={loading}
+        >
+          <Text style={styles.cardTitle}>Я Исполнитель</Text>
+          <Text style={styles.cardDesc}>Хочу находить работу и зарабатывать</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => selectRole('EMPLOYER')}
+          disabled={loading}
+        >
+          <Text style={styles.cardTitle}>Я Заказчик</Text>
+          <Text style={styles.cardDesc}>Хочу размещать заказы и находить помощь</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 30, justifyContent: 'center', backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 30 },
-  card: { backgroundColor: '#f0f7ff', padding: 25, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#007AFF' },
-  cardTitle: { fontSize: 20, fontWeight: 'bold', color: '#007AFF' }
+  container: { flex: 1, backgroundColor: '#fff' },
+  content: { flex: 1, padding: 20, justifyContent: 'center' },
+  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 40 },
+  card: {
+    backgroundColor: '#f8f9fa',
+    padding: 30,
+    borderRadius: 15,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#eee',
+    alignItems: 'center'
+  },
+  cardTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.primary, marginBottom: 10 },
+  cardDesc: { fontSize: 14, color: '#666', textAlign: 'center' }
 });
 
 export default RoleSelectionScreen;
