@@ -16,7 +16,7 @@ import {
   FlatList,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, PROVIDER_GOOGLE, Circle, Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -29,9 +29,6 @@ import i18n from '../constants/i18n';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
-  const [showGas, setShowGas] = useState(false);
-  const [showProd, setShowProd] = useState(false);
-  const [showLayers, setShowLayers] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
@@ -40,30 +37,32 @@ const MapScreen = ({ navigation }: any) => {
   const [budgetMin, setBudgetMin] = useState('');
   const [radius, setRadius] = useState('10');
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
-  const [sortBy, setSortBy] = useState<'distance' | 'price-desc' | 'price-asc'>('distance');
 
-  // Track the last fetched region to avoid redundant requests
-  const lastFetchedRegion = useRef<Region | null>(null);
   const fetchTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  // Unified fetch emitter
+  const emitFetchOrders = async (lat: number, lng: number, latDelta?: number) => {
+    try {
+      const data = await OrderService.getNearbyOrders({
+        lat,
+        lng,
+        radius: Number(radius),
+        minPrice: budgetMin ? Number(budgetMin) : undefined,
+        latDelta
+      });
+      setOrders(data);
+    } catch (e) {
+      console.error("MapScreen fetch error:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     return () => {
       if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
     };
   }, []);
-
-  const fetchOrders = async (lat: number, lng: number, currentRadius: number, minPrice?: number) => {
-    try {
-      console.log("[MapScreen] Fetching orders...");
-      const data = await OrderService.getNearbyOrders(lat, lng, currentRadius, minPrice);
-      console.log("[MapScreen] Orders received:", data.length);
-      setOrders(data);
-    } catch (e) {
-      console.error("Error fetching orders:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useFocusEffect(
     useCallback(() => {
@@ -72,14 +71,8 @@ const MapScreen = ({ navigation }: any) => {
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({});
           setLocation(loc);
-
-          // Initial fetch
-          fetchOrders(
-            loc.coords.latitude,
-            loc.coords.longitude,
-            Number(radius),
-            budgetMin ? Number(budgetMin) : undefined
-          );
+          // Initial fetch from current position
+          emitFetchOrders(loc.coords.latitude, loc.coords.longitude);
         } else {
           setLoading(false);
         }
@@ -87,32 +80,14 @@ const MapScreen = ({ navigation }: any) => {
     }, [radius, budgetMin])
   );
 
+  // Thin client: only emits events when movement STOPS
   const handleRegionChangeComplete = (region: Region) => {
-    // Check if region changed significantly (e.g. more than 10% of delta)
-    if (lastFetchedRegion.current) {
-      const latDiff = Math.abs(lastFetchedRegion.current.latitude - region.latitude);
-      const lngDiff = Math.abs(lastFetchedRegion.current.longitude - region.longitude);
-      const latThreshold = lastFetchedRegion.current.latitudeDelta * 0.1;
-      const lngThreshold = lastFetchedRegion.current.longitudeDelta * 0.1;
-
-      if (latDiff < latThreshold && lngDiff < lngThreshold) {
-        console.log("[MapScreen] Region change too small, skipping fetch");
-        return;
-      }
-    }
-
-    lastFetchedRegion.current = region;
-
-    // Debounce the fetch
     if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
+
+    // Debounce to ensure stability
     fetchTimeout.current = setTimeout(() => {
-      fetchOrders(
-        region.latitude,
-        region.longitude,
-        Number(radius),
-        budgetMin ? Number(budgetMin) : undefined
-      );
-    }, 800); // 800ms debounce after movement stops
+      emitFetchOrders(region.latitude, region.longitude, region.latitudeDelta);
+    }, 800);
   };
 
   const centerToUser = async () => {
@@ -162,7 +137,6 @@ const MapScreen = ({ navigation }: any) => {
                 }}
                 onPress={(e) => {
                   e.stopPropagation();
-                  console.log("[MapScreen] Marker pressed for order:", order.id);
                   setSelectedOrder(order);
                 }}
                 tracksViewChanges={false}

@@ -11,62 +11,104 @@ interface CacheEntry {
 }
 
 let ordersCache: CacheEntry | null = null;
-let inFlightRequest: { promise: Promise<Order[]>; params: string } | null = null;
+let inFlightRequest: any = null;
+let lastRequestParams: any = null;
 
 const CACHE_TTL = 5000; // 5 seconds
-const COORDINATE_PRECISION = 4; // ~11 meters at equator
+const COORDINATE_PRECISION = 3; // ~110 meters at equator - enough for a "Gate"
+const MIN_RADIUS_CHANGE = 2; // km
+const MAX_LAT_DELTA_FOR_FETCH = 2.0; // Prevent fetch on extreme zoom out (entire country)
+const MIN_LAT_DELTA_FOR_FETCH = 0.001; // Prevent fetch on extreme zoom in (one building)
 
 export const OrderService = {
-  async getNearbyOrders(lat: number, lng: number, radius: number = 50, minPrice?: number) {
+  async getNearbyOrders(params: { lat: number; lng: number; radius?: number; minPrice?: number; latDelta?: number }) {
+    const { lat, lng, radius = 50, minPrice, latDelta } = params;
+
+    // 1. Extreme Zoom Protection (Anti-Spam)
+    if (latDelta !== undefined) {
+      if (latDelta > MAX_LAT_DELTA_FOR_FETCH || latDelta < MIN_LAT_DELTA_FOR_FETCH) {
+        console.log('[OrderService] Fetch blocked: extreme zoom level (delta:', latDelta, ')');
+        return ordersCache?.data || [];
+      }
+    }
+
+    // 2. Coordinate Rounding & Precision (Noise reduction)
+    const roundedLat = parseFloat(lat.toFixed(COORDINATE_PRECISION));
+    const roundedLng = parseFloat(lng.toFixed(COORDINATE_PRECISION));
+
     const paramsObj = {
-      lat: parseFloat(lat.toFixed(COORDINATE_PRECISION)),
-      lng: parseFloat(lng.toFixed(COORDINATE_PRECISION)),
-      radius,
+      lat: roundedLat,
+      lng: roundedLng,
+      radius: Math.round(radius),
       minPrice,
       status: 'PENDING'
     };
     const paramsKey = JSON.stringify(paramsObj);
 
-    // 1. Check in-flight requests (Deduplication)
-    if (inFlightRequest && inFlightRequest.params === paramsKey) {
-      console.log('[OrderService] Returning in-flight request for params:', paramsKey);
-      return inFlightRequest.promise;
+    // 3. Significance Threshold (Fetch Gate)
+    if (lastRequestParams) {
+      const latDiff = Math.abs(lastRequestParams.lat - roundedLat);
+      const lngDiff = Math.abs(lastRequestParams.lng - roundedLng);
+      const radDiff = Math.abs((lastRequestParams.radius || 0) - (paramsObj.radius || 0));
+
+      // If change is too small, return cached or empty
+      if (latDiff === 0 && lngDiff === 0 && radDiff < MIN_RADIUS_CHANGE && lastRequestParams.minPrice === minPrice) {
+        console.log('[OrderService] Fetch Gate: change below threshold, ignoring request');
+        return ordersCache?.data || [];
+      }
     }
 
-    // 2. Check cache
+    // 4. Request Deduplication (In-flight)
+    if (inFlightRequest) {
+      if (inFlightRequest.params === paramsKey) {
+        console.log('[OrderService] Returning in-flight request for params:', paramsKey);
+        return inFlightRequest.promise;
+      } else {
+        // 5. Abort Stale Request (Abort previous if new one is different/more important)
+        console.log('[OrderService] Aborting stale request');
+        inFlightRequest.controller.abort();
+        inFlightRequest = null;
+      }
+    }
+
+    // 6. Cache Check
     const now = Date.now();
     if (ordersCache && ordersCache.params === paramsKey && (now - ordersCache.timestamp) < CACHE_TTL) {
       console.log('[OrderService] Returning cached orders for params:', paramsKey);
       return ordersCache.data;
     }
 
-    // 3. Perform new request
-    console.log('[OrderService] Fetching new orders for params:', paramsKey);
+    // 7. Perform Request
+    console.log('[OrderService] >>> PERFORMING API FETCH:', paramsKey);
+    const controller = new AbortController();
     const fetchPromise = (async () => {
       try {
-        const response = await apiService.getOrders(paramsObj);
+        const response = await apiService.getOrders(paramsObj, { signal: controller.signal });
         const data = response.data;
 
-        // Update cache
         ordersCache = {
           data,
           timestamp: Date.now(),
           params: paramsKey
         };
+        lastRequestParams = paramsObj;
 
         return data;
-      } catch (error) {
-        console.error('Error fetching nearby orders:', error);
+      } catch (error: any) {
+        if (error.name === 'CanceledError' || error.name === 'AbortError' || axiosIsCancel(error)) {
+          console.log('[OrderService] Request aborted');
+          return ordersCache?.data || [];
+        }
+        console.error('Error fetching orders:', error);
         throw error;
       } finally {
-        // Clear in-flight request
-        if (inFlightRequest?.params === paramsKey) {
+        if (inFlightRequest && inFlightRequest.params === paramsKey) {
           inFlightRequest = null;
         }
       }
     })();
 
-    inFlightRequest = { promise: fetchPromise, params: paramsKey };
+    inFlightRequest = { promise: fetchPromise, params: paramsKey, controller };
     return fetchPromise;
   },
 
@@ -110,3 +152,7 @@ export const OrderService = {
     }
   }
 };
+
+function axiosIsCancel(value: any): boolean {
+  return !!(value && value.__CANCEL__);
+}

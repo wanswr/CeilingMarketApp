@@ -36,8 +36,8 @@ api.interceptors.response.use(
 
 export const apiService = {
   // Orders
-  getOrders: (params: { lat?: number; lng?: number; radius?: number; minPrice?: number; status?: string }) =>
-    api.get('/orders', { params }),
+  getOrders: (params: any, config: any = {}) =>
+    api.get('/orders', { params, ...config }),
 
   createOrder: (data: any) => api.post('/orders', data),
 

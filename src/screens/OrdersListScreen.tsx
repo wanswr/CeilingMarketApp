@@ -23,9 +23,9 @@ const OrdersListScreen = ({ navigation }: any) => {
         lng = loc.coords.longitude;
       }
 
-      console.log(`[OrdersListScreen] Fetching orders for ${lat}, ${lng}`);
-      // Now uses OrderService which has caching and deduplication
-      const data = await OrderService.getNearbyOrders(lat, lng, 100);
+      console.log(`[OrdersListScreen] Requesting orders for ${lat}, ${lng}`);
+      // Using the unified Fetch Gate in OrderService
+      const data = await OrderService.getNearbyOrders({ lat, lng, radius: 100 });
       setOrders(data);
     } catch (error) {
       console.error("[OrdersListScreen] Error:", error);
