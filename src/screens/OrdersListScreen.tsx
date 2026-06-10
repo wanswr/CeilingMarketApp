@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { OrderService, Order } from '../services/OrderService';
 import { COLORS, SHADOWS } from '../constants/theme';
@@ -11,7 +10,7 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 1. Consumer: Subscribes to the single dispatcher
+  // 1. Subscribe to central data
   useEffect(() => {
     const unsubscribe = OrderService.subscribe((newOrders) => {
       setOrders(newOrders);
@@ -22,36 +21,17 @@ const OrdersListScreen = ({ navigation }: any) => {
     };
   }, []);
 
-  // 2. Focused Interest: Signal service that we need data
-  const emitInterest = useCallback(async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      let lat = 55.7558;
-      let lng = 37.6173;
-
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
-        lat = loc.coords.latitude;
-        lng = loc.coords.longitude;
-      }
-
-      console.log(`[OrdersListScreen] Emitting interest for ${lat}, ${lng}`);
-      OrderService.emit('screenFocused', { lat, lng, radius: 100, latDelta: 0.2 });
-    } catch (error) {
-      console.error("[OrdersListScreen] Error emitting interest:", error);
-    }
-  }, []);
-
+  // 2. Fetch data if empty or on focus (Single Load logic)
   useFocusEffect(
     useCallback(() => {
-      emitInterest();
-    }, [emitInterest])
+      OrderService.fetchAllOrders();
+    }, [])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await emitInterest();
-    setTimeout(() => setRefreshing(false), 800);
+    await OrderService.refresh();
+    setRefreshing(false);
   };
 
   const renderItem = ({ item }: { item: Order }) => (
@@ -85,7 +65,7 @@ const OrdersListScreen = ({ navigation }: any) => {
     </TouchableOpacity>
   );
 
-  if (loading && !refreshing) {
+  if (loading && orders.length === 0) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -117,7 +97,7 @@ const OrdersListScreen = ({ navigation }: any) => {
           <View style={styles.empty}>
             <Ionicons name="search-outline" size={64} color={COLORS.border} />
             <Text style={styles.emptyText}>Заказов пока нет</Text>
-            <Text style={styles.emptySubtext}>Попробуйте изменить фильтры или подождать новых заказов</Text>
+            <Text style={styles.emptySubtext}>Попробуйте выполнить ручное обновление или подождать новых заказов</Text>
           </View>
         }
       />

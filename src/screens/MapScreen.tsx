@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -11,7 +11,8 @@ import {
   Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import MapView from 'react-native-map-clustering';
 import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -22,16 +23,14 @@ import { OrderService } from '../services/OrderService';
 import { formatDate } from '../utils/date';
 
 const MapScreen = ({ navigation }: any) => {
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [budgetMin, setBudgetMin] = useState('');
-  const [radius, setRadius] = useState('10');
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
 
-  // 1. Consumer: UI only reacts to shared data updates
+  // 1. Subscribe to local order state
   useEffect(() => {
     const unsubscribe = OrderService.subscribe((newOrders) => {
       setOrders(newOrders);
@@ -42,39 +41,20 @@ const MapScreen = ({ navigation }: any) => {
     };
   }, []);
 
-  // 2. Initial Interest: Emit focused event
+  // 2. Fetch all orders ONCE on mount or focus
   useFocusEffect(
     useCallback(() => {
+      OrderService.fetchAllOrders();
+
       (async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({});
           setLocation(loc);
-
-          OrderService.emit('screenFocused', {
-            lat: loc.coords.latitude,
-            lng: loc.coords.longitude,
-            radius: Number(radius),
-            latDelta: 0.1, // Initial delta
-            minPrice: budgetMin ? Number(budgetMin) : undefined
-          });
-        } else {
-          setLoading(false);
         }
       })();
-    }, [radius, budgetMin])
+    }, [])
   );
-
-  // 3. Pure Emitter: Notify service of map movement
-  const handleRegionChangeComplete = (region: Region) => {
-    OrderService.emit('regionChanged', {
-      lat: region.latitude,
-      lng: region.longitude,
-      radius: Number(radius),
-      latDelta: region.latitudeDelta,
-      minPrice: budgetMin ? Number(budgetMin) : undefined
-    });
-  };
 
   const centerToUser = async () => {
     if (location && mapRef.current) {
@@ -88,7 +68,37 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
-  if (loading) return (
+  const handleManualRefresh = async () => {
+     setLoading(true);
+     await OrderService.refresh();
+     setLoading(false);
+  };
+
+  // Optimization: Memoize markers to prevent redundant re-renders
+  const renderedMarkers = useMemo(() => {
+    return orders.map(order => (
+      <Marker
+        key={order.id}
+        coordinate={{
+          latitude: order.latitude,
+          longitude: order.longitude
+        }}
+        onPress={(e) => {
+          e.stopPropagation();
+          setSelectedOrder(order);
+        }}
+        tracksViewChanges={false} // Performance boost
+      >
+        <View style={[styles.customMarker, selectedOrder?.id === order.id && styles.customMarkerActive]}>
+          <Text style={[styles.markerPrice, selectedOrder?.id === order.id && styles.markerPriceActive]}>
+            {order.price >= 1000 ? `${(order.price / 1000).toFixed(1)}k` : order.price}
+          </Text>
+        </View>
+      </Marker>
+    ));
+  }, [orders, selectedOrder?.id]);
+
+  if (loading && orders.length === 0) return (
     <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: '#fff'}}>
       <ActivityIndicator size={50} color={COLORS.primary} />
     </View>
@@ -108,32 +118,15 @@ const MapScreen = ({ navigation }: any) => {
               latitudeDelta: 0.1,
               longitudeDelta: 0.1,
             }}
+            clusterColor={COLORS.primary}
+            clusterTextColor="#fff"
             showsUserLocation={true}
             onPress={() => setSelectedOrder(null)}
-            onRegionChangeComplete={handleRegionChangeComplete}
             customMapStyle={mapStyle}
             mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
+            // Map clustering handles everything automatically
           >
-            {orders.map(order => (
-              <Marker
-                key={order.id}
-                coordinate={{
-                  latitude: order.latitude,
-                  longitude: order.longitude
-                }}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  setSelectedOrder(order);
-                }}
-                tracksViewChanges={false}
-              >
-                <View style={[styles.customMarker, selectedOrder?.id === order.id && styles.customMarkerActive]}>
-                  <Text style={[styles.markerPrice, selectedOrder?.id === order.id && styles.markerPriceActive]}>
-                    {order.price >= 1000 ? `${(order.price / 1000).toFixed(1)}k` : order.price}
-                  </Text>
-                </View>
-              </Marker>
-            ))}
+            {renderedMarkers}
           </MapView>
 
           <SafeAreaView style={styles.headerOverlay}>
@@ -144,8 +137,8 @@ const MapScreen = ({ navigation }: any) => {
                 style={styles.searchInput}
                 placeholderTextColor={COLORS.gray}
               />
-              <TouchableOpacity style={styles.filterBtn} onPress={() => {}}>
-                <Ionicons name="options-outline" size={22} color={COLORS.primary} />
+              <TouchableOpacity style={styles.filterBtn} onPress={handleManualRefresh}>
+                <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
               </TouchableOpacity>
             </BlurView>
           </SafeAreaView>

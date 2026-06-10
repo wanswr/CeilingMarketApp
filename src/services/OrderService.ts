@@ -3,59 +3,15 @@ import { Order, OrderStatus } from '../types';
 
 export { Order, OrderStatus };
 
-// --- Architecture: Central Dispatcher (Single Brain) + Zoom-Aware Bucketing ---
+// --- Simplified Architecture: Load-All + Central Cache ---
 
-export type OrderEvent = 'regionChanged' | 'screenFocused';
-
-interface FetchRequest {
-  lat: number;
-  lng: number;
-  radius: number;
-  latDelta: number;
-  minPrice?: number;
-  status?: string;
-}
-
-interface CacheEntry {
-  data: Order[];
-  timestamp: number;
-}
-
-// Internal State (The "Brain")
-let ordersCache: Record<string, CacheEntry> = {};
-let inFlightRequest: { controller: AbortController; key: string } | null = null;
-let debounceTimer: NodeJS.Timeout | null = null;
 let currentOrders: Order[] = [];
-let pendingRequest: FetchRequest | null = null;
+let isLoading = false;
 const subscribers = new Set<(orders: Order[]) => void>();
-
-// Configuration
-const CACHE_TTL = 30000; // 30 seconds for stable buckets
-const DEBOUNCE_MS = 1000; // 1s cooldown for coalescing
-
-/**
- * Zoom-Aware Grid System.
- * Higher delta (zoomed out) -> lower precision (bigger bucket).
- */
-const getPrecision = (latDelta: number): number => {
-  if (latDelta > 1.0) return 0;   // ~111km grid (extreme zoom out)
-  if (latDelta > 0.2) return 1;   // ~11km grid
-  if (latDelta > 0.05) return 2;  // ~1.1km grid
-  return 3;                      // ~110m grid (zoomed in)
-};
-
-const getGeoBucketKey = (req: FetchRequest): string => {
-  const precision = getPrecision(req.latDelta);
-  const factor = Math.pow(10, precision);
-  const bucketLat = Math.floor(req.lat * factor);
-  const bucketLng = Math.floor(req.lng * factor);
-
-  return `grid${precision}_${bucketLat}_${bucketLng}_rad${req.radius}_price${req.minPrice || 0}_status${req.status || 'PENDING'}`;
-};
 
 export const OrderService = {
   /**
-   * Only way for UI to interact with data.
+   * Subscribe to global order updates.
    */
   subscribe(callback: (orders: Order[]) => void) {
     subscribers.add(callback);
@@ -63,88 +19,52 @@ export const OrderService = {
     return () => subscribers.delete(callback);
   },
 
-  /**
-   * UI Dispatcher: "Single Dispatcher" principle.
-   */
-  emit(event: OrderEvent, params: FetchRequest) {
-    console.log(`[OrderService] Event received: ${event}`);
-
-    // Coalescing Layer: Merge events into a single pending request
-    pendingRequest = params;
-
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      if (pendingRequest) {
-        this.processQueue(pendingRequest);
-        pendingRequest = null;
-      }
-    }, DEBOUNCE_MS);
+  notify() {
+    subscribers.forEach(cb => cb(currentOrders));
   },
 
-  async processQueue(params: FetchRequest) {
-    const geoKey = getGeoBucketKey(params);
-    const now = Date.now();
-
-    // 1. Bucket Cache Hit
-    if (ordersCache[geoKey] && (now - ordersCache[geoKey].timestamp) < CACHE_TTL) {
-      console.log(`[OrderService] Cache Hit (Bucket: ${geoKey})`);
-      this.notify(ordersCache[geoKey].data);
-      return;
-    }
-
-    // 2. Request Coalescing / Abort Stale
-    if (inFlightRequest) {
-      if (inFlightRequest.key === geoKey) {
-        console.log(`[OrderService] Request already in progress for bucket: ${geoKey}`);
-        return;
-      }
-      console.log(`[OrderService] Aborting stale bucket fetch: ${inFlightRequest.key}`);
-      inFlightRequest.controller.abort();
-    }
-
-    // 3. Network Execution
-    console.log(`[OrderService] >>> DISPATCHING API FETCH: ${geoKey}`);
-    const controller = new AbortController();
-    inFlightRequest = { controller, key: geoKey };
+  /**
+   * Fetches all active orders once.
+   * No geo-bucketing, no movement triggers.
+   */
+  async fetchAllOrders() {
+    if (isLoading) return;
+    isLoading = true;
+    console.log('[OrderService] Fetching all active orders...');
 
     try {
+      // Fetch with status=PENDING and large radius to cover all regions
       const response = await apiService.getOrders({
-        lat: params.lat,
-        lng: params.lng,
-        radius: params.radius,
-        minPrice: params.minPrice,
-        status: params.status || 'PENDING'
-      }, { signal: controller.signal });
+        status: 'PENDING',
+        radius: 1000 // Large radius for MVP to get all relevant orders
+      });
 
-      const data = response.data;
-
-      // Update Cache
-      ordersCache[geoKey] = { data, timestamp: Date.now() };
-      this.notify(data);
-
-    } catch (error: any) {
-      if (error.name === 'CanceledError' || error.name === 'AbortError' || error?.__CANCEL__) {
-        console.log(`[OrderService] Fetch aborted for bucket ${geoKey}`);
-      } else {
-        console.error('[OrderService] Fatal fetch error:', error);
-      }
+      currentOrders = response.data;
+      console.log(`[OrderService] Loaded ${currentOrders.length} orders.`);
+      this.notify();
+    } catch (error) {
+      console.error('[OrderService] Failed to load orders:', error);
     } finally {
-      if (inFlightRequest?.key === geoKey) inFlightRequest = null;
+      isLoading = false;
     }
   },
 
-  notify(orders: Order[]) {
-    currentOrders = orders;
-    subscribers.forEach(cb => cb(orders));
+  /**
+   * Manual refresh trigger.
+   */
+  async refresh() {
+    await this.fetchAllOrders();
   },
 
-  // Stateless helpers
+  // Statics / Single helpers
   async getOrderById(id: string) {
     return (await apiService.getOrderDetails(id)).data;
   },
 
   async createOrder(orderData: Partial<Order>) {
-    return (await apiService.createOrder(orderData)).data;
+    const res = await apiService.createOrder(orderData);
+    await this.refresh(); // Refresh local state after creation
+    return res.data;
   },
 
   async applyForOrder(orderId: string) {
@@ -152,6 +72,8 @@ export const OrderService = {
   },
 
   async updateOrderStatus(orderId: string, status: OrderStatus) {
-    return (await apiService.updateOrder(orderId, { status })).data;
+    const res = await apiService.updateOrder(orderId, { status });
+    await this.refresh(); // Refresh local state after status change
+    return res.data;
   }
 };
