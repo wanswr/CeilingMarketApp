@@ -17,11 +17,22 @@ const api = axios.create({
 // Interceptor to add the JWT token to every request
 api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const token = await AsyncStorage.getItem('userToken');
+  console.log(`[API] Request to ${config.url} with token: ${token ? 'PRESENT' : 'MISSING'}`);
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      console.warn("[API] 401 Unauthorized detected. URL:", error.config?.url);
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const apiService = {
   // Orders
