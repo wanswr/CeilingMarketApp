@@ -11,18 +11,19 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 1. Subscribe to the Central OrderService (Consumer)
+  // 1. Consumer: Subscribes to the single dispatcher
   useEffect(() => {
     const unsubscribe = OrderService.subscribe((newOrders) => {
       setOrders(newOrders);
-      if (loading) setLoading(false);
+      setLoading(false);
     });
     return () => {
       unsubscribe();
     };
   }, []);
 
-  const fetchOrders = useCallback(async () => {
+  // 2. Focused Interest: Signal service that we need data
+  const emitInterest = useCallback(async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       let lat = 55.7558;
@@ -34,26 +35,23 @@ const OrdersListScreen = ({ navigation }: any) => {
         lng = loc.coords.longitude;
       }
 
-      console.log(`[OrdersListScreen] Emitting fetch request for ${lat}, ${lng}`);
-      // Thin client: Emit request, don't wait for data here
-      OrderService.emitFetchRequest({ lat, lng, radius: 100 });
+      console.log(`[OrdersListScreen] Emitting interest for ${lat}, ${lng}`);
+      OrderService.emit('screenFocused', { lat, lng, radius: 100, latDelta: 0.2 });
     } catch (error) {
-      console.error("[OrdersListScreen] Error:", error);
+      console.error("[OrdersListScreen] Error emitting interest:", error);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      fetchOrders();
-    }, [fetchOrders])
+      emitInterest();
+    }, [emitInterest])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchOrders();
-    // In a subscription model, we don't know exactly when data arrives,
-    // but for RefreshControl, we can just stop after emitting or wait a bit.
-    setTimeout(() => setRefreshing(false), 500);
+    await emitInterest();
+    setTimeout(() => setRefreshing(false), 800);
   };
 
   const renderItem = ({ item }: { item: Order }) => (

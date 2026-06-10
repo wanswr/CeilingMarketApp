@@ -3,12 +3,15 @@ import { Order, OrderStatus } from '../types';
 
 export { Order, OrderStatus };
 
-// --- Architecture: Central Fetch Gate + Geo Bucketing ---
+// --- Architecture: Central Dispatcher (Single Brain) + Zoom-Aware Bucketing ---
+
+export type OrderEvent = 'regionChanged' | 'screenFocused';
 
 interface FetchRequest {
   lat: number;
   lng: number;
   radius: number;
+  latDelta: number;
   minPrice?: number;
   status?: string;
 }
@@ -18,31 +21,41 @@ interface CacheEntry {
   timestamp: number;
 }
 
-// Internal State
+// Internal State (The "Brain")
 let ordersCache: Record<string, CacheEntry> = {};
 let inFlightRequest: { controller: AbortController; key: string } | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
 let currentOrders: Order[] = [];
+let pendingRequest: FetchRequest | null = null;
 const subscribers = new Set<(orders: Order[]) => void>();
 
 // Configuration
-const CACHE_TTL = 15000; // 15 seconds for geo-bucket
-const DEBOUNCE_MS = 800;
-const GEO_PRECISION = 2; // ~1.1km grid size
+const CACHE_TTL = 30000; // 30 seconds for stable buckets
+const DEBOUNCE_MS = 1000; // 1s cooldown for coalescing
 
 /**
- * Generates a stable bucket key based on normalized coordinates and parameters.
- * This ensures that minor movements within the same bucket don't trigger new fetches.
+ * Zoom-Aware Grid System.
+ * Higher delta (zoomed out) -> lower precision (bigger bucket).
  */
+const getPrecision = (latDelta: number): number => {
+  if (latDelta > 1.0) return 0;   // ~111km grid (extreme zoom out)
+  if (latDelta > 0.2) return 1;   // ~11km grid
+  if (latDelta > 0.05) return 2;  // ~1.1km grid
+  return 3;                      // ~110m grid (zoomed in)
+};
+
 const getGeoBucketKey = (req: FetchRequest): string => {
-  const bucketLat = Math.floor(req.lat * Math.pow(10, GEO_PRECISION));
-  const bucketLng = Math.floor(req.lng * Math.pow(10, GEO_PRECISION));
-  return `geo_${bucketLat}_${bucketLng}_rad${req.radius}_price${req.minPrice || 0}_status${req.status || 'PENDING'}`;
+  const precision = getPrecision(req.latDelta);
+  const factor = Math.pow(10, precision);
+  const bucketLat = Math.floor(req.lat * factor);
+  const bucketLng = Math.floor(req.lng * factor);
+
+  return `grid${precision}_${bucketLat}_${bucketLng}_rad${req.radius}_price${req.minPrice || 0}_status${req.status || 'PENDING'}`;
 };
 
 export const OrderService = {
   /**
-   * UI components subscribe to this to receive the latest orders.
+   * Only way for UI to interact with data.
    */
   subscribe(callback: (orders: Order[]) => void) {
     subscribers.add(callback);
@@ -51,89 +64,81 @@ export const OrderService = {
   },
 
   /**
-   * Notifies all subscribers of new data.
+   * UI Dispatcher: "Single Dispatcher" principle.
    */
-  privateNotify(orders: Order[]) {
-    currentOrders = orders;
-    subscribers.forEach(cb => cb(orders));
-  },
+  emit(event: OrderEvent, params: FetchRequest) {
+    console.log(`[OrderService] Event received: ${event}`);
 
-  /**
-   * CENTRAL FETCH GATE: Entry point for all UI request events.
-   * Handles debouncing, deduplication, bucketing, and abortion.
-   */
-  emitFetchRequest(params: FetchRequest) {
+    // Coalescing Layer: Merge events into a single pending request
+    pendingRequest = params;
+
     if (debounceTimer) clearTimeout(debounceTimer);
-
     debounceTimer = setTimeout(() => {
-      this.executeFetch(params);
+      if (pendingRequest) {
+        this.processQueue(pendingRequest);
+        pendingRequest = null;
+      }
     }, DEBOUNCE_MS);
   },
 
-  async executeFetch(params: FetchRequest) {
+  async processQueue(params: FetchRequest) {
     const geoKey = getGeoBucketKey(params);
     const now = Date.now();
 
-    // 1. Check Cache (Bucket level)
+    // 1. Bucket Cache Hit
     if (ordersCache[geoKey] && (now - ordersCache[geoKey].timestamp) < CACHE_TTL) {
-      console.log(`[OrderService] Cache Hit for bucket: ${geoKey}`);
-      this.privateNotify(ordersCache[geoKey].data);
+      console.log(`[OrderService] Cache Hit (Bucket: ${geoKey})`);
+      this.notify(ordersCache[geoKey].data);
       return;
     }
 
-    // 2. Manage In-Flight / Race Conditions
+    // 2. Request Coalescing / Abort Stale
     if (inFlightRequest) {
       if (inFlightRequest.key === geoKey) {
-        console.log(`[OrderService] Deduplicating request for bucket: ${geoKey}`);
-        return; // Already fetching this bucket
+        console.log(`[OrderService] Request already in progress for bucket: ${geoKey}`);
+        return;
       }
-      console.log(`[OrderService] Aborting stale request for bucket: ${inFlightRequest.key}`);
+      console.log(`[OrderService] Aborting stale bucket fetch: ${inFlightRequest.key}`);
       inFlightRequest.controller.abort();
     }
 
-    // 3. Perform Network Fetch
-    console.log(`[OrderService] >>> FETCHING NEW BUCKET: ${geoKey}`);
+    // 3. Network Execution
+    console.log(`[OrderService] >>> DISPATCHING API FETCH: ${geoKey}`);
     const controller = new AbortController();
     inFlightRequest = { controller, key: geoKey };
 
     try {
-      const apiParams = {
+      const response = await apiService.getOrders({
         lat: params.lat,
         lng: params.lng,
         radius: params.radius,
         minPrice: params.minPrice,
         status: params.status || 'PENDING'
-      };
+      }, { signal: controller.signal });
 
-      const response = await apiService.getOrders(apiParams, { signal: controller.signal });
       const data = response.data;
 
       // Update Cache
-      ordersCache[geoKey] = {
-        data,
-        timestamp: Date.now()
-      };
+      ordersCache[geoKey] = { data, timestamp: Date.now() };
+      this.notify(data);
 
-      this.privateNotify(data);
     } catch (error: any) {
-      if (error.name === 'CanceledError' || error.name === 'AbortError' || (error && error.__CANCEL__)) {
-        console.log(`[OrderService] Request for ${geoKey} was aborted.`);
+      if (error.name === 'CanceledError' || error.name === 'AbortError' || error?.__CANCEL__) {
+        console.log(`[OrderService] Fetch aborted for bucket ${geoKey}`);
       } else {
-        console.error('[OrderService] Fetch error:', error);
+        console.error('[OrderService] Fatal fetch error:', error);
       }
     } finally {
-      if (inFlightRequest?.key === geoKey) {
-        inFlightRequest = null;
-      }
+      if (inFlightRequest?.key === geoKey) inFlightRequest = null;
     }
   },
 
-  // Legacy/Direct helper (if needed for one-off tasks, but emitFetchRequest is preferred)
-  async getNearbyOrders(params: FetchRequest) {
-    this.emitFetchRequest(params);
-    return currentOrders;
+  notify(orders: Order[]) {
+    currentOrders = orders;
+    subscribers.forEach(cb => cb(orders));
   },
 
+  // Stateless helpers
   async getOrderById(id: string) {
     return (await apiService.getOrderDetails(id)).data;
   },

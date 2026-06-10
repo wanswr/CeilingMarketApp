@@ -6,9 +6,9 @@ import {
   ActivityIndicator, 
   TouchableOpacity, 
   SafeAreaView, 
-  Platform,
   TextInput,
   FlatList,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
@@ -31,18 +31,18 @@ const MapScreen = ({ navigation }: any) => {
   const [radius, setRadius] = useState('10');
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
 
-  // 1. Subscribe to the Central OrderService (Single Source of Truth)
+  // 1. Consumer: UI only reacts to shared data updates
   useEffect(() => {
     const unsubscribe = OrderService.subscribe((newOrders) => {
       setOrders(newOrders);
-      if (loading) setLoading(false);
+      setLoading(false);
     });
     return () => {
       unsubscribe();
     };
   }, []);
 
-  // 2. Initial Location and Fetch
+  // 2. Initial Interest: Emit focused event
   useFocusEffect(
     useCallback(() => {
       (async () => {
@@ -50,10 +50,12 @@ const MapScreen = ({ navigation }: any) => {
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({});
           setLocation(loc);
-          OrderService.emitFetchRequest({
+
+          OrderService.emit('screenFocused', {
             lat: loc.coords.latitude,
             lng: loc.coords.longitude,
             radius: Number(radius),
+            latDelta: 0.1, // Initial delta
             minPrice: budgetMin ? Number(budgetMin) : undefined
           });
         } else {
@@ -63,12 +65,13 @@ const MapScreen = ({ navigation }: any) => {
     }, [radius, budgetMin])
   );
 
-  // 3. THIN CLIENT: Pure Event Emitter for Map changes
+  // 3. Pure Emitter: Notify service of map movement
   const handleRegionChangeComplete = (region: Region) => {
-    OrderService.emitFetchRequest({
+    OrderService.emit('regionChanged', {
       lat: region.latitude,
       lng: region.longitude,
       radius: Number(radius),
+      latDelta: region.latitudeDelta,
       minPrice: budgetMin ? Number(budgetMin) : undefined
     });
   };
