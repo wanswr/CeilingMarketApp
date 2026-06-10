@@ -3,156 +3,150 @@ import { Order, OrderStatus } from '../types';
 
 export { Order, OrderStatus };
 
-// Simple cache for nearby orders
+// --- Architecture: Central Fetch Gate + Geo Bucketing ---
+
+interface FetchRequest {
+  lat: number;
+  lng: number;
+  radius: number;
+  minPrice?: number;
+  status?: string;
+}
+
 interface CacheEntry {
   data: Order[];
   timestamp: number;
-  params: string;
 }
 
-let ordersCache: CacheEntry | null = null;
-let inFlightRequest: any = null;
-let lastRequestParams: any = null;
+// Internal State
+let ordersCache: Record<string, CacheEntry> = {};
+let inFlightRequest: { controller: AbortController; key: string } | null = null;
+let debounceTimer: NodeJS.Timeout | null = null;
+let currentOrders: Order[] = [];
+const subscribers = new Set<(orders: Order[]) => void>();
 
-const CACHE_TTL = 5000; // 5 seconds
-const COORDINATE_PRECISION = 3; // ~110 meters at equator - enough for a "Gate"
-const MIN_RADIUS_CHANGE = 2; // km
-const MAX_LAT_DELTA_FOR_FETCH = 2.0; // Prevent fetch on extreme zoom out (entire country)
-const MIN_LAT_DELTA_FOR_FETCH = 0.001; // Prevent fetch on extreme zoom in (one building)
+// Configuration
+const CACHE_TTL = 15000; // 15 seconds for geo-bucket
+const DEBOUNCE_MS = 800;
+const GEO_PRECISION = 2; // ~1.1km grid size
+
+/**
+ * Generates a stable bucket key based on normalized coordinates and parameters.
+ * This ensures that minor movements within the same bucket don't trigger new fetches.
+ */
+const getGeoBucketKey = (req: FetchRequest): string => {
+  const bucketLat = Math.floor(req.lat * Math.pow(10, GEO_PRECISION));
+  const bucketLng = Math.floor(req.lng * Math.pow(10, GEO_PRECISION));
+  return `geo_${bucketLat}_${bucketLng}_rad${req.radius}_price${req.minPrice || 0}_status${req.status || 'PENDING'}`;
+};
 
 export const OrderService = {
-  async getNearbyOrders(params: { lat: number; lng: number; radius?: number; minPrice?: number; latDelta?: number }) {
-    const { lat, lng, radius = 50, minPrice, latDelta } = params;
+  /**
+   * UI components subscribe to this to receive the latest orders.
+   */
+  subscribe(callback: (orders: Order[]) => void) {
+    subscribers.add(callback);
+    callback(currentOrders);
+    return () => subscribers.delete(callback);
+  },
 
-    // 1. Extreme Zoom Protection (Anti-Spam)
-    if (latDelta !== undefined) {
-      if (latDelta > MAX_LAT_DELTA_FOR_FETCH || latDelta < MIN_LAT_DELTA_FOR_FETCH) {
-        console.log('[OrderService] Fetch blocked: extreme zoom level (delta:', latDelta, ')');
-        return ordersCache?.data || [];
-      }
+  /**
+   * Notifies all subscribers of new data.
+   */
+  privateNotify(orders: Order[]) {
+    currentOrders = orders;
+    subscribers.forEach(cb => cb(orders));
+  },
+
+  /**
+   * CENTRAL FETCH GATE: Entry point for all UI request events.
+   * Handles debouncing, deduplication, bucketing, and abortion.
+   */
+  emitFetchRequest(params: FetchRequest) {
+    if (debounceTimer) clearTimeout(debounceTimer);
+
+    debounceTimer = setTimeout(() => {
+      this.executeFetch(params);
+    }, DEBOUNCE_MS);
+  },
+
+  async executeFetch(params: FetchRequest) {
+    const geoKey = getGeoBucketKey(params);
+    const now = Date.now();
+
+    // 1. Check Cache (Bucket level)
+    if (ordersCache[geoKey] && (now - ordersCache[geoKey].timestamp) < CACHE_TTL) {
+      console.log(`[OrderService] Cache Hit for bucket: ${geoKey}`);
+      this.privateNotify(ordersCache[geoKey].data);
+      return;
     }
 
-    // 2. Coordinate Rounding & Precision (Noise reduction)
-    const roundedLat = parseFloat(lat.toFixed(COORDINATE_PRECISION));
-    const roundedLng = parseFloat(lng.toFixed(COORDINATE_PRECISION));
-
-    const paramsObj = {
-      lat: roundedLat,
-      lng: roundedLng,
-      radius: Math.round(radius),
-      minPrice,
-      status: 'PENDING'
-    };
-    const paramsKey = JSON.stringify(paramsObj);
-
-    // 3. Significance Threshold (Fetch Gate)
-    if (lastRequestParams) {
-      const latDiff = Math.abs(lastRequestParams.lat - roundedLat);
-      const lngDiff = Math.abs(lastRequestParams.lng - roundedLng);
-      const radDiff = Math.abs((lastRequestParams.radius || 0) - (paramsObj.radius || 0));
-
-      // If change is too small, return cached or empty
-      if (latDiff === 0 && lngDiff === 0 && radDiff < MIN_RADIUS_CHANGE && lastRequestParams.minPrice === minPrice) {
-        console.log('[OrderService] Fetch Gate: change below threshold, ignoring request');
-        return ordersCache?.data || [];
-      }
-    }
-
-    // 4. Request Deduplication (In-flight)
+    // 2. Manage In-Flight / Race Conditions
     if (inFlightRequest) {
-      if (inFlightRequest.params === paramsKey) {
-        console.log('[OrderService] Returning in-flight request for params:', paramsKey);
-        return inFlightRequest.promise;
+      if (inFlightRequest.key === geoKey) {
+        console.log(`[OrderService] Deduplicating request for bucket: ${geoKey}`);
+        return; // Already fetching this bucket
+      }
+      console.log(`[OrderService] Aborting stale request for bucket: ${inFlightRequest.key}`);
+      inFlightRequest.controller.abort();
+    }
+
+    // 3. Perform Network Fetch
+    console.log(`[OrderService] >>> FETCHING NEW BUCKET: ${geoKey}`);
+    const controller = new AbortController();
+    inFlightRequest = { controller, key: geoKey };
+
+    try {
+      const apiParams = {
+        lat: params.lat,
+        lng: params.lng,
+        radius: params.radius,
+        minPrice: params.minPrice,
+        status: params.status || 'PENDING'
+      };
+
+      const response = await apiService.getOrders(apiParams, { signal: controller.signal });
+      const data = response.data;
+
+      // Update Cache
+      ordersCache[geoKey] = {
+        data,
+        timestamp: Date.now()
+      };
+
+      this.privateNotify(data);
+    } catch (error: any) {
+      if (error.name === 'CanceledError' || error.name === 'AbortError' || (error && error.__CANCEL__)) {
+        console.log(`[OrderService] Request for ${geoKey} was aborted.`);
       } else {
-        // 5. Abort Stale Request (Abort previous if new one is different/more important)
-        console.log('[OrderService] Aborting stale request');
-        inFlightRequest.controller.abort();
+        console.error('[OrderService] Fetch error:', error);
+      }
+    } finally {
+      if (inFlightRequest?.key === geoKey) {
         inFlightRequest = null;
       }
     }
+  },
 
-    // 6. Cache Check
-    const now = Date.now();
-    if (ordersCache && ordersCache.params === paramsKey && (now - ordersCache.timestamp) < CACHE_TTL) {
-      console.log('[OrderService] Returning cached orders for params:', paramsKey);
-      return ordersCache.data;
-    }
-
-    // 7. Perform Request
-    console.log('[OrderService] >>> PERFORMING API FETCH:', paramsKey);
-    const controller = new AbortController();
-    const fetchPromise = (async () => {
-      try {
-        const response = await apiService.getOrders(paramsObj, { signal: controller.signal });
-        const data = response.data;
-
-        ordersCache = {
-          data,
-          timestamp: Date.now(),
-          params: paramsKey
-        };
-        lastRequestParams = paramsObj;
-
-        return data;
-      } catch (error: any) {
-        if (error.name === 'CanceledError' || error.name === 'AbortError' || axiosIsCancel(error)) {
-          console.log('[OrderService] Request aborted');
-          return ordersCache?.data || [];
-        }
-        console.error('Error fetching orders:', error);
-        throw error;
-      } finally {
-        if (inFlightRequest && inFlightRequest.params === paramsKey) {
-          inFlightRequest = null;
-        }
-      }
-    })();
-
-    inFlightRequest = { promise: fetchPromise, params: paramsKey, controller };
-    return fetchPromise;
+  // Legacy/Direct helper (if needed for one-off tasks, but emitFetchRequest is preferred)
+  async getNearbyOrders(params: FetchRequest) {
+    this.emitFetchRequest(params);
+    return currentOrders;
   },
 
   async getOrderById(id: string) {
-    try {
-      const response = await apiService.getOrderDetails(id);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching order details:', error);
-      throw error;
-    }
+    return (await apiService.getOrderDetails(id)).data;
   },
 
   async createOrder(orderData: Partial<Order>) {
-    try {
-      const response = await apiService.createOrder(orderData);
-      return response.data;
-    } catch (error) {
-      console.error('Error creating order:', error);
-      throw error;
-    }
+    return (await apiService.createOrder(orderData)).data;
   },
 
   async applyForOrder(orderId: string) {
-    try {
-      const response = await apiService.applyForOrder(orderId);
-      return response.data;
-    } catch (error) {
-      console.error('Error applying for order:', error);
-      throw error;
-    }
+    return (await apiService.applyForOrder(orderId)).data;
   },
 
   async updateOrderStatus(orderId: string, status: OrderStatus) {
-    try {
-      const response = await apiService.updateOrder(orderId, { status });
-      return response.data;
-    } catch (error) {
-      console.error('Error updating order status:', error);
-      throw error;
-    }
+    return (await apiService.updateOrder(orderId, { status })).data;
   }
 };
-
-function axiosIsCancel(value: any): boolean {
-  return !!(value && value.__CANCEL__);
-}

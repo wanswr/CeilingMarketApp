@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -7,12 +7,7 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   Platform,
-  Alert,
-  Modal,
   TextInput,
-  KeyboardAvoidingView,
-  TouchableWithoutFeedback,
-  Keyboard,
   FlatList,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -25,7 +20,6 @@ import { BlurView } from 'expo-blur';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { OrderService } from '../services/OrderService';
 import { formatDate } from '../utils/date';
-import i18n from '../constants/i18n';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
@@ -33,37 +27,22 @@ const MapScreen = ({ navigation }: any) => {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [budgetMin, setBudgetMin] = useState('');
   const [radius, setRadius] = useState('10');
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
 
-  const fetchTimeout = useRef<NodeJS.Timeout | null>(null);
-
-  // Unified fetch emitter
-  const emitFetchOrders = async (lat: number, lng: number, latDelta?: number) => {
-    try {
-      const data = await OrderService.getNearbyOrders({
-        lat,
-        lng,
-        radius: Number(radius),
-        minPrice: budgetMin ? Number(budgetMin) : undefined,
-        latDelta
-      });
-      setOrders(data);
-    } catch (e) {
-      console.error("MapScreen fetch error:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // 1. Subscribe to the Central OrderService (Single Source of Truth)
   useEffect(() => {
+    const unsubscribe = OrderService.subscribe((newOrders) => {
+      setOrders(newOrders);
+      if (loading) setLoading(false);
+    });
     return () => {
-      if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
+      unsubscribe();
     };
   }, []);
 
+  // 2. Initial Location and Fetch
   useFocusEffect(
     useCallback(() => {
       (async () => {
@@ -71,8 +50,12 @@ const MapScreen = ({ navigation }: any) => {
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({});
           setLocation(loc);
-          // Initial fetch from current position
-          emitFetchOrders(loc.coords.latitude, loc.coords.longitude);
+          OrderService.emitFetchRequest({
+            lat: loc.coords.latitude,
+            lng: loc.coords.longitude,
+            radius: Number(radius),
+            minPrice: budgetMin ? Number(budgetMin) : undefined
+          });
         } else {
           setLoading(false);
         }
@@ -80,14 +63,14 @@ const MapScreen = ({ navigation }: any) => {
     }, [radius, budgetMin])
   );
 
-  // Thin client: only emits events when movement STOPS
+  // 3. THIN CLIENT: Pure Event Emitter for Map changes
   const handleRegionChangeComplete = (region: Region) => {
-    if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
-
-    // Debounce to ensure stability
-    fetchTimeout.current = setTimeout(() => {
-      emitFetchOrders(region.latitude, region.longitude, region.latitudeDelta);
-    }, 800);
+    OrderService.emitFetchRequest({
+      lat: region.latitude,
+      lng: region.longitude,
+      radius: Number(radius),
+      minPrice: budgetMin ? Number(budgetMin) : undefined
+    });
   };
 
   const centerToUser = async () => {
@@ -158,7 +141,7 @@ const MapScreen = ({ navigation }: any) => {
                 style={styles.searchInput}
                 placeholderTextColor={COLORS.gray}
               />
-              <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterModalVisible(true)}>
+              <TouchableOpacity style={styles.filterBtn} onPress={() => {}}>
                 <Ionicons name="options-outline" size={22} color={COLORS.primary} />
               </TouchableOpacity>
             </BlurView>

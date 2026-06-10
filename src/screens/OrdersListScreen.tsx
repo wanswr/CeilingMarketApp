@@ -11,6 +11,17 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // 1. Subscribe to the Central OrderService (Consumer)
+  useEffect(() => {
+    const unsubscribe = OrderService.subscribe((newOrders) => {
+      setOrders(newOrders);
+      if (loading) setLoading(false);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   const fetchOrders = useCallback(async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -23,14 +34,11 @@ const OrdersListScreen = ({ navigation }: any) => {
         lng = loc.coords.longitude;
       }
 
-      console.log(`[OrdersListScreen] Requesting orders for ${lat}, ${lng}`);
-      // Using the unified Fetch Gate in OrderService
-      const data = await OrderService.getNearbyOrders({ lat, lng, radius: 100 });
-      setOrders(data);
+      console.log(`[OrdersListScreen] Emitting fetch request for ${lat}, ${lng}`);
+      // Thin client: Emit request, don't wait for data here
+      OrderService.emitFetchRequest({ lat, lng, radius: 100 });
     } catch (error) {
       console.error("[OrdersListScreen] Error:", error);
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -43,7 +51,9 @@ const OrdersListScreen = ({ navigation }: any) => {
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchOrders();
-    setRefreshing(false);
+    // In a subscription model, we don't know exactly when data arrives,
+    // but for RefreshControl, we can just stop after emitting or wait a bit.
+    setTimeout(() => setRefreshing(false), 500);
   };
 
   const renderItem = ({ item }: { item: Order }) => (
