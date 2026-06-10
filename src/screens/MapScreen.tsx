@@ -23,7 +23,6 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { COLORS, SHADOWS } from '../constants/theme';
-import { apiService } from '../services/ApiService';
 import { OrderService } from '../services/OrderService';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
@@ -113,7 +112,7 @@ const MapScreen = ({ navigation }: any) => {
         Number(radius),
         budgetMin ? Number(budgetMin) : undefined
       );
-    }, 1000); // 1 second debounce after movement stops
+    }, 800); // 800ms debounce after movement stops
   };
 
   const centerToUser = async () => {
