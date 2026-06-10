@@ -3,68 +3,95 @@ import { Order, OrderStatus } from '../types';
 
 export { Order, OrderStatus };
 
-// --- Simplified Architecture: Load-All + Central Cache ---
+// --- Simplified Pure Service: Fetch + Cache ---
 
-let currentOrders: Order[] = [];
-let isLoading = false;
-const subscribers = new Set<(orders: Order[]) => void>();
+interface OrderParams {
+  lat?: number;
+  lng?: number;
+  radius?: number;
+  status?: string;
+  minPrice?: number;
+}
+
+interface CacheEntry {
+  data: Order[];
+  timestamp: number;
+}
+
+const ordersCache: Record<string, CacheEntry> = {};
+let inFlightRequest: { controller: AbortController; key: string; promise: Promise<Order[]> } | null = null;
+
+const CACHE_TTL = 60000; // 60 seconds
+
+/**
+ * Deterministic bucket key generator.
+ */
+const getBucketKey = (params: OrderParams): string => {
+  return `bucket_s${params.status || 'PENDING'}_r${params.radius || 'all'}_p${params.minPrice || 0}`;
+};
 
 export const OrderService = {
   /**
-   * Subscribe to global order updates.
+   * Pure fetch with deterministic caching and abortion.
    */
-  subscribe(callback: (orders: Order[]) => void) {
-    subscribers.add(callback);
-    callback(currentOrders);
-    return () => subscribers.delete(callback);
-  },
+  async fetchOrders(params: OrderParams): Promise<Order[]> {
+    const key = getBucketKey(params);
+    const now = Date.now();
 
-  notify() {
-    subscribers.forEach(cb => cb(currentOrders));
-  },
-
-  /**
-   * Fetches all active orders once.
-   * No geo-bucketing, no movement triggers.
-   */
-  async fetchAllOrders() {
-    if (isLoading) return;
-    isLoading = true;
-    console.log('[OrderService] Fetching all active orders...');
-
-    try {
-      // Fetch with status=PENDING and large radius to cover all regions
-      const response = await apiService.getOrders({
-        status: 'PENDING',
-        radius: 1000 // Large radius for MVP to get all relevant orders
-      });
-
-      currentOrders = response.data;
-      console.log(`[OrderService] Loaded ${currentOrders.length} orders.`);
-      this.notify();
-    } catch (error) {
-      console.error('[OrderService] Failed to load orders:', error);
-    } finally {
-      isLoading = false;
+    // 1. Check Cache
+    if (ordersCache[key] && (now - ordersCache[key].timestamp) < CACHE_TTL) {
+      console.log(`[OrderService] Cache Hit: ${key}`);
+      return ordersCache[key].data;
     }
+
+    // 2. Handle In-Flight / Deduplication
+    if (inFlightRequest && inFlightRequest.key === key) {
+      console.log(`[OrderService] Joining in-flight request: ${key}`);
+      return inFlightRequest.promise;
+    }
+
+    // 3. Abort previous if it was different
+    if (inFlightRequest) {
+      console.log(`[OrderService] Aborting stale request: ${inFlightRequest.key}`);
+      inFlightRequest.controller.abort();
+    }
+
+    return this.performFetch(params, key);
   },
 
-  /**
-   * Manual refresh trigger.
-   */
-  async refresh() {
-    await this.fetchAllOrders();
+  async performFetch(params: OrderParams, key: string): Promise<Order[]> {
+    const controller = new AbortController();
+
+    const fetchPromise = (async () => {
+      try {
+        console.log(`[OrderService] >>> API FETCH: ${key}`);
+        const response = await apiService.getOrders(params, { signal: controller.signal });
+        const data = response.data;
+
+        // Update Cache
+        ordersCache[key] = { data, timestamp: Date.now() };
+        return data;
+      } catch (error: any) {
+        if (error.name === 'AbortError' || error.name === 'CanceledError' || error?.__CANCEL__) {
+          console.log(`[OrderService] Fetch aborted: ${key}`);
+          return [];
+        }
+        throw error;
+      } finally {
+        if (inFlightRequest?.key === key) inFlightRequest = null;
+      }
+    })();
+
+    inFlightRequest = { controller, key, promise: fetchPromise };
+    return fetchPromise;
   },
 
-  // Statics / Single helpers
   async getOrderById(id: string) {
     return (await apiService.getOrderDetails(id)).data;
   },
 
   async createOrder(orderData: Partial<Order>) {
-    const res = await apiService.createOrder(orderData);
-    await this.refresh(); // Refresh local state after creation
-    return res.data;
+    return (await apiService.createOrder(orderData)).data;
   },
 
   async applyForOrder(orderId: string) {
@@ -72,8 +99,6 @@ export const OrderService = {
   },
 
   async updateOrderStatus(orderId: string, status: OrderStatus) {
-    const res = await apiService.updateOrder(orderId, { status });
-    await this.refresh(); // Refresh local state after status change
-    return res.data;
+    return (await apiService.updateOrder(orderId, { status })).data;
   }
 };

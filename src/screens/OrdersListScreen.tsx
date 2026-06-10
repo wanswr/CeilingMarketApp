@@ -10,27 +10,34 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 1. Subscribe to central data
-  useEffect(() => {
-    const unsubscribe = OrderService.subscribe((newOrders) => {
-      setOrders(newOrders);
-      setLoading(false);
-    });
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+  const fetchOrders = useCallback(async (isRefresh = false) => {
+    if (!isRefresh && orders.length > 0) return;
 
-  // 2. Fetch data if empty or on focus (Single Load logic)
+    setLoading(true);
+    try {
+      // Default load for list view (can be tuned to user location if needed, but keeping simple)
+      const data = await OrderService.fetchOrders({
+        lat: 55.7558,
+        lng: 37.6173,
+        radius: 500
+      });
+      setOrders(data);
+    } catch (error) {
+      console.error("[OrdersListScreen] Error:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [orders.length]);
+
   useFocusEffect(
     useCallback(() => {
-      OrderService.fetchAllOrders();
-    }, [])
+      fetchOrders();
+    }, [fetchOrders])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await OrderService.refresh();
+    await fetchOrders(true);
     setRefreshing(false);
   };
 
@@ -97,7 +104,7 @@ const OrdersListScreen = ({ navigation }: any) => {
           <View style={styles.empty}>
             <Ionicons name="search-outline" size={64} color={COLORS.border} />
             <Text style={styles.emptyText}>Заказов пока нет</Text>
-            <Text style={styles.emptySubtext}>Попробуйте выполнить ручное обновление или подождать новых заказов</Text>
+            <Text style={styles.emptySubtext}>Попробуйте изменить фильтры или подождать новых заказов</Text>
           </View>
         }
       />

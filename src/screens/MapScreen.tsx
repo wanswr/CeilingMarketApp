@@ -11,8 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import MapView from 'react-native-map-clustering';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -20,41 +19,91 @@ import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { OrderService } from '../services/OrderService';
+import { GeoClusterService } from '../services/GeoClusterService';
 import { formatDate } from '../utils/date';
+import { Order } from '../types';
 
 const MapScreen = ({ navigation }: any) => {
-  const mapRef = useRef<any>(null);
-  const [orders, setOrders] = useState<any[]>([]);
+  const mapRef = useRef<MapView>(null);
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
+  const [region, setRegion] = useState<Region>({
+    latitude: 55.751244,
+    longitude: 37.618423,
+    latitudeDelta: 0.1,
+    longitudeDelta: 0.1,
+  });
 
-  // 1. Subscribe to local order state
-  useEffect(() => {
-    const unsubscribe = OrderService.subscribe((newOrders) => {
-      setOrders(newOrders);
-      setLoading(false);
-    });
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+  const lastRequestRegion = useRef<Region | null>(null);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // 2. Fetch all orders ONCE on mount or focus
+  // 1. Logic: Load-All Global orders (Moscow + Region)
+  const syncOrders = async (targetRegion: Region) => {
+    try {
+        const data = await OrderService.fetchOrders({
+            lat: targetRegion.latitude,
+            lng: targetRegion.longitude,
+            radius: 500 // Sufficient coverage for broad region
+        });
+
+        setAllOrders(prev => {
+            const existingIds = new Set(prev.map(o => o.id));
+            const newOrders = data.filter(o => !existingIds.has(o.id));
+            return [...prev, ...newOrders];
+        });
+    } catch (e) {
+        console.error("Sync failed", e);
+    } finally {
+        setLoading(false);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
-      OrderService.fetchAllOrders();
-
       (async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({});
           setLocation(loc);
+          const initialRegion = {
+            ...region,
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude
+          };
+          setRegion(initialRegion);
+          syncOrders(initialRegion);
+        } else {
+           syncOrders(region);
         }
       })();
     }, [])
   );
+
+  const handleRegionChangeComplete = (newRegion: Region) => {
+    setRegion(newRegion);
+
+    // Filter Trigger: Only fetch if displacement is significant (> 10% of viewport)
+    if (lastRequestRegion.current) {
+        const latDiff = Math.abs(lastRequestRegion.current.latitude - newRegion.latitude);
+        const lngDiff = Math.abs(lastRequestRegion.current.longitude - newRegion.longitude);
+        const threshold = lastRequestRegion.current.latitudeDelta * 0.1;
+        if (latDiff < threshold && lngDiff < threshold) return;
+    }
+
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+        lastRequestRegion.current = newRegion;
+        syncOrders(newRegion);
+    }, 1000);
+  };
+
+  // 2. UI: Clustering based on viewport delta
+  const displayedItems = useMemo(() => {
+    return GeoClusterService.clusterOrders(allOrders, region.latitudeDelta);
+  }, [allOrders, region.latitudeDelta]);
 
   const centerToUser = async () => {
     if (location && mapRef.current) {
@@ -68,37 +117,7 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
-  const handleManualRefresh = async () => {
-     setLoading(true);
-     await OrderService.refresh();
-     setLoading(false);
-  };
-
-  // Optimization: Memoize markers to prevent redundant re-renders
-  const renderedMarkers = useMemo(() => {
-    return orders.map(order => (
-      <Marker
-        key={order.id}
-        coordinate={{
-          latitude: order.latitude,
-          longitude: order.longitude
-        }}
-        onPress={(e) => {
-          e.stopPropagation();
-          setSelectedOrder(order);
-        }}
-        tracksViewChanges={false} // Performance boost
-      >
-        <View style={[styles.customMarker, selectedOrder?.id === order.id && styles.customMarkerActive]}>
-          <Text style={[styles.markerPrice, selectedOrder?.id === order.id && styles.markerPriceActive]}>
-            {order.price >= 1000 ? `${(order.price / 1000).toFixed(1)}k` : order.price}
-          </Text>
-        </View>
-      </Marker>
-    ));
-  }, [orders, selectedOrder?.id]);
-
-  if (loading && orders.length === 0) return (
+  if (loading && allOrders.length === 0) return (
     <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: '#fff'}}>
       <ActivityIndicator size={50} color={COLORS.primary} />
     </View>
@@ -112,21 +131,56 @@ const MapScreen = ({ navigation }: any) => {
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
             style={styles.map}
-            initialRegion={{
-              latitude: location?.coords.latitude || 55.751244,
-              longitude: location?.coords.longitude || 37.618423,
-              latitudeDelta: 0.1,
-              longitudeDelta: 0.1,
-            }}
-            clusterColor={COLORS.primary}
-            clusterTextColor="#fff"
+            initialRegion={region}
             showsUserLocation={true}
             onPress={() => setSelectedOrder(null)}
+            onRegionChangeComplete={handleRegionChangeComplete}
             customMapStyle={mapStyle}
             mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
-            // Map clustering handles everything automatically
           >
-            {renderedMarkers}
+            {displayedItems.map((item: any) => {
+              if (item.isCluster) {
+                return (
+                  <Marker
+                    key={item.id}
+                    coordinate={{ latitude: item.latitude, longitude: item.longitude }}
+                    onPress={() => {
+                        mapRef.current?.animateToRegion({
+                            latitude: item.latitude,
+                            longitude: item.longitude,
+                            latitudeDelta: region.latitudeDelta / 4,
+                            longitudeDelta: region.longitudeDelta / 4,
+                        }, 500);
+                    }}
+                  >
+                    <View style={styles.clusterMarker}>
+                      <Text style={styles.clusterText}>{item.count}</Text>
+                    </View>
+                  </Marker>
+                );
+              }
+
+              return (
+                <Marker
+                  key={item.id}
+                  coordinate={{
+                    latitude: item.coordinates?.latitude ?? item.location.latitude,
+                    longitude: item.coordinates?.longitude ?? item.location.longitude
+                  }}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setSelectedOrder(item);
+                  }}
+                  tracksViewChanges={false}
+                >
+                  <View style={[styles.customMarker, selectedOrder?.id === item.id && styles.customMarkerActive]}>
+                    <Text style={[styles.markerPrice, selectedOrder?.id === item.id && styles.markerPriceActive]}>
+                      {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
+                    </Text>
+                  </View>
+                </Marker>
+              );
+            })}
           </MapView>
 
           <SafeAreaView style={styles.headerOverlay}>
@@ -137,7 +191,11 @@ const MapScreen = ({ navigation }: any) => {
                 style={styles.searchInput}
                 placeholderTextColor={COLORS.gray}
               />
-              <TouchableOpacity style={styles.filterBtn} onPress={handleManualRefresh}>
+              <TouchableOpacity style={styles.filterBtn} onPress={() => {
+                 setAllOrders([]);
+                 lastRequestRegion.current = null;
+                 syncOrders(region);
+              }}>
                 <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
               </TouchableOpacity>
             </BlurView>
@@ -150,7 +208,7 @@ const MapScreen = ({ navigation }: any) => {
       ) : (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
            <FlatList
-            data={orders}
+            data={allOrders}
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity
@@ -294,6 +352,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     ...SHADOWS.medium
+  },
+  clusterMarker: {
+    backgroundColor: COLORS.primary,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+    ...SHADOWS.medium
+  },
+  clusterText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14
   },
   customMarker: {
     backgroundColor: '#fff',
