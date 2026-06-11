@@ -131,7 +131,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
       <BlurView intensity={90} tint="light" style={styles.footer}>
         <SafeAreaView edges={['bottom']}>
-          {order.status === 'PENDING' ? (
+          {order.status === 'PUBLISHED' ? (
             <TouchableOpacity
               activeOpacity={0.9}
               style={styles.applyBtn}

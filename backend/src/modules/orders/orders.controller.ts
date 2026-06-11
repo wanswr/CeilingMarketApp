@@ -26,7 +26,7 @@ export class OrdersController {
 
   @Get('map')
   getMapOrders() {
-    return this.ordersService.findAll({ status: 'PENDING' });
+    return this.ordersService.findAll({ status: 'PUBLISHED' });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -53,8 +53,18 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post(':id/apply')
-  apply(@Param('id') id: string, @Req() req) {
-    return this.ordersService.apply(id, req.user.id);
+  @Post(':id/claim')
+  claim(@Param('id') id: string, @Req() req) {
+    return this.ordersService.claim(id, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id') id: string,
+    @Body('status') status: string,
+    @Req() req
+  ) {
+    return this.ordersService.transitionStatus(id, status as any, req.user.id);
   }
 }

@@ -45,7 +45,7 @@ export const apiService = {
 
   getOrderDetails: (id: string) => api.get(`/orders/${id}`),
 
-  applyForOrder: (id: string) => api.post(`/orders/${id}/apply`),
+  applyForOrder: (id: string) => api.post(`/orders/${id}/claim`),
 
   updateOrder: (id: string, data: any) => api.patch(`/orders/${id}`, data),
 

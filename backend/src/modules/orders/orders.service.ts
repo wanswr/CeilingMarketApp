@@ -1,14 +1,25 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { OrderStatus } from '@prisma/client';
 
 @Injectable()
 export class OrdersService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * CREATE: Implements idempotency and sets initial status.
+   */
   async create(dto: CreateOrderDto, employerId: string) {
-    console.log(`[OrdersService] Creating order for employer: ${employerId}`, dto);
-    const order = await this.prisma.order.create({
+    if (dto.idempotencyKey) {
+      const existing = await this.prisma.order.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey }
+      });
+      if (existing) return existing;
+    }
+
+    console.log(`[OrdersService] Creating order for employer: ${employerId}`);
+    return this.prisma.order.create({
       data: {
         title: dto.title,
         address: dto.address,
@@ -19,48 +30,124 @@ export class OrdersService {
         date: new Date(dto.date),
         images: dto.images || [],
         employerId,
-        status: 'PENDING',
+        idempotencyKey: dto.idempotencyKey,
+        status: OrderStatus.PUBLISHED, // Default status
       },
     });
-    console.log(`[OrdersService] Order created successfully: ${order.id}`);
-    return order;
+  }
+
+  /**
+   * ATOMIC CLAIM: Postgres Transaction + SELECT FOR UPDATE
+   */
+  async claim(orderId: string, workerId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // 1. SELECT FOR UPDATE to lock the row
+      const order = await tx.$queryRaw<any[]>`
+        SELECT * FROM "Order"
+        WHERE "id" = ${orderId}
+        FOR UPDATE
+      `.then(res => res[0]);
+
+      if (!order) throw new NotFoundException('Order not found');
+
+      // 2. State machine guard
+      if (order.status !== OrderStatus.PUBLISHED) {
+        throw new ConflictException(`Cannot claim order in ${order.status} state`);
+      }
+
+      // 3. Subscription check
+      const sub = await tx.subscription.findUnique({ where: { userId: workerId } });
+      if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
+        throw new ForbiddenException('Active subscription required');
+      }
+
+      // 4. Atomic update
+      return tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.CLAIMED,
+          workerId,
+          claimedAt: new Date(),
+        },
+      });
+    });
+  }
+
+  /**
+   * TRANSITION: Guarded status changes
+   */
+  async transitionStatus(orderId: string, newStatus: OrderStatus, userId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException();
+
+    // Permissions check
+    const isEmployer = order.employerId === userId;
+    const isWorker = order.workerId === userId;
+    if (!isEmployer && !isWorker) throw new ForbiddenException();
+
+    // State Machine Rules
+    const allowed = this.isTransitionAllowed(order.status, newStatus, isEmployer);
+    if (!allowed) throw new ConflictException(`Transition ${order.status} -> ${newStatus} not allowed`);
+
+    return this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: newStatus }
+    });
+  }
+
+  private isTransitionAllowed(from: OrderStatus, to: OrderStatus, isEmployer: boolean): boolean {
+    const transitions: Record<OrderStatus, OrderStatus[]> = {
+      [OrderStatus.CREATED]: [OrderStatus.PUBLISHED, OrderStatus.CANCELLED],
+      [OrderStatus.PUBLISHED]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
+      [OrderStatus.CLAIMED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
+      [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.DISPUTE],
+      [OrderStatus.COMPLETED]: [],
+      [OrderStatus.CANCELLED]: [],
+      [OrderStatus.DISPUTE]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+    };
+
+    return transitions[from]?.includes(to) || false;
   }
 
   async findAll(filters: { lat?: number; lng?: number; radius?: number; minPrice?: number; status?: string }) {
-    console.log('[OrdersService] Finding orders with filters:', filters);
     const { lat, lng, radius, minPrice, status } = filters;
-
     const where: any = {};
     if (minPrice) where.price = { gte: minPrice };
-    if (status) {
-      // Ensure we match the enum casing
-      where.status = status.toUpperCase();
-    }
+    if (status) where.status = status as OrderStatus;
 
     const orders = await this.prisma.order.findMany({
       where,
       include: {
-        employer: {
-          select: { id: true, name: true, rating: true, avatar: true }
-        }
+        employer: { select: { id: true, name: true, rating: true, avatar: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    console.log(`[OrdersService] Total orders found in DB: ${orders.length}`);
-
     if (lat && lng && radius) {
-      const filtered = orders.filter(order => {
-        const distance = this.calculateDistance(lat, lng, order.latitude, order.longitude);
-        (order as any).distance = distance;
-        const isWithin = distance <= radius;
-        return isWithin;
+      return orders.filter(order => {
+        const d = this.calculateDistance(lat, lng, order.latitude, order.longitude);
+        (order as any).distance = d;
+        return d <= radius;
       });
-      console.log(`[OrdersService] Orders after distance filtering (${radius}km): ${filtered.length}`);
-      return filtered;
+    }
+    return orders;
+  }
+
+  async update(id: string, dto: any, userId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) throw new NotFoundException();
+    if (order.employerId !== userId) throw new ForbiddenException();
+
+    // If status is being changed, validate transition
+    if (dto.status && dto.status !== order.status) {
+      const allowed = this.isTransitionAllowed(order.status, dto.status, true);
+      if (!allowed) throw new ConflictException(`Transition ${order.status} -> ${dto.status} not allowed`);
     }
 
-    return orders;
+    return this.prisma.order.update({
+      where: { id },
+      data: dto
+    });
   }
 
   async findOne(id: string) {
@@ -69,54 +156,24 @@ export class OrdersService {
       include: {
         employer: true,
         worker: true,
-        applications: {
-          include: { worker: true }
-        }
+        applications: { include: { worker: true } }
       }
     });
-    if (!order) throw new NotFoundException('Order not found');
-    return order;
-  }
-
-  async update(id: string, dto: any, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException();
-    if (order.employerId !== userId) throw new ForbiddenException();
-
-    return this.prisma.order.update({
-      where: { id },
-      data: dto
-    });
+    return order;
   }
 
   async remove(id: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException();
-    if (order.employerId !== userId) throw new ForbiddenException();
-
+    if (!order || order.employerId !== userId) throw new ForbiddenException();
     return this.prisma.order.delete({ where: { id } });
   }
 
-  async apply(orderId: string, workerId: string) {
-    const sub = await this.prisma.subscription.findUnique({ where: { userId: workerId } });
-    if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
-      throw new ForbiddenException('Active subscription required to apply');
-    }
-
-    return this.prisma.application.create({
-      data: { orderId, workerId }
-    });
-  }
-
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a =
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 }

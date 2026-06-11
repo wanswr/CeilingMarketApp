@@ -67,7 +67,6 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     setRegion(newRegion);
-    orderOrchestrator.onViewportChange(newRegion);
   };
 
   // 3. UI Clustering (Refined)

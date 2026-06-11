@@ -1,78 +1,86 @@
 import { Order } from '../types';
 import { apiService } from './ApiService';
 
-export interface ViewportRegion {
-  latitude: number;
-  longitude: number;
-  latitudeDelta: number;
-  longitudeDelta: number;
-}
-
 type OrderCallback = (orders: Order[]) => void;
 
 /**
- * OrderOrchestrator: Single-Load Map Strategy.
- * Fetches all active orders once and maintains them in local memory.
+ * OrderOrchestrator: Data Engine Version.
+ * Manages a persistent memory cache, handles smart merging, and deduplication.
  */
 class OrderOrchestrator {
-  private orders: Order[] = [];
-  private isInitialLoadDone: boolean = false;
-  private isLoading: boolean = false;
+  private orderCache: Map<string, Order> = new Map();
   private subscribers: Set<OrderCallback> = new Set();
+  private isLoading: boolean = false;
+  private inFlightRequest: Promise<void> | null = null;
 
   /**
-   * Subscribe to order updates.
+   * Subscribe to the Data Engine.
    */
   subscribe(callback: OrderCallback) {
     this.subscribers.add(callback);
-    callback(this.orders); // Push current state
-    return () => this.subscribers.delete(callback);
+    callback(Array.from(this.orderCache.values()));
+    return () => { this.subscribers.delete(callback); };
   }
 
   private notifySubscribers() {
-    this.subscribers.forEach(cb => cb(this.orders));
+    const ordersArray = Array.from(this.orderCache.values())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    this.subscribers.forEach(cb => cb(ordersArray));
   }
 
   /**
-   * Triggers the single-load fetch if not already done.
+   * SMART MERGE: Fetch and integrate new data without flushing the cache.
    */
-  async loadMapData() {
-    if (this.isInitialLoadDone || this.isLoading) {
-      console.log(`[OrderOrchestrator] SKIPPING LOAD: already loaded=${this.isInitialLoadDone}, loading=${this.isLoading}`);
-      return;
-    }
+  async loadMapData(force: boolean = false) {
+    if (this.isLoading && !force) return this.inFlightRequest;
 
-    console.log('[OrderOrchestrator] >>> INITIAL MAP LOAD: Starting...');
+    console.log('[OrderOrchestrator] Data Engine Syncing...');
     this.isLoading = true;
-    try {
-      const response = await apiService.getMapOrders();
-      this.orders = response.data;
-      this.isInitialLoadDone = true;
-      console.log(`[OrderOrchestrator] >>> INITIAL MAP LOAD: SUCCESS. Loaded ${this.orders.length} orders.`);
-      this.notifySubscribers();
-    } catch (error) {
-      console.error("[OrderOrchestrator] Error during initial load:", error);
-    } finally {
-      this.isLoading = false;
-    }
+
+    this.inFlightRequest = (async () => {
+      try {
+        const response = await apiService.getMapOrders();
+        const freshOrders: Order[] = response.data;
+
+        // Smart Merge Logic
+        let hasChanges = false;
+        freshOrders.forEach(order => {
+          const existing = this.orderCache.get(order.id);
+          // Only update if data has actually changed (simple timestamp check)
+          if (!existing || existing.updatedAt !== order.updatedAt) {
+            this.orderCache.set(order.id, order);
+            hasChanges = true;
+          }
+        });
+
+        if (hasChanges) {
+          console.log(`[OrderOrchestrator] Cache updated. Total: ${this.orderCache.size}`);
+          this.notifySubscribers();
+        }
+      } catch (error) {
+        console.error("[OrderOrchestrator] Sync failed:", error);
+      } finally {
+        this.isLoading = false;
+        this.inFlightRequest = null;
+      }
+    })();
+
+    return this.inFlightRequest;
   }
 
   /**
-   * Map movement no longer triggers API requests.
+   * Manual refresh - flushes and reloads.
    */
-  onViewportChange(region: ViewportRegion) {
-    // LOG ONLY: To prove no API requests are made
-    console.log(`[OrderOrchestrator] Viewport changed: lat=${region.latitude.toFixed(4)}, delta=${region.latitudeDelta.toFixed(4)}. NO API REQUEST TRIGGERED.`);
+  async forceRefresh() {
+    this.orderCache.clear();
+    return this.loadMapData(true);
   }
 
+  /**
+   * Spatial Indexing placeholder - currently returns all for Single Load strategy
+   */
   getOrders() {
-    return this.orders;
-  }
-
-  forceRefresh() {
-    console.log('[OrderOrchestrator] Manual Refresh Triggered.');
-    this.isInitialLoadDone = false;
-    this.loadMapData();
+    return Array.from(this.orderCache.values());
   }
 
   getLoadingState() {

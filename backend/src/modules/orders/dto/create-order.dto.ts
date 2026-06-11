@@ -29,4 +29,8 @@ export class CreateOrderDto {
   @IsString({ each: true })
   @IsOptional()
   images?: string[];
+
+  @IsString()
+  @IsOptional()
+  idempotencyKey?: string;
 }

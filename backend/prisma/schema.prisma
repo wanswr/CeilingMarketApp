@@ -13,12 +13,13 @@ enum Role {
 }
 
 enum OrderStatus {
-  PENDING
-  ACCEPTED
-  STARTED
-  FINISHED
+  CREATED
+  PUBLISHED
+  CLAIMED
+  IN_PROGRESS
   COMPLETED
   CANCELLED
+  DISPUTE
 }
 
 model User {
@@ -56,9 +57,11 @@ model Order {
   date              DateTime
   price             Float
   details           String?
-  status            OrderStatus    @default(PENDING)
+  status            OrderStatus    @default(PUBLISHED)
   images            String[]
   isPinned          Boolean        @default(false)
+  idempotencyKey    String?        @unique
+  claimedAt         DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
@@ -71,6 +74,7 @@ model Application {
   id                String         @id @default(uuid())
   orderId           String
   workerId          String
+  idempotencyKey    String?        @unique
   createdAt         DateTime       @default(now())
 
   order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)

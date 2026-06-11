@@ -17,6 +17,12 @@ const OrdersListScreen = ({ navigation }: any) => {
       setOrders(newOrders);
       setLoading(false);
     });
+
+    // Ensure data is loaded even if we start here
+    if (orderOrchestrator.getOrders().length === 0) {
+      orderOrchestrator.loadMapData();
+    }
+
     return () => { unsubscribe(); };
   }, []);
 
