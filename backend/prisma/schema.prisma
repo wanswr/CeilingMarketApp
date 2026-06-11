@@ -13,7 +13,7 @@ enum Role {
 }
 
 enum OrderStatus {
-  CREATED
+  PENDING
   PUBLISHED
   CLAIMED
   IN_PROGRESS

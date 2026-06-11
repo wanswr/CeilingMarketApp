@@ -8,6 +8,19 @@ export class OrdersService {
   constructor(private prisma: PrismaService) {}
 
   /**
+   * Status transitions map: defines legal state changes.
+   */
+  private readonly transitions: Record<OrderStatus, OrderStatus[]> = {
+    [OrderStatus.PENDING]: [OrderStatus.PUBLISHED, OrderStatus.CANCELLED],
+    [OrderStatus.PUBLISHED]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
+    [OrderStatus.CLAIMED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
+    [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.DISPUTE],
+    [OrderStatus.COMPLETED]: [],
+    [OrderStatus.CANCELLED]: [],
+    [OrderStatus.DISPUTE]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+  };
+
+  /**
    * CREATE: Implements idempotency and sets initial status.
    */
   async create(dto: CreateOrderDto, employerId: string) {
@@ -31,22 +44,23 @@ export class OrdersService {
         images: dto.images || [],
         employerId,
         idempotencyKey: dto.idempotencyKey,
-        status: OrderStatus.PUBLISHED, // Default status
+        status: OrderStatus.PUBLISHED, // Target status for new orders
       },
     });
   }
 
   /**
-   * ATOMIC CLAIM: Postgres Transaction + SELECT FOR UPDATE
+   * ATOMIC CLAIM: Postgres Transaction + row-level locking
    */
   async claim(orderId: string, workerId: string) {
     return this.prisma.$transaction(async (tx) => {
-      // 1. SELECT FOR UPDATE to lock the row
-      const order = await tx.$queryRaw<any[]>`
+      // 1. SELECT FOR UPDATE to lock the row and prevent concurrent claims
+      const orderArray = await tx.$queryRaw<any[]>`
         SELECT * FROM "Order"
         WHERE "id" = ${orderId}
         FOR UPDATE
-      `.then(res => res[0]);
+      `;
+      const order = orderArray[0];
 
       if (!order) throw new NotFoundException('Order not found');
 
@@ -74,7 +88,7 @@ export class OrdersService {
   }
 
   /**
-   * TRANSITION: Guarded status changes
+   * TRANSITION: Guarded status changes using centralized transition map
    */
   async transitionStatus(orderId: string, newStatus: OrderStatus, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
@@ -86,8 +100,9 @@ export class OrdersService {
     if (!isEmployer && !isWorker) throw new ForbiddenException();
 
     // State Machine Rules
-    const allowed = this.isTransitionAllowed(order.status, newStatus, isEmployer);
-    if (!allowed) throw new ConflictException(`Transition ${order.status} -> ${newStatus} not allowed`);
+    if (!this.canTransition(order.status, newStatus)) {
+      throw new ConflictException(`Transition ${order.status} -> ${newStatus} not allowed`);
+    }
 
     return this.prisma.order.update({
       where: { id: orderId },
@@ -95,18 +110,8 @@ export class OrdersService {
     });
   }
 
-  private isTransitionAllowed(from: OrderStatus, to: OrderStatus, isEmployer: boolean): boolean {
-    const transitions: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.CREATED]: [OrderStatus.PUBLISHED, OrderStatus.CANCELLED],
-      [OrderStatus.PUBLISHED]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
-      [OrderStatus.CLAIMED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
-      [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.DISPUTE],
-      [OrderStatus.COMPLETED]: [],
-      [OrderStatus.CANCELLED]: [],
-      [OrderStatus.DISPUTE]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
-    };
-
-    return transitions[from]?.includes(to) || false;
+  private canTransition(from: OrderStatus, to: OrderStatus): boolean {
+    return this.transitions[from]?.includes(to) || false;
   }
 
   async findAll(filters: { lat?: number; lng?: number; radius?: number; minPrice?: number; status?: string }) {
@@ -133,23 +138,6 @@ export class OrdersService {
     return orders;
   }
 
-  async update(id: string, dto: any, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException();
-    if (order.employerId !== userId) throw new ForbiddenException();
-
-    // If status is being changed, validate transition
-    if (dto.status && dto.status !== order.status) {
-      const allowed = this.isTransitionAllowed(order.status, dto.status, true);
-      if (!allowed) throw new ConflictException(`Transition ${order.status} -> ${dto.status} not allowed`);
-    }
-
-    return this.prisma.order.update({
-      where: { id },
-      data: dto
-    });
-  }
-
   async findOne(id: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
@@ -161,6 +149,24 @@ export class OrdersService {
     });
     if (!order) throw new NotFoundException();
     return order;
+  }
+
+  async update(id: string, dto: any, userId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id } });
+    if (!order) throw new NotFoundException();
+    if (order.employerId !== userId) throw new ForbiddenException();
+
+    // If status is being changed, validate transition
+    if (dto.status && dto.status !== order.status) {
+      if (!this.canTransition(order.status, dto.status)) {
+        throw new ConflictException(`Transition ${order.status} -> ${dto.status} not allowed`);
+      }
+    }
+
+    return this.prisma.order.update({
+      where: { id },
+      data: dto
+    });
   }
 
   async remove(id: string, userId: string) {
