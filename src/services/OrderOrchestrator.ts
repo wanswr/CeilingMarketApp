@@ -1,16 +1,16 @@
 import { Order } from '../types';
 import { apiService } from './ApiService';
 import { requestRouter } from './RequestRouter';
+import { entityStore } from './EntityStore';
 
 type OrderCallback = (orders: Order[]) => void;
 
 /**
  * OrderOrchestrator: Logic Layer.
  * Delegates data fetching, deduplication and caching to RequestRouter.
- * Manages UI subscriptions and local smart merge.
+ * Persists data into EntityStore for Single Source of Truth.
  */
 class OrderOrchestrator {
-  private orderCache: Map<string, Order> = new Map();
   private subscribers: Set<OrderCallback> = new Set();
   private debounceTimer: NodeJS.Timeout | null = null;
 
@@ -28,12 +28,13 @@ class OrderOrchestrator {
   }
 
   private getOrdersArray(): Order[] {
-    return Array.from(this.orderCache.values())
+    return entityStore.getAllOrders()
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   /**
-   * SYNC MAP: Single-Load Map strategy using RequestRouter.
+   * SYNC MAP: Single-Load Map strategy.
+   * Results are written directly to EntityStore.
    */
   async syncMap(force: boolean = false) {
     const key = 'map:orders';
@@ -49,16 +50,17 @@ class OrderOrchestrator {
         30000 // 30s TTL
       );
 
-      let hasChanges = false;
+      // Write to Store (Smart Merge)
+      let changed = false;
       freshOrders.forEach(order => {
-        const existing = this.orderCache.get(order.id);
+        const existing = entityStore.getOrder(order.id);
         if (!existing || existing.updatedAt !== order.updatedAt) {
-          this.orderCache.set(order.id, order);
-          hasChanges = true;
+          entityStore.setOrder(order);
+          changed = true;
         }
       });
 
-      if (hasChanges) {
+      if (changed) {
         this.notifySubscribers();
       }
     } catch (error) {
@@ -67,13 +69,13 @@ class OrderOrchestrator {
   }
 
   /**
-   * SYNC USER: Global Profile singleton.
+   * SYNC USER: Profile fetching with Store persistence.
    */
   async syncUser(force: boolean = false) {
     const key = 'user:profile';
     if (force) requestRouter.invalidate(key);
 
-    return requestRouter.request(
+    const userData = await requestRouter.request(
       key,
       async () => {
         const res = await apiService.getProfile();
@@ -81,12 +83,44 @@ class OrderOrchestrator {
       },
       60000 // 60s TTL
     );
+
+    entityStore.setUser(userData);
+    return userData;
   }
 
   /**
-   * SYNC ORDER: Detail fetching with individual caching.
+   * SYNC EXTERNAL USER: Cache-first lookup.
+   */
+  async getExternalUser(userId: string, force: boolean = false) {
+    if (!force) {
+      const cached = entityStore.getUser(userId);
+      if (cached) return cached;
+    }
+
+    const key = `user:${userId}`;
+    const userData = await requestRouter.request(
+      key,
+      async () => {
+        const res = await apiService.getUserProfile(userId);
+        return res.data;
+      },
+      60000
+    );
+
+    entityStore.setUser(userData);
+    return userData;
+  }
+
+  /**
+   * SYNC ORDER: Detail fetching with Store persistence.
    */
   async syncOrder(orderId: string, force: boolean = false) {
+    if (!force) {
+      const cached = entityStore.getOrder(orderId);
+      // If we have full details (e.g. applications/worker present in cache), reuse it
+      if (cached && (cached as any).applications) return cached;
+    }
+
     const key = `order:${orderId}`;
     if (force) requestRouter.invalidate(key);
 
@@ -97,10 +131,10 @@ class OrderOrchestrator {
           const res = await apiService.getOrderDetails(orderId);
           return res.data;
         },
-        30000 // 30s TTL
+        30000
       );
 
-      this.orderCache.set(orderId, orderData);
+      entityStore.setOrder(orderData);
       this.notifySubscribers();
       return orderData;
     } catch (error) {
@@ -121,7 +155,7 @@ class OrderOrchestrator {
   }
 
   async forceRefresh() {
-    this.orderCache.clear();
+    entityStore.clear();
     requestRouter.clear();
     return this.syncMap(true);
   }

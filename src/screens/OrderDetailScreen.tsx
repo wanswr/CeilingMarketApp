@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIn
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { OrderService, Order } from '../services/OrderService';
+import { Order } from '../types';
 import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { apiService } from '../services/ApiService';
 import { Button } from '../components/Button';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
@@ -34,7 +35,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const handleApply = async () => {
     setSubmitting(true);
     try {
-      await OrderService.applyForOrder(orderId);
+      await apiService.applyForOrder(orderId);
       Alert.alert('Успех', 'Ваша заявка отправлена');
       fetchOrderDetails();
     } catch (error: any) {
