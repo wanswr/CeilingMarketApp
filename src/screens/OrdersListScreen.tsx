@@ -20,7 +20,7 @@ const OrdersListScreen = ({ navigation }: any) => {
 
     // Ensure data is loaded even if we start here
     if (orderOrchestrator.getOrders().length === 0) {
-      orderOrchestrator.loadMapData();
+      orderOrchestrator.syncMap();
     }
 
     return () => { unsubscribe(); };

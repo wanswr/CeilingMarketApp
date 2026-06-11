@@ -47,7 +47,7 @@ const MapScreen = ({ navigation }: any) => {
   // 2. Initial Data Load & Location Sync
   useFocusEffect(
     useCallback(() => {
-      orderOrchestrator.loadMapData();
+      orderOrchestrator.syncMap();
 
       (async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -67,6 +67,7 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     setRegion(newRegion);
+    orderOrchestrator.triggerMapUpdate();
   };
 
   // 3. UI Clustering (Refined)

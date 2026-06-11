@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { apiService } from '../services/ApiService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 
 interface AuthContextType {
   user: any;
@@ -25,8 +25,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const token = await SecureStore.getItemAsync('userToken');
       if (token) {
-        const response = await apiService.getProfile();
-        setUser(response.data);
+        const userData = await orderOrchestrator.syncUser();
+        setUser(userData);
       } else {
         setUser(null);
       }
