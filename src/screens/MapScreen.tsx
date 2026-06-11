@@ -44,9 +44,11 @@ const MapScreen = ({ navigation }: any) => {
     return () => { unsubscribe(); };
   }, []);
 
-  // 2. Initial Location & Sync
+  // 2. Initial Data Load & Location Sync
   useFocusEffect(
     useCallback(() => {
+      orderOrchestrator.loadMapData();
+
       (async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
@@ -58,9 +60,6 @@ const MapScreen = ({ navigation }: any) => {
             longitude: loc.coords.longitude
           };
           setRegion(initialRegion);
-          orderOrchestrator.onViewportChange(initialRegion);
-        } else {
-           orderOrchestrator.onViewportChange(region);
         }
       })();
     }, [])
@@ -161,8 +160,7 @@ const MapScreen = ({ navigation }: any) => {
             placeholderTextColor={COLORS.gray}
           />
           <TouchableOpacity style={styles.filterBtn} onPress={() => {
-             orderOrchestrator.clearCache();
-             orderOrchestrator.onViewportChange(region);
+             orderOrchestrator.forceRefresh();
           }}>
             <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
           </TouchableOpacity>

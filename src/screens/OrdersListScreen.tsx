@@ -22,10 +22,7 @@ const OrdersListScreen = ({ navigation }: any) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Trigger orchestrator refresh by clearing cache and re-fetching
-    orderOrchestrator.clearCache();
-    // Assuming we refresh based on a default center or last known region
-    // The orchestrator will handle the fetch once its state is reset
+    await orderOrchestrator.forceRefresh();
     setRefreshing(false);
   };
 

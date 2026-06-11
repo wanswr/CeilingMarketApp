@@ -1,6 +1,5 @@
 import { Order } from '../types';
-import { OrderService } from './OrderService';
-import { GeoGridService } from './GeoGridService';
+import { apiService } from './ApiService';
 
 export interface ViewportRegion {
   latitude: number;
@@ -12,22 +11,21 @@ export interface ViewportRegion {
 type OrderCallback = (orders: Order[]) => void;
 
 /**
- * OrderOrchestrator: The central brain of the system.
- * Manages state, event firewalling, and coordinates data flow.
+ * OrderOrchestrator: Single-Load Map Strategy.
+ * Fetches all active orders once and maintains them in local memory.
  */
 class OrderOrchestrator {
   private orders: Order[] = [];
-  private lastNormalizedRegion: ViewportRegion | null = null;
-  private debounceTimer: NodeJS.Timeout | null = null;
-  private subscribers: Set<OrderCallback> = new Set();
+  private isInitialLoadDone: boolean = false;
   private isLoading: boolean = false;
+  private subscribers: Set<OrderCallback> = new Set();
 
   /**
    * Subscribe to order updates.
    */
   subscribe(callback: OrderCallback) {
     this.subscribers.add(callback);
-    callback(this.orders); // Initial push
+    callback(this.orders); // Push current state
     return () => this.subscribers.delete(callback);
   }
 
@@ -36,63 +34,45 @@ class OrderOrchestrator {
   }
 
   /**
-   * Main entry point for map movement events.
-   * Implements Event Firewall: Debounce, Validation, and Delta Check.
+   * Triggers the single-load fetch if not already done.
    */
-  onViewportChange(region: ViewportRegion) {
-    if (!region || !region.latitude) return;
-
-    // 1. Delta Check: Only proceed if movement is significant (> 10% of viewport)
-    if (this.lastNormalizedRegion) {
-      const latDiff = Math.abs(this.lastNormalizedRegion.latitude - region.latitude);
-      const lngDiff = Math.abs(this.lastNormalizedRegion.longitude - region.longitude);
-      const threshold = this.lastNormalizedRegion.latitudeDelta * 0.1;
-
-      if (latDiff < threshold && lngDiff < threshold) return;
+  async loadMapData() {
+    if (this.isInitialLoadDone || this.isLoading) {
+      console.log(`[OrderOrchestrator] SKIPPING LOAD: already loaded=${this.isInitialLoadDone}, loading=${this.isLoading}`);
+      return;
     }
 
-    // 2. Debounce (800ms)
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      this.fetchOrdersForRegion(region);
-    }, 800);
-  }
-
-  private async fetchOrdersForRegion(region: ViewportRegion) {
+    console.log('[OrderOrchestrator] >>> INITIAL MAP LOAD: Starting...');
     this.isLoading = true;
     try {
-      const data = await OrderService.fetchOrders({
-        lat: region.latitude,
-        lng: region.longitude,
-        latDelta: region.latitudeDelta,
-        radius: 50 // Standard radius for most views
-      });
-
-      // Merge data: Prevent duplicates and keep state clean
-      const existingIds = new Set(this.orders.map(o => o.id));
-      const newOrders = data.filter(o => !existingIds.has(o.id));
-
-      if (newOrders.length > 0) {
-        this.orders = [...this.orders, ...newOrders];
-        this.notifySubscribers();
-      }
-
-      this.lastNormalizedRegion = region;
+      const response = await apiService.getMapOrders();
+      this.orders = response.data;
+      this.isInitialLoadDone = true;
+      console.log(`[OrderOrchestrator] >>> INITIAL MAP LOAD: SUCCESS. Loaded ${this.orders.length} orders.`);
+      this.notifySubscribers();
     } catch (error) {
-      console.error("[OrderOrchestrator] Error:", error);
+      console.error("[OrderOrchestrator] Error during initial load:", error);
     } finally {
       this.isLoading = false;
     }
+  }
+
+  /**
+   * Map movement no longer triggers API requests.
+   */
+  onViewportChange(region: ViewportRegion) {
+    // LOG ONLY: To prove no API requests are made
+    console.log(`[OrderOrchestrator] Viewport changed: lat=${region.latitude.toFixed(4)}, delta=${region.latitudeDelta.toFixed(4)}. NO API REQUEST TRIGGERED.`);
   }
 
   getOrders() {
     return this.orders;
   }
 
-  clearCache() {
-    this.orders = [];
-    this.lastNormalizedRegion = null;
-    this.notifySubscribers();
+  forceRefresh() {
+    console.log('[OrderOrchestrator] Manual Refresh Triggered.');
+    this.isInitialLoadDone = false;
+    this.loadMapData();
   }
 
   getLoadingState() {

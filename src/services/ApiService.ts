@@ -39,6 +39,8 @@ export const apiService = {
   getOrders: (params: any, config: any = {}) =>
     api.get('/orders', { params, ...config }),
 
+  getMapOrders: () => api.get('/orders/map'),
+
   createOrder: (data: any) => api.post('/orders', data),
 
   getOrderDetails: (id: string) => api.get(`/orders/${id}`),

@@ -24,6 +24,11 @@ export class OrdersController {
     });
   }
 
+  @Get('map')
+  getMapOrders() {
+    return this.ordersService.findAll({ status: 'PENDING' });
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() createOrderDto: CreateOrderDto, @Req() req) {
