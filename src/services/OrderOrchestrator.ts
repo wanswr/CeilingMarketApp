@@ -1,30 +1,17 @@
 import { Order } from '../types';
 import { apiService } from './ApiService';
+import { requestRouter } from './RequestRouter';
 
 type OrderCallback = (orders: Order[]) => void;
 
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
 /**
- * OrderOrchestrator: Data Engine Version 2.0.
- * Focus: Stability, Deduplication, Cache, and Request Locking.
+ * OrderOrchestrator: Logic Layer.
+ * Delegates data fetching, deduplication and caching to RequestRouter.
+ * Manages UI subscriptions and local smart merge.
  */
 class OrderOrchestrator {
   private orderCache: Map<string, Order> = new Map();
   private subscribers: Set<OrderCallback> = new Set();
-
-  // Cache Layer
-  private mapCache: CacheEntry<Order[]> | null = null;
-  private userCache: CacheEntry<any> | null = null;
-  private readonly MAP_TTL = 30000; // 30 seconds
-  private readonly USER_TTL = 60000; // 60 seconds
-
-  // Request Locking & Deduplication
-  private inFlightRequests: Map<string, Promise<any>> = new Map();
-  private isMapSyncing: boolean = false;
   private debounceTimer: NodeJS.Timeout | null = null;
 
   /**
@@ -37,8 +24,7 @@ class OrderOrchestrator {
   }
 
   private notifySubscribers() {
-    const ordersArray = this.getOrdersArray();
-    this.subscribers.forEach(cb => cb(ordersArray));
+    this.subscribers.forEach(cb => cb(this.getOrdersArray()));
   }
 
   private getOrdersArray(): Order[] {
@@ -47,120 +33,82 @@ class OrderOrchestrator {
   }
 
   /**
-   * SYNC MAP: Single-Load Map strategy with Cache and In-Flight Lock.
+   * SYNC MAP: Single-Load Map strategy using RequestRouter.
    */
   async syncMap(force: boolean = false) {
-    const now = Date.now();
-    const lockKey = 'syncMap';
+    const key = 'map:orders';
+    if (force) requestRouter.invalidate(key);
 
-    // 1. In-flight Deduplication
-    if (this.inFlightRequests.has(lockKey)) {
-      return this.inFlightRequests.get(lockKey);
-    }
+    try {
+      const freshOrders = await requestRouter.request<Order[]>(
+        key,
+        async () => {
+          const res = await apiService.getMapOrders();
+          return res.data;
+        },
+        30000 // 30s TTL
+      );
 
-    // 2. Cache Validation
-    if (!force && this.mapCache && (now - this.mapCache.timestamp) < this.MAP_TTL) {
-      console.log('[OrderOrchestrator] Map Cache Hit. Skipping API.');
-      return;
-    }
-
-    // 3. Request Lock
-    if (this.isMapSyncing) return;
-    this.isMapSyncing = true;
-
-    console.log('[OrderOrchestrator] >>> SYNC MAP STARTING...');
-    const syncPromise = (async () => {
-      try {
-        const response = await apiService.getMapOrders();
-        const freshOrders: Order[] = response.data;
-
-        let hasChanges = false;
-        freshOrders.forEach(order => {
-          const existing = this.orderCache.get(order.id);
-          if (!existing || existing.updatedAt !== order.updatedAt) {
-            this.orderCache.set(order.id, order);
-            hasChanges = true;
-          }
-        });
-
-        this.mapCache = { data: freshOrders, timestamp: Date.now() };
-
-        if (hasChanges) {
-          console.log(`[OrderOrchestrator] Map updated. Total items: ${this.orderCache.size}`);
-          this.notifySubscribers();
+      let hasChanges = false;
+      freshOrders.forEach(order => {
+        const existing = this.orderCache.get(order.id);
+        if (!existing || existing.updatedAt !== order.updatedAt) {
+          this.orderCache.set(order.id, order);
+          hasChanges = true;
         }
-      } catch (error) {
-        console.error("[OrderOrchestrator] Map Sync failed:", error);
-      } finally {
-        this.isMapSyncing = false;
-        this.inFlightRequests.delete(lockKey);
-        console.log('[OrderOrchestrator] >>> SYNC MAP FINISHED.');
-      }
-    })();
+      });
 
-    this.inFlightRequests.set(lockKey, syncPromise);
-    return syncPromise;
+      if (hasChanges) {
+        this.notifySubscribers();
+      }
+    } catch (error) {
+      console.error("[OrderOrchestrator] Map Sync failed", error);
+    }
   }
 
   /**
-   * SYNC USER: Profile fetching with Cache and Lock.
+   * SYNC USER: Global Profile singleton.
    */
   async syncUser(force: boolean = false) {
-    const now = Date.now();
-    const lockKey = 'syncUser';
+    const key = 'user:profile';
+    if (force) requestRouter.invalidate(key);
 
-    if (this.inFlightRequests.has(lockKey)) return this.inFlightRequests.get(lockKey);
+    return requestRouter.request(
+      key,
+      async () => {
+        const res = await apiService.getProfile();
+        return res.data;
+      },
+      60000 // 60s TTL
+    );
+  }
 
-    if (!force && this.userCache && (now - this.userCache.timestamp) < this.USER_TTL) {
-      return this.userCache.data;
+  /**
+   * SYNC ORDER: Detail fetching with individual caching.
+   */
+  async syncOrder(orderId: string, force: boolean = false) {
+    const key = `order:${orderId}`;
+    if (force) requestRouter.invalidate(key);
+
+    try {
+      const orderData = await requestRouter.request(
+        key,
+        async () => {
+          const res = await apiService.getOrderDetails(orderId);
+          return res.data;
+        },
+        30000 // 30s TTL
+      );
+
+      this.orderCache.set(orderId, orderData);
+      this.notifySubscribers();
+      return orderData;
+    } catch (error) {
+      console.error(`[OrderOrchestrator] Order ${orderId} sync failed`, error);
+      throw error;
     }
-
-    const syncPromise = (async () => {
-      try {
-        const response = await apiService.getProfile();
-        this.userCache = { data: response.data, timestamp: Date.now() };
-        return response.data;
-      } catch (error) {
-        console.error("[OrderOrchestrator] User Sync failed:", error);
-        throw error;
-      } finally {
-        this.inFlightRequests.delete(lockKey);
-      }
-    })();
-
-    this.inFlightRequests.set(lockKey, syncPromise);
-    return syncPromise;
   }
 
-  /**
-   * SYNC ORDER: Detail fetching with Lock.
-   */
-  async syncOrder(orderId: string) {
-    const lockKey = `syncOrder_${orderId}`;
-    if (this.inFlightRequests.has(lockKey)) return this.inFlightRequests.get(lockKey);
-
-    const syncPromise = (async () => {
-      try {
-        const data = await apiService.getOrderDetails(orderId);
-        // Update cache with latest details
-        this.orderCache.set(orderId, data.data);
-        this.notifySubscribers();
-        return data.data;
-      } catch (error) {
-        console.error(`[OrderOrchestrator] Order ${orderId} Sync failed:`, error);
-        throw error;
-      } finally {
-        this.inFlightRequests.delete(lockKey);
-      }
-    })();
-
-    this.inFlightRequests.set(lockKey, syncPromise);
-    return syncPromise;
-  }
-
-  /**
-   * DEBOUNCED VIEWPORT TRIGGER: To prevent spam during fast panning.
-   */
   triggerMapUpdate() {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
@@ -174,12 +122,8 @@ class OrderOrchestrator {
 
   async forceRefresh() {
     this.orderCache.clear();
-    this.mapCache = null;
+    requestRouter.clear();
     return this.syncMap(true);
-  }
-
-  getLoadingState() {
-    return this.isMapSyncing;
   }
 }
 

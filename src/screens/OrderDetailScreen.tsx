@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { OrderService, Order } from '../services/OrderService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 import { Button } from '../components/Button';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
@@ -20,7 +21,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const fetchOrderDetails = async () => {
     try {
-      const data = await OrderService.getOrderById(orderId);
+      const data = await orderOrchestrator.syncOrder(orderId);
       setOrder(data);
     } catch (error) {
       Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
