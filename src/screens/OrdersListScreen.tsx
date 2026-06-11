@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { OrderService, Order } from '../services/OrderService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { Order } from '../types';
 import { COLORS, SHADOWS } from '../constants/theme';
 
 const OrdersListScreen = ({ navigation }: any) => {
@@ -10,34 +11,21 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const fetchOrders = useCallback(async (isRefresh = false) => {
-    if (!isRefresh && orders.length > 0) return;
-
-    setLoading(true);
-    try {
-      // Default load for list view (can be tuned to user location if needed, but keeping simple)
-      const data = await OrderService.fetchOrders({
-        lat: 55.7558,
-        lng: 37.6173,
-        radius: 500
-      });
-      setOrders(data);
-    } catch (error) {
-      console.error("[OrdersListScreen] Error:", error);
-    } finally {
+  // Subscribe to the central orchestrator
+  useEffect(() => {
+    const unsubscribe = orderOrchestrator.subscribe((newOrders) => {
+      setOrders(newOrders);
       setLoading(false);
-    }
-  }, [orders.length]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchOrders();
-    }, [fetchOrders])
-  );
+    });
+    return () => { unsubscribe(); };
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchOrders(true);
+    // Trigger orchestrator refresh by clearing cache and re-fetching
+    orderOrchestrator.clearCache();
+    // Assuming we refresh based on a default center or last known region
+    // The orchestrator will handle the fetch once its state is reset
     setRefreshing(false);
   };
 
@@ -104,7 +92,7 @@ const OrdersListScreen = ({ navigation }: any) => {
           <View style={styles.empty}>
             <Ionicons name="search-outline" size={64} color={COLORS.border} />
             <Text style={styles.emptyText}>Заказов пока нет</Text>
-            <Text style={styles.emptySubtext}>Попробуйте изменить фильтры или подождать новых заказов</Text>
+            <Text style={styles.emptySubtext}>Попробуйте изменить масштаб на карте или подождать новых заказов</Text>
           </View>
         }
       />

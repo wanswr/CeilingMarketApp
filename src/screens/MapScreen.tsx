@@ -7,7 +7,6 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   TextInput,
-  FlatList,
   Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -18,7 +17,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { COLORS, SHADOWS } from '../constants/theme';
-import { OrderService } from '../services/OrderService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 import { GeoClusterService } from '../services/GeoClusterService';
 import { formatDate } from '../utils/date';
 import { Order } from '../types';
@@ -29,7 +28,6 @@ const MapScreen = ({ navigation }: any) => {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const [region, setRegion] = useState<Region>({
     latitude: 55.751244,
     longitude: 37.618423,
@@ -37,30 +35,16 @@ const MapScreen = ({ navigation }: any) => {
     longitudeDelta: 0.1,
   });
 
-  const lastRequestRegion = useRef<Region | null>(null);
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  // 1. Subscribe to Orchestrator
+  useEffect(() => {
+    const unsubscribe = orderOrchestrator.subscribe((newOrders) => {
+      setAllOrders(newOrders);
+      setLoading(false);
+    });
+    return () => { unsubscribe(); };
+  }, []);
 
-  // 1. Logic: Load-All Global orders (Moscow + Region)
-  const syncOrders = async (targetRegion: Region) => {
-    try {
-        const data = await OrderService.fetchOrders({
-            lat: targetRegion.latitude,
-            lng: targetRegion.longitude,
-            radius: 500 // Sufficient coverage for broad region
-        });
-
-        setAllOrders(prev => {
-            const existingIds = new Set(prev.map(o => o.id));
-            const newOrders = data.filter(o => !existingIds.has(o.id));
-            return [...prev, ...newOrders];
-        });
-    } catch (e) {
-        console.error("Sync failed", e);
-    } finally {
-        setLoading(false);
-    }
-  };
-
+  // 2. Initial Location & Sync
   useFocusEffect(
     useCallback(() => {
       (async () => {
@@ -74,9 +58,9 @@ const MapScreen = ({ navigation }: any) => {
             longitude: loc.coords.longitude
           };
           setRegion(initialRegion);
-          syncOrders(initialRegion);
+          orderOrchestrator.onViewportChange(initialRegion);
         } else {
-           syncOrders(region);
+           orderOrchestrator.onViewportChange(region);
         }
       })();
     }, [])
@@ -84,23 +68,10 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     setRegion(newRegion);
-
-    // Filter Trigger: Only fetch if displacement is significant (> 10% of viewport)
-    if (lastRequestRegion.current) {
-        const latDiff = Math.abs(lastRequestRegion.current.latitude - newRegion.latitude);
-        const lngDiff = Math.abs(lastRequestRegion.current.longitude - newRegion.longitude);
-        const threshold = lastRequestRegion.current.latitudeDelta * 0.1;
-        if (latDiff < threshold && lngDiff < threshold) return;
-    }
-
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-        lastRequestRegion.current = newRegion;
-        syncOrders(newRegion);
-    }, 1000);
+    orderOrchestrator.onViewportChange(newRegion);
   };
 
-  // 2. UI: Clustering based on viewport delta
+  // 3. UI Clustering (Refined)
   const displayedItems = useMemo(() => {
     return GeoClusterService.clusterOrders(allOrders, region.latitudeDelta);
   }, [allOrders, region.latitudeDelta]);
@@ -125,108 +96,82 @@ const MapScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      {viewMode === 'map' ? (
-        <>
-          <MapView
-            ref={mapRef}
-            provider={PROVIDER_GOOGLE}
-            style={styles.map}
-            initialRegion={region}
-            showsUserLocation={true}
-            onPress={() => setSelectedOrder(null)}
-            onRegionChangeComplete={handleRegionChangeComplete}
-            customMapStyle={mapStyle}
-            mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
-          >
-            {displayedItems.map((item: any) => {
-              if (item.isCluster) {
-                return (
-                  <Marker
-                    key={item.id}
-                    coordinate={{ latitude: item.latitude, longitude: item.longitude }}
-                    onPress={() => {
-                        mapRef.current?.animateToRegion({
-                            latitude: item.latitude,
-                            longitude: item.longitude,
-                            latitudeDelta: region.latitudeDelta / 4,
-                            longitudeDelta: region.longitudeDelta / 4,
-                        }, 500);
-                    }}
-                  >
-                    <View style={styles.clusterMarker}>
-                      <Text style={styles.clusterText}>{item.count}</Text>
-                    </View>
-                  </Marker>
-                );
-              }
-
-              return (
-                <Marker
-                  key={item.id}
-                  coordinate={{
-                    latitude: item.coordinates?.latitude ?? item.location.latitude,
-                    longitude: item.coordinates?.longitude ?? item.location.longitude
-                  }}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setSelectedOrder(item);
-                  }}
-                  tracksViewChanges={false}
-                >
-                  <View style={[styles.customMarker, selectedOrder?.id === item.id && styles.customMarkerActive]}>
-                    <Text style={[styles.markerPrice, selectedOrder?.id === item.id && styles.markerPriceActive]}>
-                      {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
-                    </Text>
-                  </View>
-                </Marker>
-              );
-            })}
-          </MapView>
-
-          <SafeAreaView style={styles.headerOverlay}>
-            <BlurView intensity={80} tint="light" style={styles.searchBar}>
-              <Ionicons name="search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
-              <TextInput
-                placeholder="Поиск заказов..."
-                style={styles.searchInput}
-                placeholderTextColor={COLORS.gray}
-              />
-              <TouchableOpacity style={styles.filterBtn} onPress={() => {
-                 setAllOrders([]);
-                 lastRequestRegion.current = null;
-                 syncOrders(region);
-              }}>
-                <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
-              </TouchableOpacity>
-            </BlurView>
-          </SafeAreaView>
-
-          <TouchableOpacity style={styles.myLocationBtn} onPress={centerToUser}>
-             <Ionicons name="locate" size={24} color={COLORS.primary} />
-          </TouchableOpacity>
-        </>
-      ) : (
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-           <FlatList
-            data={allOrders}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.listItem}
-                onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
+      <MapView
+        ref={mapRef}
+        provider={PROVIDER_GOOGLE}
+        style={styles.map}
+        initialRegion={region}
+        showsUserLocation={true}
+        onPress={() => setSelectedOrder(null)}
+        onRegionChangeComplete={handleRegionChangeComplete}
+        customMapStyle={mapStyle}
+        mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
+      >
+        {displayedItems.map((item: any) => {
+          if (item.isCluster) {
+            return (
+              <Marker
+                key={item.id}
+                coordinate={{ latitude: item.latitude, longitude: item.longitude }}
+                onPress={() => {
+                    mapRef.current?.animateToRegion({
+                        latitude: item.latitude,
+                        longitude: item.longitude,
+                        latitudeDelta: region.latitudeDelta / 4,
+                        longitudeDelta: region.longitudeDelta / 4,
+                    }, 500);
+                }}
               >
-                <View style={styles.listHeader}>
-                  <Text style={styles.listTitle} numberOfLines={1}>{item.address}</Text>
-                  <Text style={styles.listPrice}>{item.price} ₽</Text>
+                <View style={[styles.clusterMarker, item.type === 'strong' && styles.clusterMarkerStrong]}>
+                  <Text style={styles.clusterText}>{item.count}</Text>
                 </View>
-                <View style={styles.listFooter}>
-                    <Text style={styles.distanceValue}>{item.distance?.toFixed(1)} км</Text>
-                </View>
-              </TouchableOpacity>
-            )}
+              </Marker>
+            );
+          }
+
+          const coords = GeoClusterService.getOrderCoords(item);
+          if (!coords) return null;
+
+          return (
+            <Marker
+              key={item.id}
+              coordinate={coords}
+              onPress={(e) => {
+                e.stopPropagation();
+                setSelectedOrder(item);
+              }}
+              tracksViewChanges={false}
+            >
+              <View style={[styles.customMarker, selectedOrder?.id === item.id && styles.customMarkerActive]}>
+                <Text style={[styles.markerPrice, selectedOrder?.id === item.id && styles.markerPriceActive]}>
+                  {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
+                </Text>
+              </View>
+            </Marker>
+          );
+        })}
+      </MapView>
+
+      <SafeAreaView style={styles.headerOverlay}>
+        <BlurView intensity={80} tint="light" style={styles.searchBar}>
+          <Ionicons name="search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
+          <TextInput
+            placeholder="Поиск заказов..."
+            style={styles.searchInput}
+            placeholderTextColor={COLORS.gray}
           />
-        </SafeAreaView>
-      )}
+          <TouchableOpacity style={styles.filterBtn} onPress={() => {
+             orderOrchestrator.clearCache();
+             orderOrchestrator.onViewportChange(region);
+          }}>
+            <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
+          </TouchableOpacity>
+        </BlurView>
+      </SafeAreaView>
+
+      <TouchableOpacity style={styles.myLocationBtn} onPress={centerToUser}>
+         <Ionicons name="locate" size={24} color={COLORS.primary} />
+      </TouchableOpacity>
 
       {selectedOrder && (
         <TouchableOpacity
@@ -312,16 +257,8 @@ const MapScreen = ({ navigation }: any) => {
 };
 
 const mapStyle = [
-  {
-    "featureType": "poi",
-    "elementType": "labels.text",
-    "stylers": [{ "visibility": "off" }]
-  },
-  {
-    "featureType": "transit",
-    "elementType": "labels.text",
-    "stylers": [{ "visibility": "off" }]
-  }
+  { "featureType": "poi", "elementType": "labels.text", "stylers": [{ "visibility": "off" }] },
+  { "featureType": "transit", "elementType": "labels.text", "stylers": [{ "visibility": "off" }] }
 ];
 
 const styles = StyleSheet.create({
@@ -364,11 +301,13 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
     ...SHADOWS.medium
   },
-  clusterText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14
+  clusterMarkerStrong: {
+    backgroundColor: '#1E3A8A', // Darker blue for high density
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
+  clusterText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   customMarker: {
     backgroundColor: '#fff',
     paddingHorizontal: 10,
@@ -378,26 +317,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
     ...SHADOWS.soft
   },
-  customMarkerActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: '#fff',
-    transform: [{ scale: 1.1 }]
-  },
-  markerPrice: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: COLORS.primary
-  },
-  markerPriceActive: {
-    color: '#fff'
-  },
-  previewCardContainer: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 10 : 10,
-    left: 12,
-    right: 12,
-    zIndex: 1000,
-  },
+  customMarkerActive: { backgroundColor: COLORS.primary, borderColor: '#fff', transform: [{ scale: 1.1 }] },
+  markerPrice: { fontSize: 14, fontWeight: 'bold', color: COLORS.primary },
+  markerPriceActive: { color: '#fff' },
+  previewCardContainer: { position: 'absolute', bottom: 10, left: 12, right: 12, zIndex: 1000 },
   previewCard: {
     borderRadius: 24,
     ...SHADOWS.heavy,
@@ -452,12 +375,6 @@ const styles = StyleSheet.create({
     ...SHADOWS.medium,
   },
   mainActionText: { color: '#fff', fontWeight: '900', fontSize: 14 },
-  listItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  listHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  listTitle: { fontSize: 16, fontWeight: 'bold' },
-  listPrice: { fontSize: 16, color: COLORS.success, fontWeight: 'bold' },
-  listFooter: { marginTop: 5 },
-  distanceValue: { color: COLORS.primary, fontWeight: 'bold' }
 });
 
 export default MapScreen;

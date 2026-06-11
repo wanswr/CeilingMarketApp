@@ -1,16 +1,18 @@
 import { apiService } from './ApiService';
 import { Order, OrderStatus } from '../types';
+import { GeoGridService } from './GeoGridService';
 
 export { Order, OrderStatus };
 
 // --- Simplified Pure Service: Fetch + Cache ---
 
 interface OrderParams {
-  lat?: number;
-  lng?: number;
+  lat: number;
+  lng: number;
   radius?: number;
   status?: string;
   minPrice?: number;
+  latDelta: number; // Required for bucket key generation
 }
 
 interface CacheEntry {
@@ -21,13 +23,14 @@ interface CacheEntry {
 const ordersCache: Record<string, CacheEntry> = {};
 let inFlightRequest: { controller: AbortController; key: string; promise: Promise<Order[]> } | null = null;
 
-const CACHE_TTL = 60000; // 60 seconds
+const CACHE_TTL = 30000; // 30 seconds
 
 /**
- * Deterministic bucket key generator.
+ * Deterministic bucket key generator using GeoGrid.
  */
 const getBucketKey = (params: OrderParams): string => {
-  return `bucket_s${params.status || 'PENDING'}_r${params.radius || 'all'}_p${params.minPrice || 0}`;
+  const gridKey = GeoGridService.getGridKey(params.lat, params.lng, params.latDelta);
+  return `geo_${gridKey}_s${params.status || 'PENDING'}_p${params.minPrice || 0}`;
 };
 
 export const OrderService = {
@@ -67,6 +70,12 @@ export const OrderService = {
         console.log(`[OrderService] >>> API FETCH: ${key}`);
         const response = await apiService.getOrders(params, { signal: controller.signal });
         const data = response.data;
+
+        // Cleanup old cache entries (simple LRU-like)
+        const cacheKeys = Object.keys(ordersCache);
+        if (cacheKeys.length > 20) {
+            delete ordersCache[cacheKeys[0]];
+        }
 
         // Update Cache
         ordersCache[key] = { data, timestamp: Date.now() };

@@ -26,8 +26,10 @@ export interface Order {
   employerId: string;
   title: string;
   address: string;
-  location: LatLng;
+  location?: LatLng;
   coordinates?: LatLng;
+  latitude?: number;
+  longitude?: number;
   date: string;
   time: string;
   price: number | string;

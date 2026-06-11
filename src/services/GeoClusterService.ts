@@ -1,4 +1,5 @@
 import { Order } from '../types';
+import { GeoGridService } from './GeoGridService';
 
 export interface Cluster {
   id: string;
@@ -7,43 +8,51 @@ export interface Cluster {
   count: number;
   orderIds: string[];
   isCluster: boolean;
+  type: 'weak' | 'strong';
 }
 
 /**
- * GeoClusterService: Grid-based grouping logic (~1-5km tiles).
- * This service is responsible for aggregating orders based on zoom levels.
+ * GeoClusterService: Aggregates orders based on zoom levels and grid buckets.
  */
 export const GeoClusterService = {
   /**
-   * Clusters orders based on grid precision.
-   * Higher latitudeDelta -> lower precision -> larger clusters.
+   * Safe accessor for order coordinates.
+   */
+  getOrderCoords(order: Order): { latitude: number; longitude: number } | null {
+    if (!order) return null;
+    const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
+    const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
+
+    if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+    return { latitude: lat, longitude: lng };
+  },
+
+  /**
+   * Clusters orders based on grid precision and density rules.
    */
   clusterOrders(orders: Order[], latDelta: number): (Order | Cluster)[] {
-    if (latDelta < 0.02) {
-      // Zoomed in: show raw markers
-      return orders;
+    if (latDelta < 0.01) {
+      // High zoom: show all markers individually
+      return orders.filter(o => this.getOrderCoords(o) !== null);
     }
 
-    const precision = this.getPrecision(latDelta);
     const grid: Record<string, Cluster> = {};
+    const validOrders = orders.filter(o => this.getOrderCoords(o) !== null);
 
-    orders.forEach(order => {
-      // Use coordinates (preferred) or fallback to location
-      const lat = order.coordinates?.latitude ?? order.location.latitude;
-      const lng = order.coordinates?.longitude ?? order.location.longitude;
-
-      const bucketLat = Math.floor(lat * Math.pow(10, precision)) / Math.pow(10, precision);
-      const bucketLng = Math.floor(lng * Math.pow(10, precision)) / Math.pow(10, precision);
-      const key = `${bucketLat}_${bucketLng}`;
+    validOrders.forEach(order => {
+      const coords = this.getOrderCoords(order)!;
+      const key = GeoGridService.getGridKey(coords.latitude, coords.longitude, latDelta);
 
       if (!grid[key]) {
+        const normalized = GeoGridService.normalizeRegion(coords.latitude, coords.longitude, latDelta);
         grid[key] = {
           id: `cluster_${key}`,
-          latitude: bucketLat,
-          longitude: bucketLng,
+          latitude: normalized.latitude,
+          longitude: normalized.longitude,
           count: 0,
           orderIds: [],
-          isCluster: true
+          isCluster: true,
+          type: 'weak'
         };
       }
 
@@ -51,18 +60,22 @@ export const GeoClusterService = {
       grid[key].orderIds.push(order.id);
     });
 
-    return Object.values(grid).map(cluster => {
-        if (cluster.count === 1) {
-            // If only one order in grid, return the order itself instead of a cluster
-            return orders.find(o => o.id === cluster.orderIds[0])!;
-        }
-        return cluster;
-    });
-  },
+    const result: (Order | Cluster)[] = [];
 
-  getPrecision(latDelta: number): number {
-    if (latDelta > 2.0) return 0; // ~111km grid
-    if (latDelta > 0.5) return 1; // ~11km grid
-    return 2;                    // ~1.1km grid
+    Object.values(grid).forEach(cluster => {
+      if (cluster.count <= 3) {
+        // Rule: 1-3 -> single markers
+        cluster.orderIds.forEach(id => {
+          const order = validOrders.find(o => o.id === id);
+          if (order) result.push(order);
+        });
+      } else {
+        // Rule: 4+ -> cluster
+        cluster.type = cluster.count > 10 ? 'strong' : 'weak';
+        result.push(cluster);
+      }
+    });
+
+    return result;
   }
 };
