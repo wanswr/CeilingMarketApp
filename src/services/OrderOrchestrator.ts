@@ -6,16 +6,17 @@ import { entityStore } from './EntityStore';
 type OrderCallback = (orders: Order[]) => void;
 
 /**
- * OrderOrchestrator: Logic Layer.
- * Delegates data fetching, deduplication and caching to RequestRouter.
- * Persists data into EntityStore for Single Source of Truth.
+ * OrderOrchestrator V2.1: Logic & Sync Layer.
+ * Delegates data fetching to RequestRouter.
+ * Persists data into EntityStore (Single Source of Truth).
+ * Notifies UI subscribers of store changes.
  */
 class OrderOrchestrator {
   private subscribers: Set<OrderCallback> = new Set();
   private debounceTimer: NodeJS.Timeout | null = null;
 
   /**
-   * Subscribe to the Data Engine.
+   * Subscribe to global order updates.
    */
   subscribe(callback: OrderCallback) {
     this.subscribers.add(callback);
@@ -24,7 +25,8 @@ class OrderOrchestrator {
   }
 
   private notifySubscribers() {
-    this.subscribers.forEach(cb => cb(this.getOrdersArray()));
+    const orders = this.getOrdersArray();
+    this.subscribers.forEach(cb => cb(orders));
   }
 
   private getOrdersArray(): Order[] {
@@ -33,8 +35,7 @@ class OrderOrchestrator {
   }
 
   /**
-   * SYNC MAP: Single-Load Map strategy.
-   * Results are written directly to EntityStore.
+   * SYNC MAP: Fetch and normalize map orders.
    */
   async syncMap(force: boolean = false) {
     const key = 'map:orders';
@@ -47,22 +48,25 @@ class OrderOrchestrator {
           const res = await apiService.getMapOrders();
           return res.data;
         },
-        30000 // 30s TTL
+        60000 // 60s TTL for Map (Task #7: Reduce spam)
       );
 
       // Write to Store (Smart Merge)
       let changed = false;
       freshOrders.forEach(order => {
         const existing = entityStore.getOrder(order.id);
-        if (!existing || existing.updatedAt !== order.updatedAt) {
+        // Only update if missing or newer data available
+        if (!existing || JSON.stringify(existing) !== JSON.stringify(order)) {
           entityStore.setOrder(order);
           changed = true;
         }
       });
 
-      if (changed) {
+      if (changed || force) {
         this.notifySubscribers();
       }
+
+      entityStore.logDiagnostics();
     } catch (error) {
       console.error("[OrderOrchestrator] Map Sync failed", error);
     }
@@ -84,7 +88,8 @@ class OrderOrchestrator {
       60000 // 60s TTL
     );
 
-    entityStore.setUser(userData);
+    // Mark as current user for the selector
+    entityStore.setUser({ ...userData, isMe: true });
     return userData;
   }
 
@@ -115,12 +120,6 @@ class OrderOrchestrator {
    * SYNC ORDER: Detail fetching with Store persistence.
    */
   async syncOrder(orderId: string, force: boolean = false) {
-    if (!force) {
-      const cached = entityStore.getOrder(orderId);
-      // If we have full details (e.g. applications/worker present in cache), reuse it
-      if (cached && (cached as any).applications) return cached;
-    }
-
     const key = `order:${orderId}`;
     if (force) requestRouter.invalidate(key);
 
@@ -143,21 +142,79 @@ class OrderOrchestrator {
     }
   }
 
+  /**
+   * Trigger debounced map update (e.g. on region change).
+   */
   triggerMapUpdate() {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.syncMap();
-    }, 500);
+    }, 1000); // 1s debounce
   }
 
   getOrders() {
     return this.getOrdersArray();
   }
 
+  // Task #3: Selectors
+  getOrder(id: string) {
+    return entityStore.getOrder(id);
+  }
+
+  getUser(id: string) {
+    return entityStore.getUser(id);
+  }
+
+  getCurrentUser() {
+    return entityStore.getCurrentUser();
+  }
+
+  /**
+   * Full cache clear and re-fetch.
+   */
   async forceRefresh() {
     entityStore.clear();
     requestRouter.clear();
     return this.syncMap(true);
+  }
+
+  // Task #4: Move API calls to Orchestrator
+
+  async updateProfile(profileData: any) {
+    const res = await apiService.updateProfile(profileData);
+    entityStore.setUser({ ...res.data, isMe: true });
+    requestRouter.invalidate('user:profile');
+    return res.data;
+  }
+
+  async createOrder(orderData: any) {
+    const res = await apiService.createOrder(orderData);
+    entityStore.setOrder(res.data);
+    requestRouter.invalidate('map:orders');
+    this.notifySubscribers();
+    return res.data;
+  }
+
+  async updateOrder(orderId: string, orderData: any) {
+    const res = await apiService.updateOrder(orderId, orderData);
+    entityStore.setOrder(res.data);
+    requestRouter.invalidate(`order:${orderId}`);
+    requestRouter.invalidate('map:orders');
+    this.notifySubscribers();
+    return res.data;
+  }
+
+  async applyForOrder(orderId: string) {
+    const res = await apiService.applyForOrder(orderId);
+    // Refresh order details to show updated candidates/status
+    await this.syncOrder(orderId, true);
+    return res.data;
+  }
+
+  async activateSubscription(days: number) {
+    const res = await apiService.activateSubscription(days);
+    await this.syncUser(true);
+    return res.data;
   }
 }
 

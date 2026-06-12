@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { z } from 'zod';
 import { COLORS } from '../constants/theme';
-import { apiService } from '../services/ApiService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 
 const profileSchema = z.object({
   name: z.string().min(2, "Имя слишком короткое"),
@@ -24,25 +24,21 @@ const profileSchema = z.object({
 });
 
 export default function EditProfileScreen({ navigation }: any) {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!orderOrchestrator.getCurrentUser());
   const [saving, setSaving] = useState(false);
-  const [profile, setProfile] = useState<any>({});
+  const [profile, setProfile] = useState<any>(orderOrchestrator.getCurrentUser() || {});
   const [errors, setErrors] = useState<any>({});
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
-
-  const fetchProfile = async () => {
-    try {
-      const response = await apiService.getProfile();
-      setProfile(response.data);
-    } catch (e) {
-      Alert.alert("Ошибка", "Не удалось загрузить данные профиля");
-    } finally {
+    orderOrchestrator.syncUser().then(data => {
+      setProfile(data);
       setLoading(false);
-    }
-  };
+    }).catch(() => {
+       if (!profile.name) {
+          Alert.alert("Ошибка", "Не удалось загрузить данные профиля");
+       }
+    });
+  }, []);
 
   const handleSave = async () => {
     const validation = profileSchema.safeParse(profile);
@@ -57,7 +53,7 @@ export default function EditProfileScreen({ navigation }: any) {
 
     setSaving(true);
     try {
-      await apiService.updateProfile(profile);
+      await orderOrchestrator.updateProfile(profile);
       Alert.alert("Успех", "Профиль обновлен");
       navigation.goBack();
     } catch (e) {

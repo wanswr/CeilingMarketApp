@@ -22,7 +22,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { z } from 'zod';
 import { AppInput } from '../components/Input';
-import { apiService } from '../services/ApiService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
@@ -242,7 +242,7 @@ export default function CreateOrderScreen({ navigation }: any) {
         idempotencyKey: `${Date.now()}-${form.title}`,
       };
 
-      await apiService.createOrder(orderData);
+      await orderOrchestrator.createOrder(orderData);
 
       Alert.alert("Успех", "Заказ опубликован!");
       navigation.goBack();

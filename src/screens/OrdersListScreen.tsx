@@ -7,9 +7,9 @@ import { Order } from '../types';
 import { COLORS, SHADOWS } from '../constants/theme';
 
 const OrdersListScreen = ({ navigation }: any) => {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>(orderOrchestrator.getOrders());
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(orders.length === 0);
 
   // Subscribe to the central orchestrator
   useEffect(() => {

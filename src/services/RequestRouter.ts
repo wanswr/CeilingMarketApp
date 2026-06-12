@@ -12,6 +12,12 @@ class RequestRouter {
   private cache: Map<string, CacheEntry> = new Map();
   private inFlight: Map<string, Promise<any>> = new Map();
 
+  // Task #6: Metrics
+  private metrics = {
+    apiCalls: 0,
+    cacheHits: 0
+  };
+
   /**
    * Primary request method with deduplication and caching.
    * @param key Unique key for the request (e.g., 'user:profile', 'order:uuid')
@@ -24,7 +30,10 @@ class RequestRouter {
     // 1. Check Cache (Cache-First)
     const cached = this.cache.get(key);
     if (cached && (now - cached.timestamp) < ttl) {
-      console.log(`[RequestRouter] CACHE HIT: ${key}`);
+      if (__DEV__) {
+        console.log(`[RequestRouter] CACHE HIT: ${key}`);
+      }
+      this.metrics.cacheHits++;
       return cached.data;
     }
 
@@ -35,7 +44,11 @@ class RequestRouter {
     }
 
     // 3. Perform Fetch
-    console.log(`[RequestRouter] >>> FETCH START: ${key}`);
+    if (__DEV__) {
+        console.log(`[RequestRouter] >>> FETCH START: ${key}`);
+    }
+    this.metrics.apiCalls++;
+
     const promise = (async () => {
       try {
         const data = await fetchFn();
@@ -46,7 +59,9 @@ class RequestRouter {
         throw error;
       } finally {
         this.inFlight.delete(key);
-        console.log(`[RequestRouter] <<< FETCH END: ${key}`);
+        if (__DEV__) {
+            console.log(`[RequestRouter] <<< FETCH END: ${key}`);
+        }
       }
     })();
 
@@ -67,6 +82,12 @@ class RequestRouter {
   clear() {
     this.cache.clear();
     this.inFlight.clear();
+    this.metrics.apiCalls = 0;
+    this.metrics.cacheHits = 0;
+  }
+
+  getMetrics() {
+    return { ...this.metrics };
   }
 }
 

@@ -5,39 +5,40 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { Order } from '../types';
 import { orderOrchestrator } from '../services/OrderOrchestrator';
-import { apiService } from '../services/ApiService';
 import { Button } from '../components/Button';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
-  const [order, setOrder] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [order, setOrder] = useState<Order | undefined>(orderOrchestrator.getOrder(orderId));
+  const [loading, setLoading] = useState(!order);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchOrderDetails();
-  }, [orderId]);
+    const unsubscribe = orderOrchestrator.subscribe(() => {
+      const updated = orderOrchestrator.getOrder(orderId);
+      if (updated) {
+        setOrder(updated);
+        setLoading(false);
+      }
+    });
 
-  const fetchOrderDetails = async () => {
-    try {
-      const data = await orderOrchestrator.syncOrder(orderId);
-      setOrder(data);
-    } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
-      navigation.goBack();
-    } finally {
-      setLoading(false);
-    }
-  };
+    orderOrchestrator.syncOrder(orderId).catch(() => {
+      if (!order) {
+        Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
+        navigation.goBack();
+      }
+    });
+
+    return unsubscribe;
+  }, [orderId]);
 
   const handleApply = async () => {
     setSubmitting(true);
     try {
-      await apiService.applyForOrder(orderId);
+      await orderOrchestrator.applyForOrder(orderId);
       Alert.alert('Успех', 'Ваша заявка отправлена');
-      fetchOrderDetails();
     } catch (error: any) {
       Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить заявку');
     } finally {
@@ -45,7 +46,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     }
   };
 
-  if (loading) {
+  if (loading || !order) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -57,7 +58,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={styles.imageHeader}>
-          {order.images?.length > 0 ? (
+          {order.images && order.images.length > 0 ? (
             <Image source={{ uri: order.images[0] }} style={styles.mainImage} />
           ) : (
             <View style={styles.imagePlaceholder}>

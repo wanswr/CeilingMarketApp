@@ -49,4 +49,6 @@ export interface Order {
   timestamp?: any;
   isPinned?: boolean;
   distance?: number;
+  employer?: UserProfile;
+  worker?: UserProfile;
 }

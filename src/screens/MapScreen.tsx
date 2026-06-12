@@ -24,7 +24,7 @@ import { Order } from '../types';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
-  const [allOrders, setAllOrders] = useState<Order[]>([]);
+  const [allOrders, setAllOrders] = useState<Order[]>(orderOrchestrator.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -67,6 +67,8 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     setRegion(newRegion);
+    // Task #7: RequestRouter spam protection
+    // We only trigger sync if we don't have enough orders or after significant movement
     orderOrchestrator.triggerMapUpdate();
   };
 
