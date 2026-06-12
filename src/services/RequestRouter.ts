@@ -24,10 +24,20 @@ class RequestRouter {
    * @param fetchFn The function that performs the actual API call
    * @param ttl Cache Time-To-Live in milliseconds (default: 30s)
    */
+  /**
+   * Primary request method with deduplication and caching.
+   * Handles In-Flight locking (Deduplication) first to prevent race conditions.
+   */
   async request<T>(key: string, fetchFn: () => Promise<T>, ttl: number = 30000): Promise<T> {
     const now = Date.now();
 
-    // 1. Check Cache (Cache-First)
+    // 1. Handle In-Flight (Deduplication) - TASK #1: Locking
+    if (this.inFlight.has(key)) {
+      if (__DEV__) console.log(`[RequestRouter] DEDUP JOIN: ${key}`);
+      return this.inFlight.get(key);
+    }
+
+    // 2. Check Cache (Cache-First)
     const cached = this.cache.get(key);
     if (cached && (now - cached.timestamp) < ttl) {
       if (__DEV__) {
@@ -35,12 +45,6 @@ class RequestRouter {
       }
       this.metrics.cacheHits++;
       return cached.data;
-    }
-
-    // 2. Handle In-Flight (Deduplication)
-    if (this.inFlight.has(key)) {
-      console.log(`[RequestRouter] DEDUP JOIN: ${key}`);
-      return this.inFlight.get(key);
     }
 
     // 3. Perform Fetch

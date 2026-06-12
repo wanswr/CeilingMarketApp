@@ -36,13 +36,21 @@ class OrderOrchestrator {
 
   /**
    * SYNC MAP: Fetch and normalize map orders.
+   * Region hashing implemented for tile-based synchronization.
    */
-  async syncMap(force: boolean = false) {
-    const key = 'map:orders';
+  async syncMap(force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number }) {
+    // Generate a stable key based on region (Task #2: region hash)
+    let key = 'map:orders';
+    if (region) {
+      const precision = region.latitudeDelta > 0.5 ? 1 : 2;
+      const latHash = region.latitude.toFixed(precision);
+      const lngHash = region.longitude.toFixed(precision);
+      key = `map:orders:${latHash}:${lngHash}`;
+    }
 
     // Task #7: Freshness check to avoid RequestRouter call if data is still fresh in Store
     if (!force) {
-      const lastUpdate = entityStore.getMeta('orders_last_sync');
+      const lastUpdate = entityStore.getMeta(`last_sync:${key}`);
       if (lastUpdate && (Date.now() - Number(lastUpdate)) < 30000) {
         return; // Still fresh, skip request router
       }
@@ -75,7 +83,7 @@ class OrderOrchestrator {
         this.notifySubscribers();
       }
 
-      entityStore.setMeta('orders_last_sync', Date.now().toString());
+      entityStore.setMeta(`last_sync:${key}`, Date.now().toString());
       entityStore.logDiagnostics();
     } catch (error) {
       console.error("[OrderOrchestrator] Map Sync failed", error);
@@ -163,12 +171,13 @@ class OrderOrchestrator {
 
   /**
    * Trigger debounced map update (e.g. on region change).
+   * Task #2: Debounce viewport changes
    */
-  triggerMapUpdate() {
+  triggerMapUpdate(region?: { latitude: number, longitude: number, latitudeDelta: number }) {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
-      this.syncMap();
-    }, 1000); // 1s debounce
+      this.syncMap(false, region);
+    }, 1200); // 1.2s debounce for stability
   }
 
   getOrders() {

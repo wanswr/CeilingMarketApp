@@ -69,7 +69,11 @@ const MapScreen = ({ navigation }: any) => {
     setRegion(newRegion);
     // Task #7: RequestRouter spam protection
     // We only trigger sync if we don't have enough orders or after significant movement
-    orderOrchestrator.triggerMapUpdate();
+    orderOrchestrator.triggerMapUpdate({
+      latitude: newRegion.latitude,
+      longitude: newRegion.longitude,
+      latitudeDelta: newRegion.latitudeDelta
+    });
   };
 
   // 3. UI Clustering (Refined)

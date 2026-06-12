@@ -48,8 +48,28 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   if (loading || !order) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={styles.container}>
+        <View style={[styles.imageHeader, { backgroundColor: '#f0f0f0' }]} />
+        <View style={styles.contentCard}>
+          <View style={{ width: 120, height: 40, borderRadius: 16, backgroundColor: '#f0f0f0', marginBottom: 20 }} />
+          <View style={{ width: '80%', height: 34, borderRadius: 8, backgroundColor: '#f0f0f0', marginBottom: 24 }} />
+          <View style={{ gap: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: '#f0f0f0' }} />
+              <View style={{ marginLeft: 16, gap: 4 }}>
+                <View style={{ width: 60, height: 12, backgroundColor: '#f0f0f0' }} />
+                <View style={{ width: 200, height: 16, backgroundColor: '#f0f0f0' }} />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: '#f0f0f0' }} />
+              <View style={{ marginLeft: 16, gap: 4 }}>
+                <View style={{ width: 80, height: 12, backgroundColor: '#f0f0f0' }} />
+                <View style={{ width: 150, height: 16, backgroundColor: '#f0f0f0' }} />
+              </View>
+            </View>
+          </View>
+        </View>
       </View>
     );
   }

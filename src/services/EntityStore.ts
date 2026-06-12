@@ -32,17 +32,36 @@ class EntityStore {
 
   // --- Task #2: Normalization & Atomic Updates ---
 
+  /**
+   * Performs a shallow equality check to prevent redundant writes and re-renders.
+   */
+  private hasChanged(existing: any, incoming: any): boolean {
+    if (!existing) return true;
+    for (const key in incoming) {
+      if (incoming[key] !== existing[key]) {
+        // Handle basic object comparison for nested structures if needed,
+        // but for normalized entities, shallow check of top-level props is usually enough.
+        if (typeof incoming[key] === 'object' && incoming[key] !== null) {
+          if (JSON.stringify(incoming[key]) !== JSON.stringify(existing[key])) return true;
+        } else {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   setOrder(order: Order) {
     if (!order?.id) return;
+
+    const existing = this.orders.get(order.id);
+    if (!this.hasChanged(existing, order)) return;
 
     // Normalize nested entities before storing the order
     const o = { ...order } as any;
 
     if (o.employer && typeof o.employer === 'object') {
       this.setUser(o.employer);
-      // Optional: replace nested object with ID to keep store lean,
-      // but usually we keep it for easier UI consumption if the backend sends it.
-      // For now, we just ensure the User store is updated.
     }
 
     if (o.worker && typeof o.worker === 'object') {
@@ -59,9 +78,11 @@ class EntityStore {
   }
 
   setUser(user: UserProfile) {
-    // Backend uses 'id' or 'uid' depending on context, we normalize to uid/id
     const id = (user as any).id || user.uid;
     if (!id) return;
+
+    const existing = this.users.get(id);
+    if (!this.hasChanged(existing, user)) return;
 
     this.users.set(id, user);
     this.meta.lastUpdated.set(`user:${id}`, Date.now());

@@ -65,9 +65,21 @@ const OrdersListScreen = ({ navigation }: any) => {
 
   if (loading && orders.length === 0) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={{ width: 200, height: 28, backgroundColor: '#f0f0f0', borderRadius: 8 }} />
+          <View style={{ width: 150, height: 15, backgroundColor: '#f0f0f0', borderRadius: 4, marginTop: 10 }} />
+        </View>
+        <View style={{ padding: 20 }}>
+          {[1, 2, 3].map(i => (
+            <View key={i} style={[styles.orderCard, { height: 120, backgroundColor: '#f9f9f9', borderColor: '#eee' }]}>
+               <View style={{ width: '60%', height: 20, backgroundColor: '#f0f0f0', borderRadius: 4 }} />
+               <View style={{ width: '40%', height: 14, backgroundColor: '#f0f0f0', borderRadius: 4, marginTop: 15 }} />
+               <View style={{ width: '100%', height: 12, backgroundColor: '#f0f0f0', borderRadius: 4, marginTop: 15 }} />
+            </View>
+          ))}
+        </View>
+      </SafeAreaView>
     );
   }
 
