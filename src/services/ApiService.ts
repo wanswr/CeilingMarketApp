@@ -2,13 +2,12 @@ import axios, { InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 // Base URL for the API.
-// For Android Emulator, use 'http://10.0.2.2:3000/api'
-// For iOS Simulator, 'http://localhost:3000/api' works
-// For physical devices, use your machine's local IP address (e.g., 'http://192.168.1.50:3000/api')
-const API_URL = 'http://192.168.1.229:3000/api';
+// IMPORTANT: Use trailing slash in baseURL and NO leading slash in paths.
+const API_URL = 'http://192.168.1.229:3000/api/';
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -17,7 +16,10 @@ const api = axios.create({
 // Interceptor to add the JWT token to every request
 api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const token = await SecureStore.getItemAsync('userToken');
-  console.log(`[API] Request to ${config.url} with token: ${token ? 'PRESENT' : 'MISSING'}`);
+  if (__DEV__) {
+    console.log(`[API] ${config.method?.toUpperCase()} Request to: ${config.baseURL}${config.url}`);
+    console.log(`[API] Auth Token: ${token ? 'PRESENT' : 'MISSING'}`);
+  }
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -27,8 +29,12 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      console.warn("[API] 401 Unauthorized detected. URL:", error.config?.url);
+    if (error.response) {
+      console.warn(`[API] Error ${error.response.status} from ${error.config?.url}:`, error.response.data);
+    } else if (error.request) {
+      console.error(`[API] Network Error from ${error.config?.url}: No response received.`, error.message);
+    } else {
+      console.error(`[API] Request Setup Error:`, error.message);
     }
     return Promise.reject(error);
   }
@@ -37,33 +43,33 @@ api.interceptors.response.use(
 export const apiService = {
   // Orders
   getOrders: (params: any, config: any = {}) =>
-    api.get('/orders', { params, ...config }),
+    api.get('orders', { params, ...config }),
 
-  getMapOrders: () => api.get('/orders/map'),
+  getMapOrders: () => api.get('orders/map'),
 
-  createOrder: (data: any) => api.post('/orders', data),
+  createOrder: (data: any) => api.post('orders', data),
 
-  getOrderDetails: (id: string) => api.get(`/orders/${id}`),
+  getOrderDetails: (id: string) => api.get(`orders/${id}`),
 
-  applyForOrder: (id: string) => api.post(`/orders/${id}/claim`),
+  applyForOrder: (id: string) => api.post(`orders/${id}/claim`),
 
-  updateOrder: (id: string, data: any) => api.patch(`/orders/${id}`, data),
+  updateOrder: (id: string, data: any) => api.patch(`orders/${id}`, data),
 
-  deleteOrder: (id: string) => api.delete(`/orders/${id}`),
+  deleteOrder: (id: string) => api.delete(`orders/${id}`),
 
   // Users
-  getProfile: () => api.get('/users/profile'),
+  getProfile: () => api.get('users/profile'),
 
-  getUserProfile: (id: string) => api.get(`/users/${id}`),
+  getUserProfile: (id: string) => api.get(`users/${id}`),
 
-  updateProfile: (data: any) => api.patch('/users/profile', data),
+  updateProfile: (data: any) => api.patch('users/profile', data),
 
   // Auth
-  login: (phone: string) => api.post('/auth/login', { phone }),
+  login: (phone: string) => api.post('auth/login', { phone }),
 
   register: (data: { phone: string; name: string; role?: string }) =>
-    api.post('/auth/register', data),
+    api.post('auth/register', data),
 
   // Subscriptions
-  activateSubscription: (days: number) => api.post('/subscriptions/activate', { days }),
+  activateSubscription: (days: number) => api.post('subscriptions/activate', { days }),
 };
