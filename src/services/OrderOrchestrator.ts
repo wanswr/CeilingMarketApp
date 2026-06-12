@@ -39,6 +39,15 @@ class OrderOrchestrator {
    */
   async syncMap(force: boolean = false) {
     const key = 'map:orders';
+
+    // Task #7: Freshness check to avoid RequestRouter call if data is still fresh in Store
+    if (!force) {
+      const lastUpdate = entityStore.getMeta('orders_last_sync');
+      if (lastUpdate && (Date.now() - Number(lastUpdate)) < 30000) {
+        return; // Still fresh, skip request router
+      }
+    }
+
     if (force) requestRouter.invalidate(key);
 
     try {
@@ -66,6 +75,7 @@ class OrderOrchestrator {
         this.notifySubscribers();
       }
 
+      entityStore.setMeta('orders_last_sync', Date.now().toString());
       entityStore.logDiagnostics();
     } catch (error) {
       console.error("[OrderOrchestrator] Map Sync failed", error);
@@ -77,6 +87,14 @@ class OrderOrchestrator {
    */
   async syncUser(force: boolean = false) {
     const key = 'user:profile';
+
+    if (!force) {
+      const lastUpdate = entityStore.getMeta('user_last_sync');
+      if (lastUpdate && (Date.now() - Number(lastUpdate)) < 60000) {
+        return entityStore.getCurrentUser();
+      }
+    }
+
     if (force) requestRouter.invalidate(key);
 
     const userData = await requestRouter.request(
@@ -90,6 +108,7 @@ class OrderOrchestrator {
 
     // Mark as current user for the selector
     entityStore.setUser({ ...userData, isMe: true });
+    entityStore.setMeta('user_last_sync', Date.now().toString());
     return userData;
   }
 
@@ -214,6 +233,15 @@ class OrderOrchestrator {
   async activateSubscription(days: number) {
     const res = await apiService.activateSubscription(days);
     await this.syncUser(true);
+    return res.data;
+  }
+
+  // Auth Operations (Task #4)
+  async login(phone: string) {
+    const res = await apiService.login(phone);
+    if (res.data.user) {
+      entityStore.setUser({ ...res.data.user, isMe: true });
+    }
     return res.data;
   }
 }

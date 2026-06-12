@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
-import { apiService } from '../services/ApiService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -21,10 +21,10 @@ export default function LoginScreen({ navigation }: any) {
     }
     setLoading(true);
     try {
-      // In this new architecture, we call our own backend
-      const response = await apiService.login(phone);
-      if (response.data.access_token) {
-        await signIn(response.data.access_token, response.data.user);
+      // In this new architecture, we call our own backend via Orchestrator
+      const data = await orderOrchestrator.login(phone);
+      if (data.access_token) {
+        await signIn(data.access_token, data.user);
         // Note: useAuth will trigger Navigation re-render
       }
     } catch (err: any) {

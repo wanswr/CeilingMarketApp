@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { AppInput } from '../components/Input';
-import { apiService } from '../services/ApiService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 import { COLORS } from '../constants/theme';
 
 export default function EditOrderScreen({ navigation, route }: any) {
@@ -15,8 +15,7 @@ export default function EditOrderScreen({ navigation, route }: any) {
 
   const fetchOrder = async () => {
     try {
-      const response = await apiService.getOrderDetails(orderId);
-      const order = response.data;
+      const order = await orderOrchestrator.syncOrder(orderId);
       setForm({
         title: order.title || '',
         address: order.address || '',
@@ -33,7 +32,7 @@ export default function EditOrderScreen({ navigation, route }: any) {
 
   const handleSave = async () => {
     try {
-      await apiService.updateOrder(orderId, {
+      await orderOrchestrator.updateOrder(orderId, {
         ...form,
         price: Number(form.price)
       });

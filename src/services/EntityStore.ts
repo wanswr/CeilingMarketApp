@@ -20,6 +20,16 @@ class EntityStore {
     writes: 0
   };
 
+  private globalMeta: Map<string, string> = new Map();
+
+  setMeta(key: string, value: string) {
+    this.globalMeta.set(key, value);
+  }
+
+  getMeta(key: string) {
+    return this.globalMeta.get(key);
+  }
+
   // --- Task #2: Normalization & Atomic Updates ---
 
   setOrder(order: Order) {

@@ -14,6 +14,11 @@ export interface UserProfile {
   telegram?: string;
   isVerified: boolean;
   subscriptionUntil?: string;
+  subscription?: {
+    id: string;
+    isActive: boolean;
+    activeUntil: string;
+  };
   isTrialUsed: boolean;
   pushToken?: string;
   portfolio?: string[];

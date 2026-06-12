@@ -1,32 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
-import { apiService } from '../services/ApiService';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 import { COLORS } from '../constants/theme';
-import { Button } from '../components/Button';
 
 const SubscriptionScreen = () => {
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<any>(null);
-
-  useEffect(() => {
-    fetchStatus();
-  }, []);
-
-  const fetchStatus = async () => {
-    try {
-      const response = await apiService.getProfile();
-      setStatus(response.data.subscription);
-    } catch (error) {
-      console.error(error);
-    }
-  };
+  const user = orderOrchestrator.getCurrentUser();
+  const status = user?.subscription;
 
   const handleSubscribe = async (days: number) => {
     setLoading(true);
     try {
-      await apiService.activateSubscription(days);
+      await orderOrchestrator.activateSubscription(days);
       Alert.alert('Успех', 'Подписка активирована!');
-      fetchStatus();
     } catch (error) {
       Alert.alert('Ошибка', 'Не удалось оформить подписку');
     } finally {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert, SafeAreaView, ScrollView } from 'react-native';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
-import { apiService } from '../services/ApiService';
+import { orderOrchestrator } from '../services/OrderOrchestrator';
 import { useAuth } from '../context/AuthContext';
 
 const RegisterDetailsScreen = ({ navigation }: any) => {
@@ -18,11 +18,11 @@ const RegisterDetailsScreen = ({ navigation }: any) => {
 
     setLoading(true);
     try {
-      const response = await apiService.updateProfile({
+      const data = await orderOrchestrator.updateProfile({
         name
       });
 
-      updateUser(response.data);
+      updateUser(data);
       navigation.navigate('RoleSelection');
     } catch (err: any) {
       console.error(err);
