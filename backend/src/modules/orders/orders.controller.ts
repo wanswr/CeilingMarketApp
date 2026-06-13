@@ -25,13 +25,20 @@ export class OrdersController {
   }
 
   @Get('map')
-  getMapOrders() {
-    return this.ordersService.findAll({ status: 'PUBLISHED' });
+  getMapOrders(
+    @Query('updatedAfter') updatedAfter?: string,
+    @Query('tile') tile?: string,
+  ) {
+    // Stage 3: Incremental Sync Support
+    return this.ordersService.findIncremental({
+      updatedAfter: updatedAfter ? new Date(Number(updatedAfter)) : undefined,
+      status: 'PUBLISHED'
+    });
   }
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Body() createOrderDto: CreateOrderDto, @Req() req) {
+  create(@Body() createOrderDto: CreateOrderDto, @Req() req: any) {
     return this.ordersService.create(createOrderDto, req.user.id);
   }
 
@@ -42,19 +49,19 @@ export class OrdersController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDto: any, @Req() req) {
+  update(@Param('id') id: string, @Body() updateDto: any, @Req() req: any) {
     return this.ordersService.update(id, updateDto, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  remove(@Param('id') id: string, @Req() req) {
+  remove(@Param('id') id: string, @Req() req: any) {
     return this.ordersService.remove(id, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/claim')
-  claim(@Param('id') id: string, @Req() req) {
+  claim(@Param('id') id: string, @Req() req: any) {
     return this.ordersService.claim(id, req.user.id);
   }
 
@@ -63,7 +70,7 @@ export class OrdersController {
   updateStatus(
     @Param('id') id: string,
     @Body('status') status: string,
-    @Req() req
+    @Req() req: any
   ) {
     return this.ordersService.transitionStatus(id, status as any, req.user.id);
   }

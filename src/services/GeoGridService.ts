@@ -6,7 +6,35 @@ import { LatLng } from '../types';
  */
 export const GeoGridService = {
   /**
-   * Generates a stable grid key based on coordinates and zoom level (latitudeDelta).
+   * Tile Engine V3: Generates a stable tile coordinate based on world coordinates and zoom.
+   * Logic: (lat, lng) -> (tileX, tileY)
+   */
+  getTileKey(lat: number, lng: number, zoomLevel: number): string {
+    // Zoom levels: 0 (World) to 20 (Building)
+    const n = Math.pow(2, zoomLevel);
+    const xtile = Math.floor(((lng + 180) / 360) * n);
+    const ytile = Math.floor(
+      ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * n
+    );
+    return `tile:${zoomLevel}:${xtile}:${ytile}`;
+  },
+
+  /**
+   * Maps latitudeDelta to a zoom level (approximate).
+   */
+  getZoomLevel(latDelta: number): number {
+    // Basic approximation for zoom level
+    if (latDelta > 10) return 4;
+    if (latDelta > 5) return 6;
+    if (latDelta > 1) return 8;
+    if (latDelta > 0.5) return 10;
+    if (latDelta > 0.1) return 12;
+    if (latDelta > 0.05) return 14;
+    return 16;
+  },
+
+  /**
+   * Legacy Grid Support (used for clustering)
    */
   getGridKey(lat: number, lng: number, latDelta: number): string {
     const precision = this.getPrecision(latDelta);
@@ -15,9 +43,6 @@ export const GeoGridService = {
     return `${bucketLat.toFixed(precision)}_${bucketLng.toFixed(precision)}`;
   },
 
-  /**
-   * Normalizes a region to a stable grid center.
-   */
   normalizeRegion(lat: number, lng: number, latDelta: number): LatLng {
     const precision = this.getPrecision(latDelta);
     const factor = Math.pow(10, precision);
@@ -27,13 +52,10 @@ export const GeoGridService = {
     };
   },
 
-  /**
-   * Determines grid precision based on zoom level.
-   */
   getPrecision(latDelta: number): number {
-    if (latDelta > 5.0) return 0;  // ~111km grid
-    if (latDelta > 1.0) return 1;  // ~11km grid
-    if (latDelta > 0.1) return 2;  // ~1.1km grid
-    return 3;                     // ~110m grid
+    if (latDelta > 5.0) return 0;
+    if (latDelta > 1.0) return 1;
+    if (latDelta > 0.1) return 2;
+    return 3;
   }
 };

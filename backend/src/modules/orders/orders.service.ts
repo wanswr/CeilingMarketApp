@@ -2,10 +2,14 @@ import { Injectable, NotFoundException, ForbiddenException, ConflictException } 
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from '@prisma/client';
+import { AppGateway } from '../gateway/app.gateway';
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private gateway: AppGateway,
+  ) {}
 
   /**
    * Status transitions map: defines legal state changes.
@@ -32,7 +36,7 @@ export class OrdersService {
     }
 
     console.log(`[OrdersService] Creating order for employer: ${employerId}`);
-    return this.prisma.order.create({
+    const order = await this.prisma.order.create({
       data: {
         title: dto.title,
         address: dto.address,
@@ -47,6 +51,9 @@ export class OrdersService {
         status: OrderStatus.PUBLISHED, // Target status for new orders
       },
     });
+
+    this.gateway.broadcast('order_created', order);
+    return order;
   }
 
   /**
@@ -173,6 +180,31 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
     return this.prisma.order.delete({ where: { id } });
+  }
+
+  async findIncremental(filters: { updatedAfter?: Date; status?: string }) {
+    const { updatedAfter, status } = filters;
+
+    // Stage 3: Fetch only changes since last sync
+    const created = await this.prisma.order.findMany({
+      where: {
+        status: (status as OrderStatus) || undefined,
+        createdAt: updatedAfter ? { gt: updatedAfter } : undefined,
+      },
+      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
+    });
+
+    const updated = await this.prisma.order.findMany({
+      where: {
+        status: (status as OrderStatus) || undefined,
+        updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
+        createdAt: updatedAfter ? { lte: updatedAfter } : undefined,
+      },
+      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
+    });
+
+    // In a real scenario, we would also track deleted IDs in a separate table/soft-delete
+    return { created, updated, deleted: [] };
   }
 
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {

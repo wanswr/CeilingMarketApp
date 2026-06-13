@@ -1,6 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { socketService } from '../services/SocketService';
+import { apiService } from '../services/ApiService';
 
 interface AuthContextType {
   user: any;
@@ -27,6 +29,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (token) {
         const userData = await orderOrchestrator.syncUser();
         setUser(userData);
+        socketService.connect(apiService.getBaseUrl());
       } else {
         setUser(null);
       }
@@ -42,11 +45,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (token: string, userData: any) => {
     await SecureStore.setItemAsync('userToken', token);
     setUser(userData);
+    socketService.connect(apiService.getBaseUrl());
   };
 
   const signOut = async () => {
     await SecureStore.deleteItemAsync('userToken');
     setUser(null);
+    socketService.disconnect();
   };
 
   const updateUser = (userData: any) => {

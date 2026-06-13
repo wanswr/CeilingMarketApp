@@ -41,11 +41,12 @@ api.interceptors.response.use(
 );
 
 export const apiService = {
+  getBaseUrl: () => API_URL,
   // Orders
   getOrders: (params: any, config: any = {}) =>
     api.get('orders', { params, ...config }),
 
-  getMapOrders: () => api.get('orders/map'),
+  getMapOrders: (params?: any) => api.get('orders/map', { params }),
 
   createOrder: (data: any) => api.post('orders', data),
 
