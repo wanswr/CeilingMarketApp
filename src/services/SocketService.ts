@@ -23,6 +23,11 @@ class SocketService {
       entityStore.setOrder(order);
     });
 
+    this.socket.on('order_claimed', (order: any) => {
+      console.log('[WebSocket] Order claimed received:', order.id);
+      entityStore.setOrder(order);
+    });
+
     this.socket.on('disconnect', () => {
       console.log('[WebSocket] Disconnected');
     });

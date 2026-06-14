@@ -60,7 +60,7 @@ export class OrdersService {
    * ATOMIC CLAIM: Postgres Transaction + row-level locking
    */
   async claim(orderId: string, workerId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. SELECT FOR UPDATE to lock the row and prevent concurrent claims
       const orderArray = await tx.$queryRaw<any[]>`
         SELECT * FROM "Order"
@@ -92,6 +92,9 @@ export class OrdersService {
         },
       });
     });
+
+    this.gateway.broadcast('order_claimed', result);
+    return result;
   }
 
   /**
@@ -111,10 +114,13 @@ export class OrdersService {
       throw new ConflictException(`Transition ${order.status} -> ${newStatus} not allowed`);
     }
 
-    return this.prisma.order.update({
+    const result = await this.prisma.order.update({
       where: { id: orderId },
       data: { status: newStatus }
     });
+
+    this.gateway.broadcast('order_updated', result);
+    return result;
   }
 
   private canTransition(from: OrderStatus, to: OrderStatus): boolean {
@@ -170,16 +176,49 @@ export class OrdersService {
       }
     }
 
-    return this.prisma.order.update({
+    const result = await this.prisma.order.update({
       where: { id },
       data: dto
     });
+
+    this.gateway.broadcast('order_updated', result);
+    return result;
   }
 
   async remove(id: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
     return this.prisma.order.delete({ where: { id } });
+  }
+
+  /**
+   * TILE ENGINE V2: Efficiently finds orders within tile bounds.
+   */
+  async findByTile(zoom: number, x: number, y: number, updatedAfter?: Date) {
+    const n = Math.pow(2, zoom);
+
+    // Calculate Lat/Lng Bounds for Tile
+    const lonMin = (x / n) * 360 - 180;
+    const lonMax = ((x + 1) / n) * 360 - 180;
+
+    const latRadMin = Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n)));
+    const latMin = (latRadMin * 180) / Math.PI;
+
+    const latRadMax = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n)));
+    const latMax = (latRadMax * 180) / Math.PI;
+
+    // Stage 5: Use Spatial Indexing for Range Query
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.PUBLISHED,
+        latitude: { gte: latMin, lte: latMax },
+        longitude: { gte: lonMin, lte: lonMax },
+        updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
+      },
+      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
+    });
+
+    return { created: orders, updated: [], deleted: [] };
   }
 
   async findIncremental(filters: { updatedAfter?: Date; status?: string }) {

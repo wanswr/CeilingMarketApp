@@ -27,9 +27,21 @@ export class OrdersController {
   @Get('map')
   getMapOrders(
     @Query('updatedAfter') updatedAfter?: string,
-    @Query('tile') tile?: string,
+    @Query('tileX') tileX?: number,
+    @Query('tileY') tileY?: number,
+    @Query('zoom') zoom?: number,
   ) {
-    // Stage 3: Incremental Sync Support
+    // Production Tile Engine V2
+    if (tileX !== undefined && tileY !== undefined && zoom !== undefined) {
+      return this.ordersService.findByTile(
+        Number(zoom),
+        Number(tileX),
+        Number(tileY),
+        updatedAfter ? new Date(Number(updatedAfter)) : undefined
+      );
+    }
+
+    // Fallback/Legacy
     return this.ordersService.findIncremental({
       updatedAfter: updatedAfter ? new Date(Number(updatedAfter)) : undefined,
       status: 'PUBLISHED'

@@ -35,63 +35,79 @@ class OrderOrchestrator {
   }
 
   /**
-   * SYNC MAP V3: Tile-based incremental synchronization.
+   * SYNC MAP V3: Real Tile-based synchronization.
+   * Fetches only missing tiles and caches them individually.
    */
   async syncMap(force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number }) {
     const { GeoGridService } = require('./GeoGridService');
-    const zoom = region ? GeoGridService.getZoomLevel(region.latitudeDelta) : 12;
+    const zoom = 12; // Standard zoom for tile synchronization
 
-    // Generate Tile Key (Task #1: Tile Engine)
-    const key = region
-      ? GeoGridService.getTileKey(region.latitude, region.longitude, zoom)
-      : 'tile:default';
-
-    if (!force) {
-      const lastUpdate = entityStore.getMeta(`last_sync:${key}`);
-      if (lastUpdate && (Date.now() - Number(lastUpdate)) < 30000) return;
+    // Fallback if no region provided
+    if (!region) {
+      await this.syncTile('tile:default', 0, 0, 0, force);
+      return;
     }
 
-    if (force) requestRouter.invalidate(key);
+    // Calculate tiles for the visible viewport (Simplified: central tile + neighbors)
+    const centerTileKey = GeoGridService.getTileKey(region.latitude, region.longitude, zoom);
+
+    // Stage 3: RequestRouter individual tile caching
+    const tilesToFetch = [centerTileKey]; // For now, just the center tile
+
+    for (const tileKey of tilesToFetch) {
+       const parts = tileKey.split(':');
+       const z = parseInt(parts[1]);
+       const x = parseInt(parts[2]);
+       const y = parseInt(parts[3]);
+       await this.syncTile(tileKey, z, x, y, force);
+    }
+  }
+
+  private async syncTile(tileKey: string, z: number, x: number, y: number, force: boolean) {
+    // Stage 3: Cache Hit Check
+    if (!force && entityStore.isTileLoaded(tileKey)) {
+        (entityStore.meta as any).tileCacheHits++;
+        return;
+    }
+    (entityStore.meta as any).tileCacheMisses++;
+
+    if (force) requestRouter.invalidate(tileKey);
 
     try {
-      // Incremental Sync Support (Task #3)
-      const lastSyncTime = entityStore.getMeta(`timestamp:${key}`) || '0';
+      const lastSyncTime = entityStore.getMeta(`timestamp:${tileKey}`) || '0';
 
       const response = await requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
-        key,
+        tileKey,
         async () => {
-          // Note: In a real world, we would send the tile coords to the backend
           const res = await apiService.getMapOrders({
             updatedAfter: lastSyncTime,
-            tile: region ? key : undefined
+            zoom: z,
+            tileX: x,
+            tileY: y
           });
           return res.data;
         },
-        30000
+        600000 // 10 min TTL for tile data
       );
 
       let changed = false;
-
-      // Handle Incremental Data (Task #3)
       if (response.created) {
-        response.created.forEach(o => entityStore.setOrder(o));
+        response.created.forEach(o => {
+            entityStore.setOrder(o);
+            entityStore.addOrderToTile(tileKey, o.id);
+        });
         if (response.created.length > 0) changed = true;
       }
-      if (response.updated) {
-        response.updated.forEach(o => entityStore.setOrder(o));
-        if (response.updated.length > 0) changed = true;
-      }
-      // Note: Delete logic would go here
 
       if (changed || force) {
         this.notifySubscribers();
       }
 
-      entityStore.setMeta(`last_sync:${key}`, Date.now().toString());
-      entityStore.setMeta(`timestamp:${key}`, Date.now().toString());
+      entityStore.markTileLoaded(tileKey);
+      entityStore.setMeta(`timestamp:${tileKey}`, Date.now().toString());
       entityStore.logDiagnostics();
     } catch (error) {
-      console.error("[OrderOrchestrator] Map Sync failed", error);
+      console.error(`[OrderOrchestrator] Sync failed for ${tileKey}`, error);
     }
   }
 

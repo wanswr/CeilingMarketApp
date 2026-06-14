@@ -8,6 +8,9 @@ interface StoreMeta {
   lastUpdated: Map<string, number>;
   reads: number;
   writes: number;
+  loadedTiles: number;
+  tileCacheHits: number;
+  tileCacheMisses: number;
 }
 
 /**
@@ -27,7 +30,10 @@ class EntityStore {
   public meta: StoreMeta = {
     lastUpdated: new Map(),
     reads: 0,
-    writes: 0
+    writes: 0,
+    loadedTiles: 0,
+    tileCacheHits: 0,
+    tileCacheMisses: 0
   };
 
   private globalMeta: Map<string, string> = new Map();
@@ -75,17 +81,32 @@ class EntityStore {
     this.meta.lastUpdated.set(`order:${order.id}`, Date.now());
     this.meta.writes++;
 
-    // Stage 1: Map to tile if coordinates present
+    // Stage 1 & 5: Map to tile if coordinates present
     const { GeoGridService } = require('./GeoGridService');
     const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
     const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
 
     if (typeof lat === 'number' && typeof lng === 'number') {
-      const zoom = 14; // Default indexing zoom
+      const zoom = 12; // Production indexing zoom
       const tileKey = GeoGridService.getTileKey(lat, lng, zoom);
-      if (!this.tilesToOrders.has(tileKey)) this.tilesToOrders.set(tileKey, new Set());
-      this.tilesToOrders.get(tileKey)!.add(order.id);
+      this.addOrderToTile(tileKey, order.id);
     }
+  }
+
+  addOrderToTile(tileKey: string, orderId: string) {
+    if (!this.tilesToOrders.has(tileKey)) {
+      this.tilesToOrders.set(tileKey, new Set());
+    }
+    this.tilesToOrders.get(tileKey)!.add(orderId);
+  }
+
+  markTileLoaded(tileKey: string) {
+    this.meta.loadedTiles++;
+    this.setMeta(`loaded:${tileKey}`, 'true');
+  }
+
+  isTileLoaded(tileKey: string): boolean {
+    return this.getMeta(`loaded:${tileKey}`) === 'true';
   }
 
   setOrders(orders: Order[]) {
@@ -142,7 +163,10 @@ class EntityStore {
       storeWrites: this.meta.writes,
       ordersCount: this.ordersById.size,
       usersCount: this.usersById.size,
-      tilesCount: this.tilesToOrders.size
+      tilesCount: this.tilesToOrders.size,
+      loadedTiles: this.meta.loadedTiles,
+      tileCacheHits: this.meta.tileCacheHits,
+      tileCacheMisses: this.meta.tileCacheMisses
     };
   }
 
