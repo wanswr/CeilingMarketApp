@@ -70,6 +70,13 @@ class OrderOrchestrator {
       minLng: Number(bounds.minLng.toFixed(precision)),
       maxLng: Number(bounds.maxLng.toFixed(precision)),
     };
+
+    // SAFETY CHECK: Prevent NaN and ensure API exists
+    if (isNaN(normBounds.minLat) || isNaN(normBounds.minLng)) {
+        console.warn('[OrderOrchestrator] Invalid spatial bounds detected');
+        return;
+    }
+
     const spatialKey = `bbox:${normBounds.minLat}:${normBounds.maxLat}:${normBounds.minLng}:${normBounds.maxLng}`;
 
     if (force) requestRouter.invalidate(spatialKey);
@@ -80,6 +87,12 @@ class OrderOrchestrator {
       const response = await requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
+          // ADAPTER LAYER: Fallback to legacy if new method is missing
+          if (typeof apiService.getMapOrdersInBounds !== 'function') {
+              console.warn('[OrderOrchestrator] getMapOrdersInBounds missing, falling back to legacy');
+              const legacyRes = await apiService.getMapOrders({ updatedAfter: lastSyncTime });
+              return legacyRes.data;
+          }
           const res = await apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
           return res.data;
         },
