@@ -49,6 +49,12 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('parse')
+  parseOrderText(@Body('text') text: string) {
+    return this.ordersService.parseOrderText(text);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() createOrderDto: CreateOrderDto, @Req() req: any) {
     return this.ordersService.create(createOrderDto, req.user.id);

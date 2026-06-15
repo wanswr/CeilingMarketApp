@@ -274,6 +274,11 @@ class OrderOrchestrator {
     }
     return res.data;
   }
+
+  async parseOrderText(text: string) {
+    const res = await apiService.parseOrderText(text);
+    return res.data;
+  }
 }
 
 export const orderOrchestrator = new OrderOrchestrator();

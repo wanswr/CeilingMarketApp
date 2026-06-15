@@ -253,4 +253,110 @@ export class OrdersService {
     const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
+
+  /**
+   * SMART PARSER: Heuristic NLP for ceiling order texts.
+   */
+  parseOrderText(text: string) {
+    // 0. Clean text from common copy-paste metadata (timestamps like [10.06.2026 11:11])
+    const cleanText = text.replace(/\[\d{2}\.\d{2}\.\d{4}\s\d{2}:\d{2}\].*?:/g, '').trim();
+    const lines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
+    const result: any = {
+      title: '',
+      details: text,
+      price: 0,
+      address: '',
+      date: new Date(),
+    };
+
+    // 1. Extract Price (Patterns: 15000, ЗП 15000, 15.000р, 15000₽)
+    const priceRegex = /(?:зп|зарплата|цена|стоимость|выплата)?[:\s-]*(\d[\d\s.,]*)(?:₽|р|руб|рублей)/i;
+    const priceMatch = text.match(priceRegex);
+    if (priceMatch) {
+      const rawPrice = priceMatch[1].replace(/[\s.,]/g, '');
+      result.price = parseInt(rawPrice, 10);
+    } else {
+        // Simple fallback for "зп 15000" without currency symbol
+        const altPriceRegex = /(?:зп|зарплата)[:\s-]*(\d[\d\s]*)/i;
+        const altMatch = text.match(altPriceRegex);
+        if (altMatch) {
+            result.price = parseInt(altMatch[1].replace(/\s/g, ''), 10);
+        }
+    }
+
+    // 2. Extract Date
+    const today = new Date();
+    const daysOfWeek: Record<string, number> = {
+      'воскресенье': 0, 'понедельник': 1, 'вторник': 2, 'среда': 3, 'четверг': 4, 'пятница': 5, 'суббота': 6
+    };
+
+    if (/завтра/i.test(cleanText)) {
+      const tomorrow = new Date();
+      tomorrow.setDate(today.getDate() + 1);
+      result.date = tomorrow;
+    } else if (/послезавтра/i.test(cleanText)) {
+      const dayAfter = new Date();
+      dayAfter.setDate(today.getDate() + 2);
+      result.date = dayAfter;
+    } else {
+      // Check for day names
+      for (const [dayName, dayIndex] of Object.entries(daysOfWeek)) {
+        if (new RegExp(dayName, 'i').test(cleanText)) {
+          const targetDate = new Date();
+          const currentDay = today.getDay();
+          let daysUntil = dayIndex - currentDay;
+          if (daysUntil <= 0) daysUntil += 7;
+          targetDate.setDate(today.getDate() + daysUntil);
+          result.date = targetDate;
+          break;
+        }
+      }
+
+      // Look for DD.MM (overrides day of week if both present)
+      const dateRegex = /(\d{1,2})\.(\d{1,2})/;
+      const dateMatch = cleanText.match(dateRegex);
+      if (dateMatch) {
+        const d = parseInt(dateMatch[1], 10);
+        const m = parseInt(dateMatch[2], 10) - 1;
+        const targetDate = new Date(today.getFullYear(), m, d);
+        // If the date has already passed this year, assume next year (for late Dec -> Jan)
+        if (targetDate < today && m < today.getMonth()) {
+            targetDate.setFullYear(today.getFullYear() + 1);
+        }
+        result.date = targetDate;
+      }
+    }
+
+    // 3. Extract Address (Heuristic: usually the 2nd or 3rd line, or line with "ул", "проезд", "корпус", or known cities)
+    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное'];
+    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.'];
+
+    for (const line of lines) {
+       const lowerLine = line.toLowerCase();
+       const isDateLine = /завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\d{1,2}\.\d{1,2}/i.test(lowerLine);
+       const isPriceLine = /зп|зарплата|руб|₽/i.test(lowerLine);
+
+       const hasCity = cities.some(c => lowerLine.includes(c));
+       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' '));
+
+       if ((hasCity || hasKeyword) && !isPriceLine && !isDateLine) {
+         result.address = line;
+         break;
+       }
+    }
+
+    // 4. Extract Title (First line that isn't a date or address)
+    for (const line of lines) {
+        if (line === result.address) continue;
+        if (/завтра|сегодня|\d{1,2}\.\d{1,2}/i.test(line)) continue;
+        if (line.length > 5 && line.length < 50) {
+            result.title = line;
+            break;
+        }
+    }
+
+    if (!result.title) result.title = "Монтаж натяжных потолков";
+
+    return result;
+  }
 }

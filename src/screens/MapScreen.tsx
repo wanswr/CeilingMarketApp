@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft
   },
   customMarkerActive: { backgroundColor: COLORS.primary, borderColor: '#fff', transform: [{ scale: 1.1 }] },
-  markerPrice: { fontSize: 14, fontWeight: 'bold', color: COLORS.primary },
+  markerPrice: { fontSize: 13, fontWeight: '900', color: COLORS.primary },
   markerPriceActive: { color: '#fff' },
   previewCardContainer: { position: 'absolute', bottom: 10, left: 12, right: 12, zIndex: 1000 },
   previewCard: {
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
   },
   previewContent: { padding: 16 },
   previewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  previewTitle: { fontSize: 17, fontWeight: '900', color: COLORS.dark, marginBottom: 4, letterSpacing: -0.5 },
+  previewTitle: { fontSize: 18, fontWeight: '900', color: COLORS.dark, marginBottom: 6, letterSpacing: -0.5 },
   previewInfoRow: { flexDirection: 'row', gap: 10 },
   infoBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   infoBadgeText: { fontSize: 11, fontWeight: '600', color: COLORS.gray },

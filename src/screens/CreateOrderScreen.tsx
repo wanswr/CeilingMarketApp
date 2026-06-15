@@ -12,12 +12,15 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Image,
-  Modal
+  Modal,
+  TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { z } from 'zod';
@@ -42,6 +45,9 @@ export default function CreateOrderScreen({ navigation }: any) {
     details: '',
     date: new Date(),
   });
+  const [isImportModalVisible, setIsImportModalVisible] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [isParsing, setIsParsing] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(new Date());
@@ -271,6 +277,43 @@ export default function CreateOrderScreen({ navigation }: any) {
     setShowDatePicker(false);
   };
 
+  const [parsedData, setParsedData] = useState<any>(null);
+
+  const handleSmartImport = async () => {
+    if (!importText.trim()) return;
+    setIsParsing(true);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const parsed = await orderOrchestrator.parseOrderText(importText);
+      setParsedData(parsed);
+    } catch (error) {
+      Alert.alert("Ошибка", "Не удалось распознать текст. Попробуйте ввести данные вручную.");
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const applyParsedData = () => {
+    if (!parsedData) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    setForm({
+      title: parsedData.title || form.title,
+      address: parsedData.address || form.address,
+      price: parsedData.price ? String(parsedData.price) : form.price,
+      details: parsedData.details || form.details,
+      date: parsedData.date ? new Date(parsedData.date) : form.date,
+    });
+
+    if (parsedData.address) {
+      handleGeocode(parsedData.address);
+    }
+
+    setParsedData(null);
+    setImportText('');
+    setIsImportModalVisible(false);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
       <KeyboardAvoidingView
@@ -280,8 +323,19 @@ export default function CreateOrderScreen({ navigation }: any) {
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView contentContainerStyle={{ padding: 24 }}>
             <View style={styles.header}>
-              <Text style={styles.title}>{i18n.t('orders.new')}</Text>
-              <Text style={styles.subtitle}>Опишите задачу максимально подробно</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View>
+                  <Text style={styles.title}>{i18n.t('orders.new')}</Text>
+                  <Text style={styles.subtitle}>Опишите задачу максимально подробно</Text>
+                </View>
+                <TouchableOpacity
+                    style={styles.magicBtn}
+                    onPress={() => setIsImportModalVisible(true)}
+                >
+                    <Ionicons name="sparkles" size={20} color="#fff" />
+                    <Text style={styles.magicBtnText}>Импорт</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.card}>
@@ -423,6 +477,103 @@ export default function CreateOrderScreen({ navigation }: any) {
             <View style={{ height: 60 }} />
           </ScrollView>
         </TouchableWithoutFeedback>
+
+        <Modal
+            visible={isImportModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setIsImportModalVisible(false)}
+        >
+            <BlurView intensity={30} style={StyleSheet.absoluteFill}>
+                <TouchableOpacity
+                    style={{ flex: 1 }}
+                    activeOpacity={1}
+                    onPress={() => setIsImportModalVisible(false)}
+                />
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <View style={styles.modalIconContainer}>
+                                <Ionicons name="sparkles" size={24} color={COLORS.primary} />
+                            </View>
+                            <Text style={styles.modalTitle}>Умный импорт</Text>
+                            <TouchableOpacity onPress={() => setIsImportModalVisible(false)}>
+                                <Ionicons name="close-circle" size={28} color={COLORS.gray} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={styles.modalSubtitle}>
+                            Вставьте текст сообщения из WhatsApp или Telegram. Мы автоматически заполним форму.
+                        </Text>
+
+                        {!parsedData ? (
+                            <>
+                                <TextInput
+                                    style={styles.importInput}
+                                    placeholder="На субботу 13.06... ул. Удальцова 12... 6000р"
+                                    placeholderTextColor={COLORS.gray}
+                                    multiline
+                                    value={importText}
+                                    onChangeText={setImportText}
+                                    autoFocus
+                                />
+
+                                <TouchableOpacity
+                                    style={[styles.importSubmitBtn, !importText.trim() && { opacity: 0.5 }]}
+                                    onPress={handleSmartImport}
+                                    disabled={!importText.trim() || isParsing}
+                                >
+                                    {isParsing ? (
+                                        <ActivityIndicator color="#fff" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="flash" size={20} color="#fff" />
+                                            <Text style={styles.importSubmitText}>Анализировать текст</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            </>
+                        ) : (
+                            <View style={styles.previewContainer}>
+                                <Text style={styles.previewHeading}>Вот что я нашел:</Text>
+                                <View style={styles.previewItem}>
+                                    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+                                    <Text style={styles.previewText} numberOfLines={1}>{parsedData.title}</Text>
+                                </View>
+                                <View style={styles.previewItem}>
+                                    <Ionicons name="location-outline" size={18} color={COLORS.primary} />
+                                    <Text style={styles.previewText} numberOfLines={1}>{parsedData.address || 'Адрес не найден'}</Text>
+                                </View>
+                                <View style={styles.previewItem}>
+                                    <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
+                                    <Text style={styles.previewText}>{parsedData.price} ₽</Text>
+                                </View>
+                                <View style={styles.previewItem}>
+                                    <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
+                                    <Text style={styles.previewText}>{formatDate(new Date(parsedData.date))}</Text>
+                                </View>
+
+                                <View style={styles.previewActions}>
+                                    <TouchableOpacity
+                                        style={styles.previewBackBtn}
+                                        onPress={() => setParsedData(null)}
+                                    >
+                                        <Text style={styles.previewBackText}>Назад</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.previewApplyBtn}
+                                        onPress={applyParsedData}
+                                    >
+                                        <Text style={styles.previewApplyText}>Применить</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
+                    </View>
+                </KeyboardAvoidingView>
+            </BlurView>
+        </Modal>
+
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -432,14 +583,28 @@ const styles = StyleSheet.create({
   header: { marginBottom: 30 },
   title: { fontSize: 32, fontWeight: '900', color: COLORS.dark, letterSpacing: -1 },
   subtitle: { fontSize: 16, color: COLORS.gray, marginTop: 8, fontWeight: '500' },
+  magicBtn: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    ...SHADOWS.medium,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+  magicBtnText: { color: '#fff', fontWeight: '800', marginLeft: 6, fontSize: 13 },
   card: {
     backgroundColor: COLORS.white,
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 28,
+    padding: 24,
     marginBottom: 20,
     ...SHADOWS.soft,
     borderWidth: 1,
-    borderColor: 'rgba(226, 232, 240, 0.5)'
+    borderColor: 'rgba(226, 232, 240, 0.6)'
   },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 20, letterSpacing: -0.5 },
   clearBtn: { position: 'absolute', right: 15, top: 42, zIndex: 10 },
@@ -504,4 +669,72 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3
   },
   publishText: { color: '#fff', fontWeight: '900', fontSize: 18, letterSpacing: 0.5 },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40,
+    ...SHADOWS.heavy
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20
+  },
+  modalIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(45, 91, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: COLORS.dark, flex: 1, marginLeft: 15 },
+  modalSubtitle: { fontSize: 15, color: COLORS.gray, lineHeight: 22, marginBottom: 20, fontWeight: '500' },
+  importInput: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    padding: 20,
+    height: 160,
+    textAlignVertical: 'top',
+    fontSize: 16,
+    color: COLORS.dark,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 24
+  },
+  importSubmitBtn: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    borderRadius: 18,
+    ...SHADOWS.medium
+  },
+  importSubmitText: { color: '#fff', fontWeight: '900', fontSize: 16, marginLeft: 10 },
+  previewContainer: {
+    backgroundColor: 'rgba(248, 250, 252, 0.8)',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(45, 91, 255, 0.1)'
+  },
+  previewHeading: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 15 },
+  previewItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  previewText: { fontSize: 15, color: COLORS.dark, marginLeft: 10, fontWeight: '600' },
+  previewActions: { flexDirection: 'row', marginTop: 15 },
+  previewBackBtn: { flex: 1, paddingVertical: 15, alignItems: 'center' },
+  previewBackText: { color: COLORS.gray, fontWeight: '700' },
+  previewApplyBtn: {
+    flex: 2,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 15,
+    alignItems: 'center',
+    borderRadius: 14,
+    ...SHADOWS.medium
+  },
+  previewApplyText: { color: '#fff', fontWeight: '900' }
 });
