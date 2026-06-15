@@ -2,7 +2,6 @@ import axios, { InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 // Base URL for the API.
-// IMPORTANT: Use trailing slash in baseURL and NO leading slash in paths.
 const API_URL = 'http://192.168.1.229:3000/api/';
 
 const api = axios.create({
@@ -43,8 +42,7 @@ api.interceptors.response.use(
 export const apiService = {
   getBaseUrl: () => API_URL,
   // Orders
-  getOrders: (params: any, config: any = {}) =>
-    api.get('orders', { params, ...config }),
+  getOrders: (params: any) => api.get('orders', { params }),
 
   getMapOrders: (params?: any) => api.get('orders/map', { params }),
 

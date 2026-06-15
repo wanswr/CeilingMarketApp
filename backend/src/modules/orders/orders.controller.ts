@@ -27,22 +27,26 @@ export class OrdersController {
   @Get('map')
   getMapOrders(
     @Query('updatedAfter') updatedAfter?: string,
-    @Query('minLat') minLat?: number,
-    @Query('maxLat') maxLat?: number,
-    @Query('minLng') minLng?: number,
-    @Query('maxLng') maxLng?: number,
+    @Query('minLat') minLat?: string,
+    @Query('maxLat') maxLat?: string,
+    @Query('minLng') minLng?: string,
+    @Query('maxLng') maxLng?: string,
   ) {
     // Spatial Engine V4: BBOX Query
-    if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
-      return this.ordersService.findInBounds(
-        {
-          minLat: Number(minLat),
-          maxLat: Number(maxLat),
-          minLng: Number(minLng),
-          maxLng: Number(maxLng)
-        },
-        updatedAfter ? new Date(Number(updatedAfter)) : undefined
-      );
+    if (minLat && maxLat && minLng && maxLng) {
+      const bounds = {
+        minLat: parseFloat(minLat),
+        maxLat: parseFloat(maxLat),
+        minLng: parseFloat(minLng),
+        maxLng: parseFloat(maxLng),
+      };
+
+      if (!isNaN(bounds.minLat) && !isNaN(bounds.maxLat) && !isNaN(bounds.minLng) && !isNaN(bounds.maxLng)) {
+        return this.ordersService.findInBounds(
+          bounds,
+          updatedAfter ? new Date(Number(updatedAfter)) : undefined
+        );
+      }
     }
 
     // Fallback/Legacy (e.g. for initial load or background sync)
