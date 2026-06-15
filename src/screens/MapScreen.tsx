@@ -67,12 +67,13 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     setRegion(newRegion);
-    // Task #7: RequestRouter spam protection
-    // We only trigger sync if we don't have enough orders or after significant movement
+    // Engine V4: Spatial BBOX Trigger
+    // We pass the full region to orchestrator for bounds calculation
     orderOrchestrator.triggerMapUpdate({
       latitude: newRegion.latitude,
       longitude: newRegion.longitude,
-      latitudeDelta: newRegion.latitudeDelta
+      latitudeDelta: newRegion.latitudeDelta,
+      longitudeDelta: newRegion.longitudeDelta
     });
   };
 

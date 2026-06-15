@@ -14,13 +14,15 @@ class SocketService {
     });
 
     this.socket.on('order_created', (order: any) => {
-      console.log('[WebSocket] New order received:', order.id);
+      if (__DEV__) console.log('[WebSocket] New order received:', order.id);
       entityStore.setOrder(order);
+      orderOrchestrator.triggerNotify();
     });
 
     this.socket.on('order_updated', (order: any) => {
-      console.log('[WebSocket] Order update received:', order.id);
+      if (__DEV__) console.log('[WebSocket] Order update received:', order.id);
       entityStore.setOrder(order);
+      orderOrchestrator.triggerNotify();
     });
 
     this.socket.on('order_claimed', (order: any) => {

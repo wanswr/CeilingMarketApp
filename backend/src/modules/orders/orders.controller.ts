@@ -27,21 +27,25 @@ export class OrdersController {
   @Get('map')
   getMapOrders(
     @Query('updatedAfter') updatedAfter?: string,
-    @Query('tileX') tileX?: number,
-    @Query('tileY') tileY?: number,
-    @Query('zoom') zoom?: number,
+    @Query('minLat') minLat?: number,
+    @Query('maxLat') maxLat?: number,
+    @Query('minLng') minLng?: number,
+    @Query('maxLng') maxLng?: number,
   ) {
-    // Production Tile Engine V2
-    if (tileX !== undefined && tileY !== undefined && zoom !== undefined) {
-      return this.ordersService.findByTile(
-        Number(zoom),
-        Number(tileX),
-        Number(tileY),
+    // Spatial Engine V4: BBOX Query
+    if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
+      return this.ordersService.findInBounds(
+        {
+          minLat: Number(minLat),
+          maxLat: Number(maxLat),
+          minLng: Number(minLng),
+          maxLng: Number(maxLng)
+        },
         updatedAfter ? new Date(Number(updatedAfter)) : undefined
       );
     }
 
-    // Fallback/Legacy
+    // Fallback/Legacy (e.g. for initial load or background sync)
     return this.ordersService.findIncremental({
       updatedAfter: updatedAfter ? new Date(Number(updatedAfter)) : undefined,
       status: 'PUBLISHED'

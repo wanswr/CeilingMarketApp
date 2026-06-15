@@ -48,6 +48,9 @@ export const apiService = {
 
   getMapOrders: (params?: any) => api.get('orders/map', { params }),
 
+  getMapOrdersInBounds: (bounds: any, updatedAfter?: string) =>
+    api.get('orders/map', { params: { ...bounds, updatedAfter } }),
+
   parseOrderText: (text: string) => api.post('orders/parse', { text }),
 
   createOrder: (data: any) => api.post('orders', data),

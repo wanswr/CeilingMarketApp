@@ -192,32 +192,23 @@ export class OrdersService {
   }
 
   /**
-   * TILE ENGINE V2: Efficiently finds orders within tile bounds.
+   * SPATIAL ENGINE V4: Finds orders within a Bounding Box.
    */
-  async findByTile(zoom: number, x: number, y: number, updatedAfter?: Date) {
-    const n = Math.pow(2, zoom);
+  async findInBounds(bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }, updatedAfter?: Date) {
+    const { minLat, maxLat, minLng, maxLng } = bounds;
 
-    // Calculate Lat/Lng Bounds for Tile
-    const lonMin = (x / n) * 360 - 180;
-    const lonMax = ((x + 1) / n) * 360 - 180;
-
-    const latRadMin = Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n)));
-    const latMin = (latRadMin * 180) / Math.PI;
-
-    const latRadMax = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n)));
-    const latMax = (latRadMax * 180) / Math.PI;
-
-    // Stage 5: Use Spatial Indexing for Range Query
     const orders = await this.prisma.order.findMany({
       where: {
         status: OrderStatus.PUBLISHED,
-        latitude: { gte: latMin, lte: latMax },
-        longitude: { gte: lonMin, lte: lonMax },
+        latitude: { gte: minLat, lte: maxLat },
+        longitude: { gte: minLng, lte: maxLng },
         updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
       },
+      take: 2000, // Reasonable cap for viewport
       include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
     });
 
+    // Wrapped in { created: [] } to maintain compatibility with frontend Orchestrator V2.1+
     return { created: orders, updated: [], deleted: [] };
   }
 

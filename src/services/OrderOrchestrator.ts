@@ -29,86 +29,99 @@ class OrderOrchestrator {
     this.subscribers.forEach(cb => cb(orders));
   }
 
+  triggerNotify() {
+    this.notifySubscribers();
+  }
+
   private getOrdersArray(): Order[] {
     return entityStore.getAllOrders()
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   /**
-   * SYNC MAP V3: Real Tile-based synchronization.
-   * Fetches only missing tiles and caches them individually.
+   * SYNC MAP V4: Spatial Bounding Box Synchronization.
+   * Optimizes map performance by fetching a large viewport area at once.
    */
-  async syncMap(force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number }) {
-    const { GeoGridService } = require('./GeoGridService');
-    const zoom = 12; // Standard zoom for tile synchronization
-
-    // Fallback if no region provided
+  async syncMap(force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) {
     if (!region) {
-      await this.syncTile('tile:default', 0, 0, 0, force);
+      // Background sync for global updates
+      await this.syncDelta(force);
       return;
     }
 
-    // Calculate tiles for the visible viewport (Simplified: central tile + neighbors)
-    const centerTileKey = GeoGridService.getTileKey(region.latitude, region.longitude, zoom);
+    // 1. Calculate BBOX from region
+    // We expand the bbox slightly (buffer) to avoid frequent re-fetches on small pans
+    const latBuffer = region.latitudeDelta * 0.5;
+    const lngBuffer = region.longitudeDelta * 0.5;
 
-    // Stage 3: RequestRouter individual tile caching
-    const tilesToFetch = [centerTileKey]; // For now, just the center tile
+    const bounds = {
+      minLat: region.latitude - region.latitudeDelta - latBuffer,
+      maxLat: region.latitude + region.latitudeDelta + latBuffer,
+      minLng: region.longitude - region.longitudeDelta - lngBuffer,
+      maxLng: region.longitude + region.longitudeDelta + lngBuffer
+    };
 
-    for (const tileKey of tilesToFetch) {
-       const parts = tileKey.split(':');
-       const z = parseInt(parts[1]);
-       const x = parseInt(parts[2]);
-       const y = parseInt(parts[3]);
-       await this.syncTile(tileKey, z, x, y, force);
-    }
-  }
+    // 2. Normalize key for RequestRouter to increase BBOX hits
+    // Round to ~1km precision to avoid jitter-induced cache misses
+    const precision = 2;
+    const normBounds = {
+      minLat: Number(bounds.minLat.toFixed(precision)),
+      maxLat: Number(bounds.maxLat.toFixed(precision)),
+      minLng: Number(bounds.minLng.toFixed(precision)),
+      maxLng: Number(bounds.maxLng.toFixed(precision)),
+    };
+    const spatialKey = `bbox:${normBounds.minLat}:${normBounds.maxLat}:${normBounds.minLng}:${normBounds.maxLng}`;
 
-  private async syncTile(tileKey: string, z: number, x: number, y: number, force: boolean) {
-    // Stage 3: Cache Hit Check
-    if (!force && entityStore.isTileLoaded(tileKey)) {
-        (entityStore.meta as any).tileCacheHits++;
-        return;
-    }
-    (entityStore.meta as any).tileCacheMisses++;
-
-    if (force) requestRouter.invalidate(tileKey);
+    if (force) requestRouter.invalidate(spatialKey);
 
     try {
-      const lastSyncTime = entityStore.getMeta(`timestamp:${tileKey}`) || '0';
+      const lastSyncTime = entityStore.getMeta('map_last_sync') || '0';
 
       const response = await requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
-        tileKey,
+        spatialKey,
         async () => {
-          const res = await apiService.getMapOrders({
-            updatedAfter: lastSyncTime,
-            zoom: z,
-            tileX: x,
-            tileY: y
-          });
+          const res = await apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
           return res.data;
         },
-        600000 // 10 min TTL for tile data
+        60000 // 60s TTL for specific viewport
       );
 
-      let changed = false;
-      if (response.created) {
-        response.created.forEach(o => {
-            entityStore.setOrder(o);
-            entityStore.addOrderToTile(tileKey, o.id);
-        });
-        if (response.created.length > 0) changed = true;
-      }
-
-      if (changed || force) {
+      if (response.created && response.created.length > 0) {
+        response.created.forEach(o => entityStore.setOrder(o));
         this.notifySubscribers();
       }
 
-      entityStore.markTileLoaded(tileKey);
-      entityStore.setMeta(`timestamp:${tileKey}`, Date.now().toString());
+      entityStore.setMeta('map_last_sync', Date.now().toString());
       entityStore.logDiagnostics();
     } catch (error) {
-      console.error(`[OrderOrchestrator] Sync failed for ${tileKey}`, error);
+      console.error(`[OrderOrchestrator] Spatial sync failed for ${spatialKey}`, error);
     }
+  }
+
+  /**
+   * SYNC DELTA: Fallback background synchronization.
+   */
+  private async syncDelta(force: boolean) {
+    const key = 'map:delta';
+    if (force) requestRouter.invalidate(key);
+
+    const lastSyncTime = entityStore.getMeta('map_last_sync') || '0';
+    try {
+        const response = await requestRouter.request<{ created: Order[] }>(
+            key,
+            async () => {
+                const res = await apiService.getMapOrders({ updatedAfter: lastSyncTime });
+                return res.data;
+            },
+            30000
+        );
+
+        if (response.created && response.created.length > 0) {
+            response.created.forEach(o => entityStore.setOrder(o));
+            this.notifySubscribers();
+        }
+        entityStore.setMeta('map_last_sync', Date.now().toString());
+    } catch (e) {}
   }
 
   /**
@@ -194,7 +207,7 @@ class OrderOrchestrator {
    * Trigger debounced map update (e.g. on region change).
    * Task #2: Debounce viewport changes
    */
-  triggerMapUpdate(region?: { latitude: number, longitude: number, latitudeDelta: number }) {
+  triggerMapUpdate(region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.syncMap(false, region);

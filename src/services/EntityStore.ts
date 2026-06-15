@@ -9,8 +9,7 @@ interface StoreMeta {
   reads: number;
   writes: number;
   loadedTiles: number;
-  tileCacheHits: number;
-  tileCacheMisses: number;
+  spatialReads: number;
 }
 
 /**
@@ -32,8 +31,7 @@ class EntityStore {
     reads: 0,
     writes: 0,
     loadedTiles: 0,
-    tileCacheHits: 0,
-    tileCacheMisses: 0
+    spatialReads: 0
   };
 
   private globalMeta: Map<string, string> = new Map();
@@ -93,21 +91,6 @@ class EntityStore {
     }
   }
 
-  addOrderToTile(tileKey: string, orderId: string) {
-    if (!this.tilesToOrders.has(tileKey)) {
-      this.tilesToOrders.set(tileKey, new Set());
-    }
-    this.tilesToOrders.get(tileKey)!.add(orderId);
-  }
-
-  markTileLoaded(tileKey: string) {
-    this.meta.loadedTiles++;
-    this.setMeta(`loaded:${tileKey}`, 'true');
-  }
-
-  isTileLoaded(tileKey: string): boolean {
-    return this.getMeta(`loaded:${tileKey}`) === 'true';
-  }
 
   setOrders(orders: Order[]) {
     orders.forEach(o => this.setOrder(o));
@@ -163,18 +146,17 @@ class EntityStore {
       storeWrites: this.meta.writes,
       ordersCount: this.ordersById.size,
       usersCount: this.usersById.size,
-      tilesCount: this.tilesToOrders.size,
-      loadedTiles: this.meta.loadedTiles,
-      tileCacheHits: this.meta.tileCacheHits,
-      tileCacheMisses: this.meta.tileCacheMisses
+      spatialReads: this.meta.spatialReads
     };
   }
 
   logDiagnostics() {
     if (__DEV__) {
       const { requestRouter } = require('./RequestRouter');
-      console.log('[Diagnostics] EntityStore V3:', this.getMetrics());
-      console.log('[Diagnostics] RequestRouter:', requestRouter.getMetrics());
+      console.log('[Diagnostics] MapEngine V4:', {
+          store: this.getMetrics(),
+          network: requestRouter.getMetrics()
+      });
     }
   }
 
