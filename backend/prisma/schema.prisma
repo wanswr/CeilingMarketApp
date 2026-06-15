@@ -57,6 +57,8 @@ model Order {
   date              DateTime
 
   @@index([latitude, longitude]) // Stage 5: Spatial indexing for performance
+  @@index([createdAt])
+  @@index([updatedAt])
   price             Float
   details           String?
   status            OrderStatus    @default(PUBLISHED)

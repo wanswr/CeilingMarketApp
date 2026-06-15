@@ -18,22 +18,22 @@ class OrderOrchestrator {
   /**
    * Subscribe to global order updates.
    */
-  subscribe(callback: OrderCallback) {
+  subscribe = (callback: OrderCallback) => {
     this.subscribers.add(callback);
     callback(this.getOrdersArray());
     return () => { this.subscribers.delete(callback); };
   }
 
-  private notifySubscribers() {
+  private notifySubscribers = () => {
     const orders = this.getOrdersArray();
     this.subscribers.forEach(cb => cb(orders));
   }
 
-  triggerNotify() {
+  triggerNotify = () => {
     this.notifySubscribers();
   }
 
-  private getOrdersArray(): Order[] {
+  private getOrdersArray = (): Order[] => {
     return entityStore.getAllOrders()
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
@@ -42,11 +42,20 @@ class OrderOrchestrator {
    * SYNC MAP V4: Spatial Bounding Box Synchronization.
    * Optimizes map performance by fetching a large viewport area at once.
    */
-  async syncMap(force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) {
+  private spatialFailureCount = 0;
+
+  syncMap = async (force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!region) {
       // Background sync for global updates
       await this.syncDelta(force);
       return;
+    }
+
+    // CIRCUIT BREAKER: If spatial API failed too many times, use syncDelta as fallback
+    if (this.spatialFailureCount > 3 && !force) {
+        if (__DEV__) console.warn('[OrderOrchestrator] Spatial Circuit Breaker Active - Falling back to Delta');
+        await this.syncDelta(force);
+        return;
     }
 
     // 1. Calculate BBOX from region
@@ -87,19 +96,22 @@ class OrderOrchestrator {
       const response = await requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
-          // ADAPTER LAYER: Fallback to legacy if new method is missing
-          if (typeof apiService.getMapOrdersInBounds !== 'function') {
-              console.warn('[OrderOrchestrator] getMapOrdersInBounds missing, falling back to legacy');
-              const legacyRes = await apiService.getMapOrders({ updatedAfter: lastSyncTime });
-              return legacyRes.data;
+          // ADAPTER LAYER: Intelligent fallback to legacy map fetch
+          try {
+            const res = await apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
+            this.spatialFailureCount = 0; // Success: reset failure count
+            return res.data;
+          } catch (e) {
+            this.spatialFailureCount++;
+            console.warn('[OrderOrchestrator] Spatial API failed, falling back to legacy:', (e as any).message);
+            const legacyRes = await apiService.getMapOrders({ updatedAfter: lastSyncTime });
+            return legacyRes.data;
           }
-          const res = await apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
-          return res.data;
         },
         60000 // 60s TTL for specific viewport
       );
 
-      if (response.created && response.created.length > 0) {
+      if (response && response.created && response.created.length > 0) {
         response.created.forEach(o => entityStore.setOrder(o));
         this.notifySubscribers();
       }
@@ -114,7 +126,7 @@ class OrderOrchestrator {
   /**
    * SYNC DELTA: Fallback background synchronization.
    */
-  private async syncDelta(force: boolean) {
+  private syncDelta = async (force: boolean) => {
     const key = 'map:delta';
     if (force) requestRouter.invalidate(key);
 
@@ -140,7 +152,7 @@ class OrderOrchestrator {
   /**
    * SYNC USER: Profile fetching with Store persistence.
    */
-  async syncUser(force: boolean = false) {
+  syncUser = async (force: boolean = false) => {
     const key = 'user:profile';
 
     if (!force) {
@@ -170,7 +182,7 @@ class OrderOrchestrator {
   /**
    * SYNC EXTERNAL USER: Cache-first lookup.
    */
-  async getExternalUser(userId: string, force: boolean = false) {
+  getExternalUser = async (userId: string, force: boolean = false) => {
     if (!force) {
       const cached = entityStore.getUser(userId);
       if (cached) return cached;
@@ -193,7 +205,7 @@ class OrderOrchestrator {
   /**
    * SYNC ORDER: Detail fetching with Store persistence.
    */
-  async syncOrder(orderId: string, force: boolean = false) {
+  syncOrder = async (orderId: string, force: boolean = false) => {
     const key = `order:${orderId}`;
     if (force) requestRouter.invalidate(key);
 
@@ -220,34 +232,34 @@ class OrderOrchestrator {
    * Trigger debounced map update (e.g. on region change).
    * Task #2: Debounce viewport changes
    */
-  triggerMapUpdate(region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) {
+  triggerMapUpdate = (region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.syncMap(false, region);
     }, 1200); // 1.2s debounce for stability
   }
 
-  getOrders() {
+  getOrders = () => {
     return this.getOrdersArray();
   }
 
   // Task #3: Selectors
-  getOrder(id: string) {
+  getOrder = (id: string) => {
     return entityStore.getOrder(id);
   }
 
-  getUser(id: string) {
+  getUser = (id: string) => {
     return entityStore.getUser(id);
   }
 
-  getCurrentUser() {
+  getCurrentUser = () => {
     return entityStore.getCurrentUser();
   }
 
   /**
    * Full cache clear and re-fetch.
    */
-  async forceRefresh() {
+  forceRefresh = async () => {
     entityStore.clear();
     requestRouter.clear();
     return this.syncMap(true);
@@ -255,14 +267,14 @@ class OrderOrchestrator {
 
   // Task #4: Move API calls to Orchestrator
 
-  async updateProfile(profileData: any) {
+  updateProfile = async (profileData: any) => {
     const res = await apiService.updateProfile(profileData);
     entityStore.setUser({ ...res.data, isMe: true });
     requestRouter.invalidate('user:profile');
     return res.data;
   }
 
-  async createOrder(orderData: any) {
+  createOrder = async (orderData: any) => {
     const res = await apiService.createOrder(orderData);
     entityStore.setOrder(res.data);
     requestRouter.invalidate('map:orders');
@@ -270,7 +282,7 @@ class OrderOrchestrator {
     return res.data;
   }
 
-  async updateOrder(orderId: string, orderData: any) {
+  updateOrder = async (orderId: string, orderData: any) => {
     const res = await apiService.updateOrder(orderId, orderData);
     entityStore.setOrder(res.data);
     requestRouter.invalidate(`order:${orderId}`);
@@ -279,21 +291,21 @@ class OrderOrchestrator {
     return res.data;
   }
 
-  async applyForOrder(orderId: string) {
+  applyForOrder = async (orderId: string) => {
     const res = await apiService.applyForOrder(orderId);
     // Refresh order details to show updated candidates/status
     await this.syncOrder(orderId, true);
     return res.data;
   }
 
-  async activateSubscription(days: number) {
+  activateSubscription = async (days: number) => {
     const res = await apiService.activateSubscription(days);
     await this.syncUser(true);
     return res.data;
   }
 
   // Auth Operations (Task #4)
-  async login(phone: string) {
+  login = async (phone: string) => {
     const res = await apiService.login(phone);
     if (res.data.user) {
       entityStore.setUser({ ...res.data.user, isMe: true });
@@ -301,7 +313,7 @@ class OrderOrchestrator {
     return res.data;
   }
 
-  async parseOrderText(text: string) {
+  parseOrderText = async (text: string) => {
     const res = await apiService.parseOrderText(text);
     return res.data;
   }

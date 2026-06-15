@@ -33,7 +33,7 @@ export class OrdersController {
     @Query('maxLng') maxLng?: string,
   ) {
     // Spatial Engine V4: BBOX Query
-    if (minLat && maxLat && minLng && maxLng) {
+    if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
       const bounds = {
         minLat: parseFloat(minLat),
         maxLat: parseFloat(maxLat),
@@ -44,7 +44,7 @@ export class OrdersController {
       if (!isNaN(bounds.minLat) && !isNaN(bounds.maxLat) && !isNaN(bounds.minLng) && !isNaN(bounds.maxLng)) {
         return this.ordersService.findInBounds(
           bounds,
-          updatedAfter ? new Date(Number(updatedAfter)) : undefined
+          (updatedAfter && !isNaN(Number(updatedAfter))) ? new Date(Number(updatedAfter)) : undefined
         );
       }
     }

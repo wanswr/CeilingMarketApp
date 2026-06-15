@@ -1,79 +1,74 @@
-import axios, { InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-// Base URL for the API.
-const API_URL = 'http://192.168.1.229:3000/api/';
+const DEFAULT_API_URL = 'http://192.168.100.10:3000/api/';
 
-const api = axios.create({
-  baseURL: API_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+class ApiService {
+  private api: AxiosInstance;
+  private baseURL: string;
 
-// Interceptor to add the JWT token to every request
-api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
-  const token = await SecureStore.getItemAsync('userToken');
-  if (__DEV__) {
-    console.log(`[API] ${config.method?.toUpperCase()} Request to: ${config.baseURL}${config.url}`);
-    console.log(`[API] Auth Token: ${token ? 'PRESENT' : 'MISSING'}`);
+  constructor() {
+    this.baseURL = DEFAULT_API_URL;
+    this.api = axios.create({
+      baseURL: this.baseURL,
+      timeout: 15000,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    this.setupInterceptors();
   }
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response) {
-      console.warn(`[API] Error ${error.response.status} from ${error.config?.url}:`, error.response.data);
-    } else if (error.request) {
-      console.error(`[API] Network Error from ${error.config?.url}: No response received.`, error.message);
-    } else {
-      console.error(`[API] Request Setup Error:`, error.message);
-    }
-    return Promise.reject(error);
-  }
-);
+  private setupInterceptors() {
+    this.api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+      const token = await SecureStore.getItemAsync('userToken');
+      if (__DEV__) {
+        console.log(`[API] ${config.method?.toUpperCase()} -> ${config.url}`);
+      }
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    });
 
-export const apiService = {
-  getBaseUrl: () => API_URL,
+    this.api.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (__DEV__) {
+          console.warn(`[API] FAIL ${error.response?.status} -> ${error.config?.url}`, error.message);
+        }
+        return Promise.reject(error);
+      }
+    );
+  }
+
   // Orders
-  getOrders: (params: any) => api.get('orders', { params }),
+  getOrders = (params: any) => this.api.get('orders', { params });
+  getMapOrders = (params?: any) => this.api.get('orders/map', { params });
+  getMapOrdersInBounds = (bounds: any, updatedAfter?: string) =>
+    this.api.get('orders/map', { params: { ...bounds, updatedAfter } });
 
-  getMapOrders: (params?: any) => api.get('orders/map', { params }),
-
-  getMapOrdersInBounds: (bounds: any, updatedAfter?: string) =>
-    api.get('orders/map', { params: { ...bounds, updatedAfter } }),
-
-  parseOrderText: (text: string) => api.post('orders/parse', { text }),
-
-  createOrder: (data: any) => api.post('orders', data),
-
-  getOrderDetails: (id: string) => api.get(`orders/${id}`),
-
-  applyForOrder: (id: string) => api.post(`orders/${id}/claim`),
-
-  updateOrder: (id: string, data: any) => api.patch(`orders/${id}`, data),
-
-  deleteOrder: (id: string) => api.delete(`orders/${id}`),
+  parseOrderText = (text: string) => this.api.post('orders/parse', { text });
+  createOrder = (data: any) => this.api.post('orders', data);
+  getOrderDetails = (id: string) => this.api.get(`orders/${id}`);
+  applyForOrder = (id: string) => this.api.post(`orders/${id}/claim`);
+  updateOrder = (id: string, data: any) => this.api.patch(`orders/${id}`, data);
+  deleteOrder = (id: string) => this.api.delete(`orders/${id}`);
 
   // Users
-  getProfile: () => api.get('users/profile'),
-
-  getUserProfile: (id: string) => api.get(`users/${id}`),
-
-  updateProfile: (data: any) => api.patch('users/profile', data),
+  getProfile = () => this.api.get('users/profile');
+  getUserProfile = (id: string) => this.api.get(`users/${id}`);
+  updateProfile = (data: any) => this.api.patch('users/profile', data);
 
   // Auth
-  login: (phone: string) => api.post('auth/login', { phone }),
-
-  register: (data: { phone: string; name: string; role?: string }) =>
-    api.post('auth/register', data),
+  login = (phone: string) => this.api.post('auth/login', { phone });
+  register = (data: any) => this.api.post('auth/register', data);
 
   // Subscriptions
-  activateSubscription: (days: number) => api.post('subscriptions/activate', { days }),
-};
+  activateSubscription = (days: number) => this.api.post('subscriptions/activate', { days });
+
+  getBaseUrl = () => this.baseURL;
+}
+
+export const apiService = new ApiService();

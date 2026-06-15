@@ -36,15 +36,15 @@ class EntityStore {
 
   private globalMeta: Map<string, string> = new Map();
 
-  setMeta(key: string, value: string) {
+  setMeta = (key: string, value: string) => {
     this.globalMeta.set(key, value);
   }
 
-  getMeta(key: string) {
+  getMeta = (key: string) => {
     return this.globalMeta.get(key);
   }
 
-  private hasChanged(existing: any, incoming: any): boolean {
+  private hasChanged = (existing: any, incoming: any): boolean => {
     if (!existing) return true;
     for (const key in incoming) {
       if (incoming[key] !== existing[key]) {
@@ -59,7 +59,7 @@ class EntityStore {
   }
 
   // Stage 2: Normalized setters
-  setOrder(order: Order) {
+  setOrder = (order: Order) => {
     if (!order?.id) return;
 
     const existing = this.ordersById.get(order.id);
@@ -87,16 +87,24 @@ class EntityStore {
     if (typeof lat === 'number' && typeof lng === 'number') {
       const zoom = 12; // Production indexing zoom
       const tileKey = GeoGridService.getTileKey(lat, lng, zoom);
-      this.addOrderToTile(tileKey, order.id);
+
+      // Ensure the method is called on the singleton instance to preserve context
+      entityStore.addOrderToTile(tileKey, order.id);
     }
   }
 
+  addOrderToTile = (tileKey: string, orderId: string) => {
+    if (!this.tilesToOrders.has(tileKey)) {
+      this.tilesToOrders.set(tileKey, new Set());
+    }
+    this.tilesToOrders.get(tileKey)!.add(orderId);
+  }
 
-  setOrders(orders: Order[]) {
+  setOrders = (orders: Order[]) => {
     orders.forEach(o => this.setOrder(o));
   }
 
-  setUser(user: UserProfile) {
+  setUser = (user: UserProfile) => {
     const id = (user as any).id || user.uid;
     if (!id) return;
 
@@ -111,28 +119,28 @@ class EntityStore {
   }
 
   // Stage 2: O(1) Selectors
-  getOrder(id: string): Order | undefined {
+  getOrder = (id: string): Order | undefined => {
     this.meta.reads++;
     return this.ordersById.get(id);
   }
 
-  getAllOrders(): Order[] {
+  getAllOrders = (): Order[] => {
     this.meta.reads++;
     return Array.from(this.ordersById.values());
   }
 
-  getOrdersInTile(tileKey: string): Order[] {
+  getOrdersInTile = (tileKey: string): Order[] => {
     const ids = this.tilesToOrders.get(tileKey);
     if (!ids) return [];
     return Array.from(ids).map(id => this.ordersById.get(id)).filter(Boolean) as Order[];
   }
 
-  getUser(id: string): UserProfile | undefined {
+  getUser = (id: string): UserProfile | undefined => {
     this.meta.reads++;
     return this.usersById.get(id);
   }
 
-  getCurrentUser(): UserProfile | undefined {
+  getCurrentUser = (): UserProfile | undefined => {
     this.meta.reads++;
     if (!this.currentUserId) return undefined;
     return this.usersById.get(this.currentUserId);
@@ -140,7 +148,7 @@ class EntityStore {
 
   // --- Task #6: Diagnostics ---
 
-  getMetrics() {
+  getMetrics = () => {
     return {
       storeReads: this.meta.reads,
       storeWrites: this.meta.writes,
@@ -150,7 +158,7 @@ class EntityStore {
     };
   }
 
-  logDiagnostics() {
+  logDiagnostics = () => {
     if (__DEV__) {
       const { requestRouter } = require('./RequestRouter');
       console.log('[Diagnostics] MapEngine V4:', {
@@ -160,7 +168,7 @@ class EntityStore {
     }
   }
 
-  clear() {
+  clear = () => {
     this.ordersById.clear();
     this.usersById.clear();
     this.tilesToOrders.clear();
