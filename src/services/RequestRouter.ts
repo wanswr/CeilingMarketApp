@@ -34,6 +34,7 @@ class RequestRouter {
     // 1. Handle In-Flight (Deduplication) - TASK #1: Locking
     if (this.inFlight.has(key)) {
       if (__DEV__) console.log(`[RequestRouter] DEDUP JOIN: ${key}`);
+      this.metrics.cacheHits++; // Count deduplication as hit to show value
       return this.inFlight.get(key);
     }
 

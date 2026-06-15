@@ -224,12 +224,13 @@ export class OrdersService {
   async findIncremental(filters: { updatedAfter?: Date; status?: string }) {
     const { updatedAfter, status } = filters;
 
-    // Stage 3: Fetch only changes since last sync
+    // Stage 3: Fetch only changes since last sync (with safety limit for legacy)
     const created = await this.prisma.order.findMany({
       where: {
         status: (status as OrderStatus) || undefined,
-        createdAt: updatedAfter ? { gt: updatedAfter } : undefined,
+        createdAt: updatedAfter ? { gt: updatedAfter } : { gt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }, // Last 30 days fallback
       },
+      take: 1000, // Safety cap for performance
       include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
     });
 
