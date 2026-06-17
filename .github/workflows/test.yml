@@ -31,9 +31,10 @@ jobs:
       - name: Run Jest tests
         run: npm test
 
-      # Шаг 5: Настройка для Detox (закомментировано для CI)
-      # - name: Set up Detox dependencies
-      #   run: |
-      #     npm install -g detox-cli
-      #     npm run detox:build
-      #     npm run detox:test
+      # Шаг 5: Настройка для Detox (если требуется запуск Detox для iOS или Android)
+      - name: Set up Detox dependencies (optional for Android/iOS simulators)
+        run: |
+          npm install -g detox-cli
+          npm run detox:build  # Строим приложение для тестов Detox
+          npm run detox:test   # Запускаем тесты Detox
+        continue-on-error: false  # Тесты не должны продолжаться, если E2E тесты не прошли
