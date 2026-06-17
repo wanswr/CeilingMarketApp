@@ -45,7 +45,9 @@ class MapEngine {
    */
   subscribe = (callback: OrderCallback) => {
     this.subscribers.add(callback);
-    callback(this.getOrdersArray());
+    // V6 Hardening: Ensure initial state is pushed correctly
+    const currentOrders = this.getOrdersArray();
+    callback(currentOrders);
     return () => { this.subscribers.delete(callback); };
   }
 

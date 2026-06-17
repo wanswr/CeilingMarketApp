@@ -69,11 +69,10 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     setRegion(newRegion);
-    // Engine V4: Spatial BBOX Trigger
-    // We pass the full region to orchestrator for bounds calculation
+    // Engine V6: Normalized Spatial BBOX Trigger
     mapEngine.triggerMapUpdate({
-      latitude: newRegion.latitude,
-      longitude: newRegion.longitude,
+      latitude: Number(newRegion.latitude.toFixed(3)),
+      longitude: Number(newRegion.longitude.toFixed(3)),
       latitudeDelta: newRegion.latitudeDelta,
       longitudeDelta: newRegion.longitudeDelta
     });
@@ -100,6 +99,14 @@ const MapScreen = ({ navigation }: any) => {
 
     if (__DEV__) {
         const time = Date.now() - start;
+        console.log('[MAP DEBUG]:', {
+            totalOrders: allOrders.length,
+            candidatesInView: candidates.length,
+            renderedItems: result.length,
+            lat: region.latitude.toFixed(3),
+            lng: region.longitude.toFixed(3),
+            timeMs: time
+        });
         const meta = mapEngine.entityStore?.meta;
         if (meta) meta.lastClusterTime = time;
     }

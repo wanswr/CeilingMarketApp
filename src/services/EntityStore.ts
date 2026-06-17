@@ -136,30 +136,37 @@ class EntityStore {
   }
 
   /**
-   * Spatial Grid Logic: Indexes orders into ~5km buckets.
+   * Spatial Grid Logic: Indexes orders into ~20km buckets.
+   * V6 Hardening: Standardized coordinate extraction and key generation.
    */
+  private getOrderCoords = (order: Order) => {
+      const lat = order.latitude ?? (order as any).coordinates?.latitude ?? (order as any).location?.latitude;
+      const lng = order.longitude ?? (order as any).coordinates?.longitude ?? (order as any).location?.longitude;
+      return (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng))
+        ? { lat, lng }
+        : null;
+  }
+
   private getGridKey = (lat: number, lng: number) => {
-      const scale = 5; // ~20km grid size for coarse filtering
+      const scale = 2; // ~50km grid size for coarse pre-filtering
       const x = Math.floor(lat * scale);
       const y = Math.floor(lng * scale);
       return `${x}:${y}`;
   }
 
   private updateOrderInGrid = (order: Order) => {
-      const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
-      const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
-      if (typeof lat !== 'number') return;
+      const coords = this.getOrderCoords(order);
+      if (!coords) return;
 
-      const key = this.getGridKey(lat, lng);
+      const key = this.getGridKey(coords.lat, coords.lng);
       if (!this.spatialGrid.has(key)) this.spatialGrid.set(key, new Set());
       this.spatialGrid.get(key)!.add(order.id);
   }
 
   private removeFromGrid = (order: Order) => {
-      const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
-      const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
-      if (typeof lat !== 'number') return;
-      const key = this.getGridKey(lat, lng);
+      const coords = this.getOrderCoords(order);
+      if (!coords) return;
+      const key = this.getGridKey(coords.lat, coords.lng);
       this.spatialGrid.get(key)?.delete(order.id);
   }
 
@@ -167,7 +174,7 @@ class EntityStore {
    * Viewport Query: Returns orders within specified bounds using the grid index.
    */
   getOrdersInBounds = (minLat: number, maxLat: number, minLng: number, maxLng: number): Order[] => {
-      const scale = 5;
+      const scale = 2;
       const startX = Math.floor(minLat * scale);
       const endX = Math.floor(maxLat * scale);
       const startY = Math.floor(minLng * scale);
@@ -182,9 +189,15 @@ class EntityStore {
       }
 
       this.meta.reads++;
-      return Array.from(resultIds)
+      const allOrdersInBounds = Array.from(resultIds)
           .map(id => this.ordersById.get(id))
           .filter(Boolean) as Order[];
+
+      // Fine-grained filter to match exact viewport
+      return allOrdersInBounds.filter(o => {
+          const c = this.getOrderCoords(o);
+          return c && c.lat >= minLat && c.lat <= maxLat && c.lng >= minLng && c.lng <= maxLng;
+      });
   }
 
 
