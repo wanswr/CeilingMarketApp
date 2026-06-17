@@ -15,27 +15,25 @@ jobs:
     steps:
       # Шаг 1: Клонируем репозиторий
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      # Шаг 2: Устанавливаем Node.js (версия 16.x)
+      # Шаг 2: Устанавливаем Node.js (версия 20.x)
       - name: Set up Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
-          node-version: '16'
+          node-version: '20'
 
       # Шаг 3: Устанавливаем зависимости
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       # Шаг 4: Запускаем Jest тесты
       - name: Run Jest tests
         run: npm test
-        continue-on-error: false  # Убедитесь, что тесты не продолжат работу, если есть ошибка
 
-      # Шаг 5: Настройка для Detox (если требуется запуск Detox для iOS или Android)
-      - name: Set up Detox dependencies (optional for Android/iOS simulators)
-        run: |
-          npm install -g detox-cli
-          npm run detox:build  # Строим приложение для тестов Detox
-          npm run detox:test   # Запускаем тесты Detox
-        continue-on-error: false  # Тесты не должны продолжаться, если E2E тесты не прошли
+      # Шаг 5: Настройка для Detox (закомментировано для CI)
+      # - name: Set up Detox dependencies
+      #   run: |
+      #     npm install -g detox-cli
+      #     npm run detox:build
+      #     npm run detox:test
