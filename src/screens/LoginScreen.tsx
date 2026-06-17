@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -22,7 +22,7 @@ export default function LoginScreen({ navigation }: any) {
     setLoading(true);
     try {
       // In this new architecture, we call our own backend via Orchestrator
-      const data = await orderOrchestrator.login(phone);
+      const data = await mapEngine.login(phone);
       if (data.access_token) {
         await signIn(data.access_token, data.user);
         // Note: useAuth will trigger Navigation re-render
@@ -31,7 +31,7 @@ export default function LoginScreen({ navigation }: any) {
       console.error(err);
       let errorMsg = "Произошла ошибка при входе.";
       if (err.message === "Network Error") {
-        errorMsg = "Ошибка сети. Убедитесь, что сервер запущен и доступен по адресу " + orderOrchestrator.getApiBaseUrl();
+        errorMsg = "Ошибка сети. Убедитесь, что сервер запущен и доступен по адресу " + mapEngine.getApiBaseUrl();
       } else if (err.response?.data?.message) {
         errorMsg = err.response.data.message;
       }

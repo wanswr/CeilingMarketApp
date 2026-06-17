@@ -2,11 +2,12 @@ import { Order } from '../types';
 import { apiService } from './ApiService';
 import { requestRouter } from './RequestRouter';
 import { entityStore } from './EntityStore';
+import { GeoClusterService } from './GeoClusterService';
 
 type OrderCallback = (orders: Order[]) => void;
 
 /**
- * OrderOrchestrator V2.1: Logic & Sync Layer.
+ * MapEngine V4: Logic & Sync Layer.
  * Delegates data fetching to RequestRouter.
  * Persists data into EntityStore (Single Source of Truth).
  * Notifies UI subscribers of store changes.
@@ -18,7 +19,7 @@ interface BBox {
   maxLng: number;
 }
 
-class OrderOrchestrator {
+class MapEngine {
   private subscribers: Set<OrderCallback> = new Set();
   private debounceTimer: NodeJS.Timeout | null = null;
   private loadedBounds: BBox[] = [];
@@ -26,10 +27,12 @@ class OrderOrchestrator {
   constructor(
       public apiService: any,
       public entityStore: any,
-      public requestRouter: any
+      public requestRouter: any,
+      public geoClusterService: any
   ) {
       if (__DEV__) {
           console.log('[MapEngine] EntityStore injected:', !!this.entityStore);
+          console.log('[MapEngine] GeoClusterService injected:', !!this.geoClusterService);
       }
   }
 
@@ -53,7 +56,7 @@ class OrderOrchestrator {
 
   private getOrdersArray = (): Order[] => {
     if (!this.entityStore) {
-        if (__DEV__) console.warn('[OrderOrchestrator] Accessing entityStore before injection');
+        if (__DEV__) console.warn('[MapEngine] Accessing entityStore before injection');
         return [];
     }
     return this.entityStore.getAllOrders()
@@ -90,7 +93,7 @@ class OrderOrchestrator {
       );
 
       if (isLoaded) {
-        if (__DEV__) console.log('[OrderOrchestrator] BBOX CACHE HIT - Skipping network');
+        if (__DEV__) console.log('[MapEngine] BBOX CACHE HIT - Skipping network');
         this.requestRouter.metrics.bboxHits++;
         this.requestRouter.metrics.cacheHits++;
         return;
@@ -138,7 +141,7 @@ class OrderOrchestrator {
       this.entityStore.setMeta('map_last_sync', Date.now().toString());
       this.entityStore.logDiagnostics();
     } catch (error) {
-      console.error(`[OrderOrchestrator] Spatial sync failed`, error);
+      console.error(`[MapEngine] Spatial sync failed`, error);
     }
   }
 
@@ -220,7 +223,7 @@ class OrderOrchestrator {
       this.notifySubscribers();
       return orderData;
     } catch (error) {
-      console.error(`[OrderOrchestrator] Order ${orderId} sync failed`, error);
+      console.error(`[MapEngine] Order ${orderId} sync failed`, error);
       throw error;
     }
   }
@@ -255,6 +258,15 @@ class OrderOrchestrator {
 
   getCurrentUser = () => {
     return this.entityStore?.getCurrentUser();
+  }
+
+  // --- GeoCluster Accessors ---
+  clusterOrders = (orders: Order[], latDelta: number) => {
+    return this.geoClusterService?.clusterOrders(orders, latDelta) || [];
+  }
+
+  getOrderCoords = (order: Order) => {
+    return this.geoClusterService?.getOrderCoords(order);
   }
 
   /**
@@ -325,4 +337,5 @@ class OrderOrchestrator {
   }
 }
 
-export const orderOrchestrator = new OrderOrchestrator(apiService, entityStore, requestRouter);
+export const mapEngine = new MapEngine(apiService, entityStore, requestRouter, GeoClusterService);
+export const orderOrchestrator = mapEngine; // Backward compatibility

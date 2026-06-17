@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, ActivityIndicator, Image, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Button } from '../components/Button';
@@ -19,8 +19,8 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const fetchProfile = async () => {
     try {
       const responseData = userId
-        ? await orderOrchestrator.getExternalUser(userId)
-        : await orderOrchestrator.syncUser();
+        ? await mapEngine.getExternalUser(userId)
+        : await mapEngine.syncUser();
       setUser(responseData);
     } catch (error) {
       console.error(error);

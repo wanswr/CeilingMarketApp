@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, ScrollView } from 'react-native';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { COLORS } from '../constants/theme';
 
 const SubscriptionScreen = () => {
   const [loading, setLoading] = useState(false);
-  const user = orderOrchestrator.getCurrentUser();
+  const user = mapEngine.getCurrentUser();
   const status = user?.subscription;
 
   const handleSubscribe = async (days: number) => {
     setLoading(true);
     try {
-      await orderOrchestrator.activateSubscription(days);
+      await mapEngine.activateSubscription(days);
       Alert.alert('Успех', 'Подписка активирована!');
     } catch (error) {
       Alert.alert('Ошибка', 'Не удалось оформить подписку');

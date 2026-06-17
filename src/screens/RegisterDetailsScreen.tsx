@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert, SafeAreaView, ScrollView } from 'react-native';
 import { Button } from '../components/Button';
 import { AppInput } from '../components/Input';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { useAuth } from '../context/AuthContext';
 
 const RegisterDetailsScreen = ({ navigation }: any) => {
@@ -18,7 +18,7 @@ const RegisterDetailsScreen = ({ navigation }: any) => {
 
     setLoading(true);
     try {
-      const data = await orderOrchestrator.updateProfile({
+      const data = await mapEngine.updateProfile({
         name
       });
 

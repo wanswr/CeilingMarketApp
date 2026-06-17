@@ -2,25 +2,25 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { Order } from '../types';
 import { COLORS, SHADOWS } from '../constants/theme';
 
 const OrdersListScreen = ({ navigation }: any) => {
-  const [orders, setOrders] = useState<Order[]>(orderOrchestrator.getOrders());
+  const [orders, setOrders] = useState<Order[]>(mapEngine.getOrders());
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(orders.length === 0);
 
   // Subscribe to the central orchestrator
   useEffect(() => {
-    const unsubscribe = orderOrchestrator.subscribe((newOrders) => {
+    const unsubscribe = mapEngine.subscribe((newOrders) => {
       setOrders(newOrders);
       setLoading(false);
     });
 
     // Ensure data is loaded even if we start here
-    if (orderOrchestrator.getOrders().length === 0) {
-      orderOrchestrator.syncMap();
+    if (mapEngine.getOrders().length === 0) {
+      mapEngine.syncMap();
     }
 
     return () => { unsubscribe(); };
@@ -28,7 +28,7 @@ const OrdersListScreen = ({ navigation }: any) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await orderOrchestrator.forceRefresh();
+    await mapEngine.forceRefresh();
     setRefreshing(false);
   };
 

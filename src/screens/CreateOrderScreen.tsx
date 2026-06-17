@@ -25,7 +25,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { z } from 'zod';
 import { AppInput } from '../components/Input';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
@@ -248,7 +248,7 @@ export default function CreateOrderScreen({ navigation }: any) {
         idempotencyKey: `${Date.now()}-${form.title}`,
       };
 
-      await orderOrchestrator.createOrder(orderData);
+      await mapEngine.createOrder(orderData);
 
       Alert.alert("Успех", "Заказ опубликован!");
       navigation.goBack();
@@ -284,7 +284,7 @@ export default function CreateOrderScreen({ navigation }: any) {
     setIsParsing(true);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const parsed = await orderOrchestrator.parseOrderText(importText);
+      const parsed = await mapEngine.parseOrderText(importText);
       setParsedData(parsed);
     } catch (error) {
       Alert.alert("Ошибка", "Не удалось распознать текст. Попробуйте ввести данные вручную.");

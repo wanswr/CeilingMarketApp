@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { socketService } from '../services/SocketService';
 import { apiService } from '../services/ApiService';
 
@@ -27,7 +27,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const token = await SecureStore.getItemAsync('userToken');
       if (token) {
-        const userData = await orderOrchestrator.syncUser();
+        const userData = await mapEngine.syncUser();
         setUser(userData);
         socketService.connect(apiService.getBaseUrl());
       } else {

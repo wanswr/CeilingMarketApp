@@ -209,14 +209,13 @@ class EntityStore {
       const network = requestRouter?.getMetrics() || {};
       const store = this.getMetrics();
 
-      console.log('[Diagnostics] MapEngine V4:', {
+      console.log('MapEngine V4 diagnostics:', {
+          apiCalls: network.apiCalls,
+          bboxHits: network.bboxHits,
+          cacheHits: network.cacheHits,
+          clusterTimeMs: (this.meta as any).lastClusterTime || 0,
           orders: store.ordersCount,
           spatialSyncs: store.spatialSyncs,
-          apiCalls: network.apiCalls,
-          cacheHits: network.cacheHits,
-          bboxHits: network.bboxHits,
-          websocketUpdates: (this.meta as any).wsUpdates || 0,
-          clusterTimeMs: (this.meta as any).lastClusterTime || 0
       });
     }
   }

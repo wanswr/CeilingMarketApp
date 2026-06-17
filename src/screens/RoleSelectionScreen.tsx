@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
 import { COLORS } from '../constants/theme';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { useAuth } from '../context/AuthContext';
 
 const RoleSelectionScreen = ({ navigation }: any) => {
@@ -11,7 +11,7 @@ const RoleSelectionScreen = ({ navigation }: any) => {
   const selectRole = async (role: 'WORKER' | 'EMPLOYER') => {
     setLoading(true);
     try {
-      const data = await orderOrchestrator.updateProfile({ role });
+      const data = await mapEngine.updateProfile({ role });
       updateUser(data);
       // navigation.replace('MainTabs') is not needed, useAuth re-renders Navigation
     } catch (error) {

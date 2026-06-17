@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { z } from 'zod';
 import { COLORS } from '../constants/theme';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 
 const profileSchema = z.object({
   name: z.string().min(2, "Имя слишком короткое"),
@@ -24,13 +24,13 @@ const profileSchema = z.object({
 });
 
 export default function EditProfileScreen({ navigation }: any) {
-  const [loading, setLoading] = useState(!orderOrchestrator.getCurrentUser());
+  const [loading, setLoading] = useState(!mapEngine.getCurrentUser());
   const [saving, setSaving] = useState(false);
-  const [profile, setProfile] = useState<any>(orderOrchestrator.getCurrentUser() || {});
+  const [profile, setProfile] = useState<any>(mapEngine.getCurrentUser() || {});
   const [errors, setErrors] = useState<any>({});
 
   useEffect(() => {
-    orderOrchestrator.syncUser().then(data => {
+    mapEngine.syncUser().then(data => {
       setProfile(data);
       setLoading(false);
     }).catch(() => {
@@ -53,7 +53,7 @@ export default function EditProfileScreen({ navigation }: any) {
 
     setSaving(true);
     try {
-      await orderOrchestrator.updateProfile(profile);
+      await mapEngine.updateProfile(profile);
       Alert.alert("Успех", "Профиль обновлен");
       navigation.goBack();
     } catch (e) {

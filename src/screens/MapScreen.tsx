@@ -17,13 +17,13 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { COLORS, SHADOWS } from '../constants/theme';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { formatDate } from '../utils/date';
 import { Order } from '../types';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
-  const [allOrders, setAllOrders] = useState<Order[]>(orderOrchestrator.getOrders());
+  const [allOrders, setAllOrders] = useState<Order[]>(mapEngine.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -36,7 +36,7 @@ const MapScreen = ({ navigation }: any) => {
 
   // 1. Subscribe to Orchestrator
   useEffect(() => {
-    const unsubscribe = orderOrchestrator.subscribe((newOrders) => {
+    const unsubscribe = mapEngine.subscribe((newOrders) => {
       setAllOrders(newOrders);
       setLoading(false);
     });
@@ -46,7 +46,7 @@ const MapScreen = ({ navigation }: any) => {
   // 2. Initial Data Load & Location Sync
   useFocusEffect(
     useCallback(() => {
-      orderOrchestrator.syncMap();
+      mapEngine.syncMap();
 
       (async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -68,7 +68,7 @@ const MapScreen = ({ navigation }: any) => {
     setRegion(newRegion);
     // Engine V4: Spatial BBOX Trigger
     // We pass the full region to orchestrator for bounds calculation
-    orderOrchestrator.triggerMapUpdate({
+    mapEngine.triggerMapUpdate({
       latitude: newRegion.latitude,
       longitude: newRegion.longitude,
       latitudeDelta: newRegion.latitudeDelta,
@@ -80,20 +80,19 @@ const MapScreen = ({ navigation }: any) => {
   const displayedItems = useMemo(() => {
     const start = Date.now();
 
-    // Engine V4: Use the store's spatial index via orchestrator
-    const candidates = orderOrchestrator.getOrdersInBounds(
+    // Engine V4: Use the store's spatial index via mapEngine
+    const candidates = mapEngine.getOrdersInBounds(
         region.latitude - region.latitudeDelta,
         region.latitude + region.latitudeDelta,
         region.longitude - region.longitudeDelta,
         region.longitude + region.longitudeDelta
     );
 
-    const { GeoClusterService } = require('../services/GeoClusterService');
-    const result = GeoClusterService.clusterOrders(candidates, region.latitudeDelta);
+    const result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
 
     if (__DEV__) {
         const time = Date.now() - start;
-        const meta = orderOrchestrator.entityStore?.meta;
+        const meta = mapEngine.entityStore?.meta;
         if (meta) meta.lastClusterTime = time;
     }
 
@@ -153,7 +152,7 @@ const MapScreen = ({ navigation }: any) => {
             );
           }
 
-          const coords = GeoClusterService.getOrderCoords(item);
+          const coords = mapEngine.getOrderCoords(item);
           if (!coords) return null;
 
           return (
@@ -185,7 +184,7 @@ const MapScreen = ({ navigation }: any) => {
             placeholderTextColor={COLORS.gray}
           />
           <TouchableOpacity style={styles.filterBtn} onPress={() => {
-             orderOrchestrator.forceRefresh();
+             mapEngine.forceRefresh();
           }}>
             <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
           </TouchableOpacity>

@@ -4,27 +4,27 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { Order } from '../types';
-import { orderOrchestrator } from '../services/OrderOrchestrator';
+import { mapEngine } from '../services/MapEngine';
 import { Button } from '../components/Button';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
-  const [order, setOrder] = useState<Order | undefined>(orderOrchestrator.getOrder(orderId));
+  const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
   const [loading, setLoading] = useState(!order);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = orderOrchestrator.subscribe(() => {
-      const updated = orderOrchestrator.getOrder(orderId);
+    const unsubscribe = mapEngine.subscribe(() => {
+      const updated = mapEngine.getOrder(orderId);
       if (updated) {
         setOrder(updated);
         setLoading(false);
       }
     });
 
-    orderOrchestrator.syncOrder(orderId).catch(() => {
+    mapEngine.syncOrder(orderId).catch(() => {
       if (!order) {
         Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
         navigation.goBack();
@@ -37,7 +37,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const handleApply = async () => {
     setSubmitting(true);
     try {
-      await orderOrchestrator.applyForOrder(orderId);
+      await mapEngine.applyForOrder(orderId);
       Alert.alert('Успех', 'Ваша заявка отправлена');
     } catch (error: any) {
       Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить заявку');
