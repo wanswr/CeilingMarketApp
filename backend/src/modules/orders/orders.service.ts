@@ -292,6 +292,40 @@ export class OrdersService {
   }
 
   /**
+   * SPATIAL ENGINE V6: Universal spatial search supporting Radius and BBOX modes.
+   */
+  async findSpatial(params: {
+    lat?: number; lng?: number; radius?: number;
+    minLat?: number; maxLat?: number; minLng?: number; maxLng?: number;
+    updatedAfter?: Date;
+  }) {
+    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter } = params;
+
+    // Mode A: Radius Search (approximate via bounding box for performance)
+    if (lat !== undefined && lng !== undefined && radius !== undefined) {
+      const R = 6371; // Earth radius in km
+      const deltaLat = (radius / R) * (180 / Math.PI);
+      const deltaLng = (radius / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
+
+      const bounds = {
+        minLat: lat - deltaLat,
+        maxLat: lat + deltaLat,
+        minLng: lng - deltaLng,
+        maxLng: lng + deltaLng,
+      };
+
+      return this.findInBounds(bounds, updatedAfter);
+    }
+
+    // Mode B: BBOX Search
+    if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
+      return this.findInBounds({ minLat, maxLat, minLng, maxLng }, updatedAfter);
+    }
+
+    return { created: [], updated: [], deleted: [] };
+  }
+
+  /**
    * SMART PARSER: Heuristic NLP for ceiling order texts.
    */
   parseOrderText(text: string) {

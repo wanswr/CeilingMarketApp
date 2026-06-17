@@ -46,8 +46,6 @@ const MapScreen = ({ navigation }: any) => {
   // 2. Initial Data Load & Location Sync
   useFocusEffect(
     useCallback(() => {
-      mapEngine.syncMap();
-
       (async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
@@ -59,6 +57,10 @@ const MapScreen = ({ navigation }: any) => {
             longitude: loc.coords.longitude
           };
           setRegion(initialRegion);
+          // V6: Initial Spatial Load (100km radius)
+          mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
+        } else {
+          mapEngine.syncMap();
         }
       })();
     }, [])
@@ -90,21 +92,6 @@ const MapScreen = ({ navigation }: any) => {
 
     let result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
 
-    // Low zoom optimization: Show region centers if zoom is very low
-    if (region.latitudeDelta > 5) {
-        result = mapEngine.regionManager.getDefinedRegions().map(r => ({
-            id: `region_${r.id}`,
-            latitude: (r.bounds.minLat + r.bounds.maxLat) / 2,
-            longitude: (r.bounds.minLng + r.bounds.maxLng) / 2,
-            count: candidates.filter(o =>
-                o.latitude >= r.bounds.minLat && o.latitude <= r.bounds.maxLat &&
-                o.longitude >= r.bounds.minLng && o.longitude <= r.bounds.maxLng
-            ).length,
-            isCluster: true,
-            type: 'strong',
-            regionId: r.id
-        }));
-    }
 
     if (__DEV__) {
         const time = Date.now() - start;
@@ -156,8 +143,8 @@ const MapScreen = ({ navigation }: any) => {
                     mapRef.current?.animateToRegion({
                         latitude: item.latitude,
                         longitude: item.longitude,
-                        latitudeDelta: item.regionId ? 0.5 : region.latitudeDelta / 4,
-                        longitudeDelta: item.regionId ? 0.5 : region.longitudeDelta / 4,
+                        latitudeDelta: region.latitudeDelta / 4,
+                        longitudeDelta: region.longitudeDelta / 4,
                     }, 500);
                 }}
               >

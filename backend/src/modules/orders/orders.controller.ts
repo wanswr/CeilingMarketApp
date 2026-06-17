@@ -73,6 +73,29 @@ export class OrdersController {
     );
   }
 
+  @Get('spatial')
+  getSpatialOrders(
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+    @Query('radius') radius?: string,
+    @Query('minLat') minLat?: string,
+    @Query('maxLat') maxLat?: string,
+    @Query('minLng') minLng?: string,
+    @Query('maxLng') maxLng?: string,
+    @Query('updatedAfter') updatedAfter?: string,
+  ) {
+    return this.ordersService.findSpatial({
+      lat: lat ? parseFloat(lat) : undefined,
+      lng: lng ? parseFloat(lng) : undefined,
+      radius: radius ? parseFloat(radius) : undefined,
+      minLat: minLat ? parseFloat(minLat) : undefined,
+      maxLat: maxLat ? parseFloat(maxLat) : undefined,
+      minLng: minLng ? parseFloat(minLng) : undefined,
+      maxLng: maxLng ? parseFloat(maxLng) : undefined,
+      updatedAfter: (updatedAfter && !isNaN(Number(updatedAfter))) ? new Date(Number(updatedAfter)) : undefined
+    });
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('parse')
   parseOrderText(@Body('text') text: string) {

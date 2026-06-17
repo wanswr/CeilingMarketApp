@@ -20,10 +20,10 @@ class RequestRouter {
     bboxMisses: 0,
     dedupHits: 0,
     websocketUpdates: 0,
-    regionCacheHits: 0,
-    regionCacheMisses: 0,
-    regionNetworkRequests: 0,
-    regionsLoaded: 0
+    spatialChunksLoaded: 0,
+    spatialCacheHits: 0,
+    spatialCacheMisses: 0,
+    spatialRequests: 0
   };
 
   /**
@@ -101,10 +101,10 @@ class RequestRouter {
     this.metrics.bboxMisses = 0;
     this.metrics.dedupHits = 0;
     this.metrics.websocketUpdates = 0;
-    this.metrics.regionCacheHits = 0;
-    this.metrics.regionCacheMisses = 0;
-    this.metrics.regionNetworkRequests = 0;
-    this.metrics.regionsLoaded = 0;
+    this.metrics.spatialChunksLoaded = 0;
+    this.metrics.spatialCacheHits = 0;
+    this.metrics.spatialCacheMisses = 0;
+    this.metrics.spatialRequests = 0;
   }
 
   getMetrics = () => {

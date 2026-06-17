@@ -209,12 +209,12 @@ class EntityStore {
       const network = requestRouter?.getMetrics() || {};
       const store = this.getMetrics();
 
-      console.log('MapEngine V5 diagnostics:', {
-          regionsLoaded: network.regionsLoaded || 0,
-          regionCacheHits: network.regionCacheHits || 0,
-          regionCacheMisses: network.regionCacheMisses || 0,
-          regionNetworkRequests: network.regionNetworkRequests || 0,
-          orders: store.ordersCount,
+      console.log('MapEngine V6 diagnostics:', {
+          loadedChunks: network.spatialChunksLoaded || 0,
+          cacheHits: network.spatialCacheHits || 0,
+          cacheMisses: network.spatialCacheMisses || 0,
+          networkRequests: network.spatialRequests || 0,
+          ordersInMemory: store.ordersCount,
           clusterTimeMs: (this.meta as any).lastClusterTime || 0
       });
     }

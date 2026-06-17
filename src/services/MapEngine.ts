@@ -3,7 +3,7 @@ import { apiService } from './ApiService';
 import { requestRouter } from './RequestRouter';
 import { entityStore } from './EntityStore';
 import { GeoClusterService } from './GeoClusterService';
-import { regionManager } from '../map/RegionManager';
+import { spatialManager } from '../map/SpatialManager';
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -24,7 +24,7 @@ class MapEngine {
   private subscribers: Set<OrderCallback> = new Set();
   private debounceTimer: NodeJS.Timeout | null = null;
   private loadedBounds: BBox[] = [];
-  public regionManager = regionManager;
+  public spatialManager = spatialManager;
 
   constructor(
       public apiService: any,
@@ -66,51 +66,16 @@ class MapEngine {
   }
 
   /**
-   * SYNC MAP V5: Regional & BBOX Synchronization.
-   * Detects region, ensures it's loaded, and uses BBOX for internal filtering.
+   * SYNC MAP V6: Universal Spatial Synchronization.
+   * Uses geocell chunking (SpatialManager) and universal /spatial endpoint.
    */
   syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!this.entityStore) return;
     if (!viewRegion) return;
 
-    // 1. REGION DETECTION (V5)
-    const detectedRegion = this.regionManager.detectRegion(viewRegion.latitude, viewRegion.longitude);
-
-    if (detectedRegion) {
-        if (this.regionManager.isRegionLoaded(detectedRegion.id) && !force) {
-            if (__DEV__) console.log(`[MapEngine] REGION CACHE HIT: ${detectedRegion.id}`);
-            this.requestRouter.metrics.regionCacheHits++;
-        } else {
-            if (__DEV__) console.log(`[MapEngine] REGION LOAD: ${detectedRegion.id}`);
-            this.requestRouter.metrics.regionCacheMisses++;
-            this.requestRouter.metrics.regionNetworkRequests++;
-
-            try {
-                const lastSync = this.entityStore.getMeta(`region_sync_${detectedRegion.id}`) || '0';
-                const response = await this.requestRouter.request(
-                    `region:${detectedRegion.id}`,
-                    async () => {
-                        const res = await this.apiService.getOrdersByRegion(detectedRegion.id, force ? '0' : lastSync);
-                        return res.data;
-                    },
-                    600000 // 10 min region TTL
-                );
-
-                if (response) {
-                    this.entityStore.applyPatch(response);
-                    this.regionManager.markRegionLoaded(detectedRegion.id);
-                    this.entityStore.setMeta(`region_sync_${detectedRegion.id}`, Date.now().toString());
-                    this.requestRouter.metrics.regionsLoaded = this.regionManager.getDefinedRegions().filter(r => this.regionManager.isRegionLoaded(r.id)).length;
-                }
-            } catch (e) {
-                console.error(`[MapEngine] Region load failed: ${detectedRegion.id}`, e);
-            }
-        }
-    }
-
-    // 2. BBOX CACHING (V4 Logic maintained internally)
-    const latBuffer = viewRegion.latitudeDelta * 1.0;
-    const lngBuffer = viewRegion.longitudeDelta * 1.0;
+    // 1. Calculate Spatial Bounds
+    const latBuffer = viewRegion.latitudeDelta * 0.5;
+    const lngBuffer = viewRegion.longitudeDelta * 0.5;
 
     const bounds: BBox = {
       minLat: viewRegion.latitude - viewRegion.latitudeDelta - latBuffer,
@@ -119,20 +84,16 @@ class MapEngine {
       maxLng: viewRegion.longitude + viewRegion.longitudeDelta + lngBuffer
     };
 
-    if (!force) {
-      const isLoaded = this.loadedBounds.some(b =>
-        bounds.minLat >= b.minLat && bounds.maxLat <= b.maxLat &&
-        bounds.minLng >= b.minLng && bounds.maxLng <= b.maxLng
-      );
-
-      if (isLoaded) {
-        if (__DEV__) console.log('[MapEngine] BBOX CACHE HIT - Skipping network');
-        this.requestRouter.metrics.bboxHits++;
+    // 2. CHECK SPATIAL CACHE (V6 Chunking)
+    if (!force && this.spatialManager.isAreaLoaded(bounds.minLat, bounds.maxLat, bounds.minLng, bounds.maxLng)) {
+        if (__DEV__) console.log('[MapEngine] SPATIAL CACHE HIT - Skipping network');
+        this.requestRouter.metrics.spatialCacheHits++;
         return;
-      }
     }
 
-    // 3. SPATIAL FETCH (For areas outside predefined regions or force refresh)
+    this.requestRouter.metrics.spatialCacheMisses++;
+
+    // 3. UNIVERSAL SPATIAL FETCH (V6)
     const precision = 2;
     const normBounds = {
       minLat: Number(bounds.minLat.toFixed(precision)),
@@ -143,26 +104,29 @@ class MapEngine {
 
     if (isNaN(normBounds.minLat) || isNaN(normBounds.minLng)) return;
 
-    const spatialKey = `bbox:${normBounds.minLat}:${normBounds.maxLat}:${normBounds.minLng}:${normBounds.maxLng}`;
+    const spatialKey = `spatial:${normBounds.minLat}:${normBounds.maxLat}:${normBounds.minLng}:${normBounds.maxLng}`;
     if (force) this.requestRouter.invalidate(spatialKey);
 
     try {
+      this.requestRouter.metrics.spatialRequests++;
       const lastSyncTime = this.entityStore.getMeta('map_last_sync') || '0';
 
       const response = await this.requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
-          this.requestRouter.metrics.bboxMisses++;
-          const res = await this.apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
+          const res = await this.apiService.getSpatialOrders({ ...normBounds, updatedAfter: force ? '0' : lastSyncTime });
           return res.data;
         },
-        300000
+        300000 // 5 min TTL
       );
 
       if (response) {
         this.entityStore.applyPatch(response);
-        this.loadedBounds.push(normBounds);
-        if (this.loadedBounds.length > 10) this.loadedBounds.shift();
+
+        // Mark area as loaded in SpatialManager
+        this.spatialManager.markAreaLoaded(bounds.minLat, bounds.maxLat, bounds.minLng, bounds.maxLng);
+        this.requestRouter.metrics.spatialChunksLoaded = this.spatialManager.getLoadedChunksCount();
+
         this.notifySubscribers();
       }
 
@@ -172,6 +136,20 @@ class MapEngine {
     } catch (error) {
       console.error(`[MapEngine] Spatial sync failed`, error);
     }
+  }
+
+  /**
+   * Initial Load V6: Load 100km radius around user.
+   */
+  initialLoad = async (lat: number, lng: number) => {
+      try {
+          const response = await this.apiService.getSpatialOrders({ lat, lng, radius: 100 });
+          this.entityStore?.applyPatch(response.data);
+          this.spatialManager.markAreaLoaded(lat - 1, lat + 1, lng - 1, lng + 1); // Approx 100km area
+          this.notifySubscribers();
+      } catch (e) {
+          console.error('[MapEngine] Initial spatial load failed', e);
+      }
   }
 
 
