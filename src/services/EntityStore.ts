@@ -8,8 +8,7 @@ interface StoreMeta {
   lastUpdated: Map<string, number>;
   reads: number;
   writes: number;
-  loadedTiles: number;
-  spatialReads: number;
+  spatialSyncs: number;
 }
 
 /**
@@ -22,7 +21,6 @@ class EntityStore {
   public subscriptionsById: Map<string, any> = new Map();
   public reviewsById: Map<string, any> = new Map();
   public messagesById: Map<string, any> = new Map();
-  public tilesToOrders: Map<string, Set<string>> = new Map(); // Stage 1: Tile mapping
 
   private currentUserId: string | null = null;
 
@@ -30,8 +28,7 @@ class EntityStore {
     lastUpdated: new Map(),
     reads: 0,
     writes: 0,
-    loadedTiles: 0,
-    spatialReads: 0
+    spatialSyncs: 0
   };
 
   private globalMeta: Map<string, string> = new Map();
@@ -78,26 +75,6 @@ class EntityStore {
     this.ordersById.set(order.id, order);
     this.meta.lastUpdated.set(`order:${order.id}`, Date.now());
     this.meta.writes++;
-
-    // Stage 1 & 5: Map to tile if coordinates present
-    const { GeoGridService } = require('./GeoGridService');
-    const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
-    const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
-
-    if (typeof lat === 'number' && typeof lng === 'number') {
-      const zoom = 12; // Production indexing zoom
-      const tileKey = GeoGridService.getTileKey(lat, lng, zoom);
-
-      // Ensure the method is called on the singleton instance to preserve context
-      entityStore.addOrderToTile(tileKey, order.id);
-    }
-  }
-
-  addOrderToTile = (tileKey: string, orderId: string) => {
-    if (!this.tilesToOrders.has(tileKey)) {
-      this.tilesToOrders.set(tileKey, new Set());
-    }
-    this.tilesToOrders.get(tileKey)!.add(orderId);
   }
 
   setOrders = (orders: Order[]) => {
@@ -129,11 +106,6 @@ class EntityStore {
     return Array.from(this.ordersById.values());
   }
 
-  getOrdersInTile = (tileKey: string): Order[] => {
-    const ids = this.tilesToOrders.get(tileKey);
-    if (!ids) return [];
-    return Array.from(ids).map(id => this.ordersById.get(id)).filter(Boolean) as Order[];
-  }
 
   getUser = (id: string): UserProfile | undefined => {
     this.meta.reads++;
@@ -154,7 +126,7 @@ class EntityStore {
       storeWrites: this.meta.writes,
       ordersCount: this.ordersById.size,
       usersCount: this.usersById.size,
-      spatialReads: this.meta.spatialReads
+      spatialSyncs: this.meta.spatialSyncs
     };
   }
 
@@ -171,7 +143,6 @@ class EntityStore {
   clear = () => {
     this.ordersById.clear();
     this.usersById.clear();
-    this.tilesToOrders.clear();
     this.meta.lastUpdated.clear();
     this.meta.reads = 0;
     this.meta.writes = 0;

@@ -42,20 +42,11 @@ class OrderOrchestrator {
    * SYNC MAP V4: Spatial Bounding Box Synchronization.
    * Optimizes map performance by fetching a large viewport area at once.
    */
-  private spatialFailureCount = 0;
-
   syncMap = async (force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!region) {
       // Background sync for global updates
       await this.syncDelta(force);
       return;
-    }
-
-    // CIRCUIT BREAKER: If spatial API failed too many times, use syncDelta as fallback
-    if (this.spatialFailureCount > 3 && !force) {
-        if (__DEV__) console.warn('[OrderOrchestrator] Spatial Circuit Breaker Active - Falling back to Delta');
-        await this.syncDelta(force);
-        return;
     }
 
     // 1. Calculate BBOX from region
@@ -96,17 +87,8 @@ class OrderOrchestrator {
       const response = await requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
-          // ADAPTER LAYER: Intelligent fallback to legacy map fetch
-          try {
-            const res = await apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
-            this.spatialFailureCount = 0; // Success: reset failure count
-            return res.data;
-          } catch (e) {
-            this.spatialFailureCount++;
-            console.warn('[OrderOrchestrator] Spatial API failed, falling back to legacy:', (e as any).message);
-            const legacyRes = await apiService.getMapOrders({ updatedAfter: lastSyncTime });
-            return legacyRes.data;
-          }
+          const res = await apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
+          return res.data;
         },
         60000 // 60s TTL for specific viewport
       );
@@ -116,6 +98,7 @@ class OrderOrchestrator {
         this.notifySubscribers();
       }
 
+      entityStore.meta.spatialSyncs++;
       entityStore.setMeta('map_last_sync', Date.now().toString());
       entityStore.logDiagnostics();
     } catch (error) {

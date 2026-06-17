@@ -25,35 +25,41 @@ export class OrdersController {
   }
 
   @Get('map')
-  getMapOrders(
+  getMapOrders(@Query('updatedAfter') updatedAfter?: string) {
+    // Legacy Sync (only for background delta updates)
+    return this.ordersService.findIncremental({
+      updatedAfter: updatedAfter ? new Date(Number(updatedAfter)) : undefined,
+      status: 'PUBLISHED'
+    });
+  }
+
+  @Get('map/bounds')
+  getOrdersInBounds(
     @Query('updatedAfter') updatedAfter?: string,
     @Query('minLat') minLat?: string,
     @Query('maxLat') maxLat?: string,
     @Query('minLng') minLng?: string,
     @Query('maxLng') maxLng?: string,
   ) {
-    // Spatial Engine V4: BBOX Query
-    if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
-      const bounds = {
-        minLat: parseFloat(minLat),
-        maxLat: parseFloat(maxLat),
-        minLng: parseFloat(minLng),
-        maxLng: parseFloat(maxLng),
-      };
-
-      if (!isNaN(bounds.minLat) && !isNaN(bounds.maxLat) && !isNaN(bounds.minLng) && !isNaN(bounds.maxLng)) {
-        return this.ordersService.findInBounds(
-          bounds,
-          (updatedAfter && !isNaN(Number(updatedAfter))) ? new Date(Number(updatedAfter)) : undefined
-        );
-      }
+    if (minLat === undefined || maxLat === undefined || minLng === undefined || maxLng === undefined) {
+        return { created: [], updated: [], deleted: [] };
     }
 
-    // Fallback/Legacy (e.g. for initial load or background sync)
-    return this.ordersService.findIncremental({
-      updatedAfter: updatedAfter ? new Date(Number(updatedAfter)) : undefined,
-      status: 'PUBLISHED'
-    });
+    const bounds = {
+      minLat: parseFloat(minLat),
+      maxLat: parseFloat(maxLat),
+      minLng: parseFloat(minLng),
+      maxLng: parseFloat(maxLng),
+    };
+
+    if (isNaN(bounds.minLat) || isNaN(bounds.maxLat) || isNaN(bounds.minLng) || isNaN(bounds.maxLng)) {
+        return { created: [], updated: [], deleted: [] };
+    }
+
+    return this.ordersService.findInBounds(
+      bounds,
+      (updatedAfter && !isNaN(Number(updatedAfter))) ? new Date(Number(updatedAfter)) : undefined
+    );
   }
 
   @UseGuards(JwtAuthGuard)
