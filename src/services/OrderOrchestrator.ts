@@ -24,10 +24,14 @@ class OrderOrchestrator {
   private loadedBounds: BBox[] = [];
 
   constructor(
-      private apiService: any,
-      private entityStore: any,
-      private requestRouter: any
-  ) {}
+      public apiService: any,
+      public entityStore: any,
+      public requestRouter: any
+  ) {
+      if (__DEV__) {
+          console.log('[MapEngine] EntityStore injected:', !!this.entityStore);
+      }
+  }
 
   /**
    * Subscribe to global order updates.
@@ -48,6 +52,10 @@ class OrderOrchestrator {
   }
 
   private getOrdersArray = (): Order[] => {
+    if (!this.entityStore) {
+        if (__DEV__) console.warn('[OrderOrchestrator] Accessing entityStore before injection');
+        return [];
+    }
     return this.entityStore.getAllOrders()
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
@@ -57,6 +65,7 @@ class OrderOrchestrator {
    * Optimizes map performance by fetching a large viewport area at once.
    */
   syncMap = async (force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
+    if (!this.entityStore) return;
     if (!region) {
       return;
     }
@@ -83,6 +92,7 @@ class OrderOrchestrator {
       if (isLoaded) {
         if (__DEV__) console.log('[OrderOrchestrator] BBOX CACHE HIT - Skipping network');
         this.requestRouter.metrics.bboxHits++;
+        this.requestRouter.metrics.cacheHits++;
         return;
       }
     }
@@ -137,6 +147,7 @@ class OrderOrchestrator {
    * SYNC USER: Profile fetching with Store persistence.
    */
   syncUser = async (force: boolean = false) => {
+    if (!this.entityStore) return;
     const key = 'user:profile';
 
     if (!force) {
@@ -167,6 +178,7 @@ class OrderOrchestrator {
    * SYNC EXTERNAL USER: Cache-first lookup.
    */
   getExternalUser = async (userId: string, force: boolean = false) => {
+    if (!this.entityStore) return;
     if (!force) {
       const cached = this.entityStore.getUser(userId);
       if (cached) return cached;
@@ -190,6 +202,7 @@ class OrderOrchestrator {
    * SYNC ORDER: Detail fetching with Store persistence.
    */
   syncOrder = async (orderId: string, force: boolean = false) => {
+    if (!this.entityStore) return;
     const key = `order:${orderId}`;
     if (force) this.requestRouter.invalidate(key);
 
@@ -227,17 +240,21 @@ class OrderOrchestrator {
     return this.getOrdersArray();
   }
 
+  getOrdersInBounds = (minLat: number, maxLat: number, minLng: number, maxLng: number) => {
+      return this.entityStore?.getOrdersInBounds(minLat, maxLat, minLng, maxLng) || [];
+  }
+
   // Task #3: Selectors
   getOrder = (id: string) => {
-    return this.entityStore.getOrder(id);
+    return this.entityStore?.getOrder(id);
   }
 
   getUser = (id: string) => {
-    return this.entityStore.getUser(id);
+    return this.entityStore?.getUser(id);
   }
 
   getCurrentUser = () => {
-    return this.entityStore.getCurrentUser();
+    return this.entityStore?.getCurrentUser();
   }
 
   /**
@@ -245,8 +262,8 @@ class OrderOrchestrator {
    */
   forceRefresh = async () => {
     this.loadedBounds = [];
-    this.entityStore.clear();
-    this.requestRouter.clear();
+    this.entityStore?.clear();
+    this.requestRouter?.clear();
     return this.syncMap(true);
   }
 
@@ -254,14 +271,14 @@ class OrderOrchestrator {
 
   updateProfile = async (profileData: any) => {
     const res = await this.apiService.updateProfile(profileData);
-    this.entityStore.setUser({ ...res.data, isMe: true });
+    this.entityStore?.setUser({ ...res.data, isMe: true });
     this.requestRouter.invalidate('user:profile');
     return res.data;
   }
 
   createOrder = async (orderData: any) => {
     const res = await this.apiService.createOrder(orderData);
-    this.entityStore.setOrder(res.data);
+    this.entityStore?.setOrder(res.data);
     this.requestRouter.invalidate('map:orders');
     this.notifySubscribers();
     return res.data;
@@ -269,7 +286,7 @@ class OrderOrchestrator {
 
   updateOrder = async (orderId: string, orderData: any) => {
     const res = await this.apiService.updateOrder(orderId, orderData);
-    this.entityStore.setOrder(res.data);
+    this.entityStore?.setOrder(res.data);
     this.requestRouter.invalidate(`order:${orderId}`);
     this.requestRouter.invalidate('map:orders');
     this.notifySubscribers();
@@ -293,7 +310,7 @@ class OrderOrchestrator {
   login = async (phone: string) => {
     const res = await this.apiService.login(phone);
     if (res.data.user) {
-      this.entityStore.setUser({ ...res.data.user, isMe: true });
+      this.entityStore?.setUser({ ...res.data.user, isMe: true });
     }
     return res.data;
   }

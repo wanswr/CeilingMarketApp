@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { entityStore } from './EntityStore';
+import { orderOrchestrator } from './OrderOrchestrator';
 
 class SocketService {
   private socket: Socket | null = null;
@@ -16,26 +16,26 @@ class SocketService {
     this.socket.on('order_created', (order: any) => {
       if (__DEV__) {
           console.log('[WebSocket] New order received:', order.id);
-          const meta = entityStore.meta as any;
-          meta.wsUpdates = (meta.wsUpdates || 0) + 1;
+          const meta = orderOrchestrator.entityStore?.meta;
+          if (meta) meta.wsUpdates = (meta.wsUpdates || 0) + 1;
       }
-      entityStore.setOrder(order);
+      orderOrchestrator.entityStore?.setOrder(order);
       orderOrchestrator.triggerNotify();
     });
 
     this.socket.on('order_updated', (order: any) => {
       if (__DEV__) {
           console.log('[WebSocket] Order update received:', order.id);
-          const meta = entityStore.meta as any;
-          meta.wsUpdates = (meta.wsUpdates || 0) + 1;
+          const meta = orderOrchestrator.entityStore?.meta;
+          if (meta) meta.wsUpdates = (meta.wsUpdates || 0) + 1;
       }
-      entityStore.setOrder(order);
+      orderOrchestrator.entityStore?.setOrder(order);
       orderOrchestrator.triggerNotify();
     });
 
     this.socket.on('order_claimed', (order: any) => {
       console.log('[WebSocket] Order claimed received:', order.id);
-      entityStore.setOrder(order);
+      orderOrchestrator.entityStore?.setOrder(order);
     });
 
     this.socket.on('disconnect', () => {

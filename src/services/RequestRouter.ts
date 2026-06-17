@@ -46,7 +46,6 @@ class RequestRouter {
       if (__DEV__) {
         console.log(`[RequestRouter] CACHE HIT: ${key}`);
       }
-      if (key.startsWith('bbox:')) this.metrics.bboxHits++;
       this.metrics.cacheHits++;
       return cached.data;
     }

@@ -18,7 +18,6 @@ import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { orderOrchestrator } from '../services/OrderOrchestrator';
-import { GeoClusterService } from '../services/GeoClusterService';
 import { formatDate } from '../utils/date';
 import { Order } from '../types';
 
@@ -81,19 +80,21 @@ const MapScreen = ({ navigation }: any) => {
   const displayedItems = useMemo(() => {
     const start = Date.now();
 
-    // Engine V4: Use the store's spatial index to find candidates
-    const candidates = entityStore.getOrdersInBounds(
+    // Engine V4: Use the store's spatial index via orchestrator
+    const candidates = orderOrchestrator.getOrdersInBounds(
         region.latitude - region.latitudeDelta,
         region.latitude + region.latitudeDelta,
         region.longitude - region.longitudeDelta,
         region.longitude + region.longitudeDelta
     );
 
+    const { GeoClusterService } = require('../services/GeoClusterService');
     const result = GeoClusterService.clusterOrders(candidates, region.latitudeDelta);
 
     if (__DEV__) {
         const time = Date.now() - start;
-        (entityStore.meta as any).lastClusterTime = time;
+        const meta = orderOrchestrator.entityStore?.meta;
+        if (meta) meta.lastClusterTime = time;
     }
 
     return result;

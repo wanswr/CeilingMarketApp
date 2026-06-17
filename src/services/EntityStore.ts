@@ -206,7 +206,7 @@ class EntityStore {
   logDiagnostics = () => {
     if (__DEV__) {
       const { requestRouter } = require('./RequestRouter');
-      const network = requestRouter.getMetrics();
+      const network = requestRouter?.getMetrics() || {};
       const store = this.getMetrics();
 
       console.log('[Diagnostics] MapEngine V4:', {
