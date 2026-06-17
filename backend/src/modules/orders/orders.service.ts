@@ -263,6 +263,35 @@ export class OrdersService {
   }
 
   /**
+   * REGIONAL ENGINE V5: Finds orders for a specific predefined region.
+   */
+  async getRegionOrders(regionId: string, updatedAfter?: Date) {
+    const regions: Record<string, any> = {
+      'moscow': { minLat: 55.1, maxLat: 56.1, minLng: 36.5, maxLng: 38.5 },
+      'spb': { minLat: 59.5, maxLat: 60.5, minLng: 29.5, maxLng: 31.0 },
+      'kazan': { minLat: 55.5, maxLat: 56.0, minLng: 48.8, maxLng: 49.5 },
+    };
+
+    const bounds = regions[regionId.toLowerCase()];
+    if (!bounds) {
+      // Fallback: search by region string in address if bounds not predefined
+      const orders = await this.prisma.order.findMany({
+        where: {
+          status: OrderStatus.PUBLISHED,
+          address: { contains: regionId, mode: 'insensitive' },
+          updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
+        },
+        take: 1000,
+        include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
+      });
+      return { region: regionId, created: orders, updated: [], deleted: [] };
+    }
+
+    const result = await this.findInBounds(bounds, updatedAfter);
+    return { region: regionId, ...result };
+  }
+
+  /**
    * SMART PARSER: Heuristic NLP for ceiling order texts.
    */
   parseOrderText(text: string) {

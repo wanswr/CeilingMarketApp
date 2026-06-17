@@ -53,6 +53,9 @@ class ApiService {
   getMapOrdersInBounds = (bounds: any, updatedAfter?: string) =>
     this.api.get('orders/map/bounds', { params: { ...bounds, updatedAfter } });
 
+  getOrdersByRegion = (regionId: string, updatedAfter?: string) =>
+    this.api.get(`orders/region/${regionId}`, { params: { updatedAfter } });
+
   parseOrderText = (text: string) => this.api.post('orders/parse', { text });
   createOrder = (data: any) => this.api.post('orders', data);
   getOrderDetails = (id: string) => this.api.get(`orders/${id}`);

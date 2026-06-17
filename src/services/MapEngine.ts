@@ -3,6 +3,7 @@ import { apiService } from './ApiService';
 import { requestRouter } from './RequestRouter';
 import { entityStore } from './EntityStore';
 import { GeoClusterService } from './GeoClusterService';
+import { regionManager } from '../map/RegionManager';
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -23,6 +24,7 @@ class MapEngine {
   private subscribers: Set<OrderCallback> = new Set();
   private debounceTimer: NodeJS.Timeout | null = null;
   private loadedBounds: BBox[] = [];
+  public regionManager = regionManager;
 
   constructor(
       public apiService: any,
@@ -64,28 +66,59 @@ class MapEngine {
   }
 
   /**
-   * SYNC MAP V4: Spatial Bounding Box Synchronization.
-   * Optimizes map performance by fetching a large viewport area at once.
+   * SYNC MAP V5: Regional & BBOX Synchronization.
+   * Detects region, ensures it's loaded, and uses BBOX for internal filtering.
    */
-  syncMap = async (force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
+  syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!this.entityStore) return;
-    if (!region) {
-      return;
+    if (!viewRegion) return;
+
+    // 1. REGION DETECTION (V5)
+    const detectedRegion = this.regionManager.detectRegion(viewRegion.latitude, viewRegion.longitude);
+
+    if (detectedRegion) {
+        if (this.regionManager.isRegionLoaded(detectedRegion.id) && !force) {
+            if (__DEV__) console.log(`[MapEngine] REGION CACHE HIT: ${detectedRegion.id}`);
+            this.requestRouter.metrics.regionCacheHits++;
+        } else {
+            if (__DEV__) console.log(`[MapEngine] REGION LOAD: ${detectedRegion.id}`);
+            this.requestRouter.metrics.regionCacheMisses++;
+            this.requestRouter.metrics.regionNetworkRequests++;
+
+            try {
+                const lastSync = this.entityStore.getMeta(`region_sync_${detectedRegion.id}`) || '0';
+                const response = await this.requestRouter.request(
+                    `region:${detectedRegion.id}`,
+                    async () => {
+                        const res = await this.apiService.getOrdersByRegion(detectedRegion.id, force ? '0' : lastSync);
+                        return res.data;
+                    },
+                    600000 // 10 min region TTL
+                );
+
+                if (response) {
+                    this.entityStore.applyPatch(response);
+                    this.regionManager.markRegionLoaded(detectedRegion.id);
+                    this.entityStore.setMeta(`region_sync_${detectedRegion.id}`, Date.now().toString());
+                    this.requestRouter.metrics.regionsLoaded = this.regionManager.getDefinedRegions().filter(r => this.regionManager.isRegionLoaded(r.id)).length;
+                }
+            } catch (e) {
+                console.error(`[MapEngine] Region load failed: ${detectedRegion.id}`, e);
+            }
+        }
     }
 
-    // 1. Calculate BBOX from region
-    // We expand the bbox significantly (buffer) to reduce network requests on pan
-    const latBuffer = region.latitudeDelta * 1.0;
-    const lngBuffer = region.longitudeDelta * 1.0;
+    // 2. BBOX CACHING (V4 Logic maintained internally)
+    const latBuffer = viewRegion.latitudeDelta * 1.0;
+    const lngBuffer = viewRegion.longitudeDelta * 1.0;
 
     const bounds: BBox = {
-      minLat: region.latitude - region.latitudeDelta - latBuffer,
-      maxLat: region.latitude + region.latitudeDelta + latBuffer,
-      minLng: region.longitude - region.longitudeDelta - lngBuffer,
-      maxLng: region.longitude + region.longitudeDelta + lngBuffer
+      minLat: viewRegion.latitude - viewRegion.latitudeDelta - latBuffer,
+      maxLat: viewRegion.latitude + viewRegion.latitudeDelta + latBuffer,
+      minLng: viewRegion.longitude - viewRegion.longitudeDelta - lngBuffer,
+      maxLng: viewRegion.longitude + viewRegion.longitudeDelta + lngBuffer
     };
 
-    // 2. CHECK LOCAL CACHE: Does any loaded region fully cover this new request?
     if (!force) {
       const isLoaded = this.loadedBounds.some(b =>
         bounds.minLat >= b.minLat && bounds.maxLat <= b.maxLat &&
@@ -95,12 +128,11 @@ class MapEngine {
       if (isLoaded) {
         if (__DEV__) console.log('[MapEngine] BBOX CACHE HIT - Skipping network');
         this.requestRouter.metrics.bboxHits++;
-        this.requestRouter.metrics.cacheHits++;
         return;
       }
     }
 
-    // 3. Normalize key for RequestRouter
+    // 3. SPATIAL FETCH (For areas outside predefined regions or force refresh)
     const precision = 2;
     const normBounds = {
       minLat: Number(bounds.minLat.toFixed(precision)),
@@ -124,17 +156,13 @@ class MapEngine {
           const res = await this.apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
           return res.data;
         },
-        300000 // 5 min TTL for spatial buckets
+        300000
       );
 
       if (response) {
         this.entityStore.applyPatch(response);
-
-        // Add to loaded bounds tracker
         this.loadedBounds.push(normBounds);
-        // Keep tracker small (last 10 regions)
         if (this.loadedBounds.length > 10) this.loadedBounds.shift();
-
         this.notifySubscribers();
       }
 

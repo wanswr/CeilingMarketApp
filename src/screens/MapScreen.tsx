@@ -88,7 +88,23 @@ const MapScreen = ({ navigation }: any) => {
         region.longitude + region.longitudeDelta
     );
 
-    const result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
+    let result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
+
+    // Low zoom optimization: Show region centers if zoom is very low
+    if (region.latitudeDelta > 5) {
+        result = mapEngine.regionManager.getDefinedRegions().map(r => ({
+            id: `region_${r.id}`,
+            latitude: (r.bounds.minLat + r.bounds.maxLat) / 2,
+            longitude: (r.bounds.minLng + r.bounds.maxLng) / 2,
+            count: candidates.filter(o =>
+                o.latitude >= r.bounds.minLat && o.latitude <= r.bounds.maxLat &&
+                o.longitude >= r.bounds.minLng && o.longitude <= r.bounds.maxLng
+            ).length,
+            isCluster: true,
+            type: 'strong',
+            regionId: r.id
+        }));
+    }
 
     if (__DEV__) {
         const time = Date.now() - start;
@@ -140,8 +156,8 @@ const MapScreen = ({ navigation }: any) => {
                     mapRef.current?.animateToRegion({
                         latitude: item.latitude,
                         longitude: item.longitude,
-                        latitudeDelta: region.latitudeDelta / 4,
-                        longitudeDelta: region.longitudeDelta / 4,
+                        latitudeDelta: item.regionId ? 0.5 : region.latitudeDelta / 4,
+                        longitudeDelta: item.regionId ? 0.5 : region.longitudeDelta / 4,
                     }, 500);
                 }}
               >

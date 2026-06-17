@@ -62,6 +62,17 @@ export class OrdersController {
     );
   }
 
+  @Get('region/:regionId')
+  getOrdersByRegion(
+    @Param('regionId') regionId: string,
+    @Query('updatedAfter') updatedAfter?: string,
+  ) {
+    return this.ordersService.getRegionOrders(
+      regionId,
+      (updatedAfter && !isNaN(Number(updatedAfter))) ? new Date(Number(updatedAfter)) : undefined
+    );
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('parse')
   parseOrderText(@Body('text') text: string) {

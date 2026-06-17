@@ -19,7 +19,11 @@ class RequestRouter {
     bboxHits: 0,
     bboxMisses: 0,
     dedupHits: 0,
-    websocketUpdates: 0
+    websocketUpdates: 0,
+    regionCacheHits: 0,
+    regionCacheMisses: 0,
+    regionNetworkRequests: 0,
+    regionsLoaded: 0
   };
 
   /**
@@ -97,6 +101,10 @@ class RequestRouter {
     this.metrics.bboxMisses = 0;
     this.metrics.dedupHits = 0;
     this.metrics.websocketUpdates = 0;
+    this.metrics.regionCacheHits = 0;
+    this.metrics.regionCacheMisses = 0;
+    this.metrics.regionNetworkRequests = 0;
+    this.metrics.regionsLoaded = 0;
   }
 
   getMetrics = () => {
