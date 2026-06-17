@@ -60,7 +60,15 @@ class EntityStore {
 
   // Stage 2: Normalized setters
   setOrder = (order: Order) => {
+    // Task #4: Defensive validation
     if (!order?.id) return;
+    const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
+    const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
+
+    if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) {
+        if (__DEV__) console.warn(`[EntityStore] Rejecting order ${order.id} due to invalid coordinates`, { lat, lng });
+        return;
+    }
 
     const existing = this.ordersById.get(order.id);
     if (!this.hasChanged(existing, order)) return;

@@ -24,6 +24,8 @@ class MapEngine {
   private subscribers: Set<OrderCallback> = new Set();
   private debounceTimer: NodeJS.Timeout | null = null;
   private loadedBounds: BBox[] = [];
+  private syncLock: boolean = false;
+  private currentAbortController: AbortController | null = null;
   public spatialManager = spatialManager;
 
   constructor(
@@ -68,10 +70,15 @@ class MapEngine {
   /**
    * SYNC MAP V6: Universal Spatial Synchronization.
    * Uses geocell chunking (SpatialManager) and universal /spatial endpoint.
+   * Hardened with AbortController and request locking.
    */
   syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
-    if (!this.entityStore) return;
-    if (!viewRegion) return;
+    if (!this.entityStore || !viewRegion) return;
+
+    if (this.syncLock) {
+        if (__DEV__) console.log('[MapEngine] Sync already in progress - skipping');
+        return;
+    }
 
     // 0. Area Limit: Don't load spatial data if zoomed out too far (country level)
     if (viewRegion.latitudeDelta > 10) {
@@ -79,8 +86,7 @@ class MapEngine {
         return;
     }
 
-    // 1. Calculate Spatial Bounds & ALIGN TO GEOCELLS (V6 Overlap Logic)
-    // We expand the viewport to perfectly match the 0.5-degree grid
+    // 1. Calculate Aligned Spatial Bounds (3-decimal normalized geocells)
     const rawBounds = {
       minLat: viewRegion.latitude - viewRegion.latitudeDelta,
       maxLat: viewRegion.latitude + viewRegion.latitudeDelta,
@@ -90,7 +96,7 @@ class MapEngine {
 
     const aligned = this.spatialManager.getAlignedBounds(rawBounds.minLat, rawBounds.maxLat, rawBounds.minLng, rawBounds.maxLng);
 
-    // 2. CHECK SPATIAL CACHE (V6 Chunking)
+    // 2. CHECK SPATIAL CACHE
     if (!force && this.spatialManager.isAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng)) {
         if (__DEV__) console.log('[MapEngine] SPATIAL CACHE HIT - Skipping network');
         this.requestRouter.metrics.spatialCacheHits++;
@@ -103,6 +109,11 @@ class MapEngine {
     const spatialKey = `spatial:${aligned.minLat}:${aligned.maxLat}:${aligned.minLng}:${aligned.maxLng}`;
     if (force) this.requestRouter.invalidate(spatialKey);
 
+    // ABORT PREVIOUS: Cancel any existing fetch
+    if (this.currentAbortController) this.currentAbortController.abort();
+    this.currentAbortController = new AbortController();
+    this.syncLock = true;
+
     try {
       this.requestRouter.metrics.spatialRequests++;
       const lastSyncTime = this.entityStore.getMeta('map_last_sync') || '0';
@@ -110,26 +121,22 @@ class MapEngine {
       const response = await this.requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
-          // Explicitly pass aligned bbox params
           const res = await this.apiService.getSpatialOrders({
               minLat: aligned.minLat,
               maxLat: aligned.maxLat,
               minLng: aligned.minLng,
               maxLng: aligned.maxLng,
               updatedAfter: force ? '0' : lastSyncTime
-          });
+          }, { signal: this.currentAbortController?.signal });
           return res.data;
         },
-        300000 // 5 min TTL
+        300000
       );
 
       if (response) {
         this.entityStore.applyPatch(response);
-
-        // Mark area as loaded in SpatialManager (using aligned bounds for persistence)
         this.spatialManager.markAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng);
         this.requestRouter.metrics.spatialChunksLoaded = this.spatialManager.getLoadedChunksCount();
-
         this.notifySubscribers();
       }
 
@@ -137,8 +144,16 @@ class MapEngine {
       this.entityStore.setMeta('map_last_sync', Date.now().toString());
       this.logMemoryUsage();
       this.entityStore.logDiagnostics();
-    } catch (error) {
-      console.error(`[MapEngine] Spatial sync failed`, error);
+    } catch (error: any) {
+        if (error.name === 'AbortError' || error.message === 'canceled') {
+            if (__DEV__) console.log('[MapEngine] Sync aborted');
+        } else {
+            console.error(`[MapEngine CRASH] Spatial sync failed:`, error.message);
+            if (__DEV__) console.log(error.stack);
+        }
+    } finally {
+        this.syncLock = false;
+        this.currentAbortController = null;
     }
   }
 

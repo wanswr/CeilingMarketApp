@@ -68,13 +68,21 @@ class SpatialManager {
   /**
    * Aligns any BBOX to geocell boundaries to prevent jitter-induced cache misses.
    * Returns a larger BBOX that perfectly fits the geocell grid.
+   * Uses 3-decimal precision normalization for stability.
    */
   getAlignedBounds(minLat: number, maxLat: number, minLng: number, maxLng: number) {
+      const normalize = (val: number, op: 'floor' | 'ceil') => {
+          const raw = op === 'floor'
+              ? Math.floor(val / this.cellSize) * this.cellSize
+              : Math.ceil(val / this.cellSize) * this.cellSize;
+          return Number(raw.toFixed(3));
+      };
+
       return {
-          minLat: Math.floor(minLat / this.cellSize) * this.cellSize,
-          maxLat: Math.ceil(maxLat / this.cellSize) * this.cellSize,
-          minLng: Math.floor(minLng / this.cellSize) * this.cellSize,
-          maxLng: Math.ceil(maxLng / this.cellSize) * this.cellSize,
+          minLat: normalize(minLat, 'floor'),
+          maxLat: normalize(maxLat, 'ceil'),
+          minLng: normalize(minLng, 'floor'),
+          maxLng: normalize(maxLng, 'ceil'),
       };
   }
 

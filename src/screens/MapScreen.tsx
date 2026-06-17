@@ -20,6 +20,7 @@ import { COLORS, SHADOWS } from '../constants/theme';
 import { mapEngine } from '../services/MapEngine';
 import { formatDate } from '../utils/date';
 import { Order } from '../types';
+import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
@@ -125,6 +126,7 @@ const MapScreen = ({ navigation }: any) => {
   );
 
   return (
+    <ErrorBoundary>
     <View style={styles.container}>
       <MapView
         ref={mapRef}
@@ -282,6 +284,7 @@ const MapScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       )}
     </View>
+    </ErrorBoundary>
   );
 };
 
