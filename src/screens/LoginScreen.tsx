@@ -29,7 +29,13 @@ export default function LoginScreen({ navigation }: any) {
       }
     } catch (err: any) {
       console.error(err);
-      Alert.alert("Ошибка", "Не удалось войти. " + (err.response?.data?.message || err.message));
+      let errorMsg = "Произошла ошибка при входе.";
+      if (err.message === "Network Error") {
+        errorMsg = "Ошибка сети. Убедитесь, что сервер запущен и доступен по адресу " + orderOrchestrator.getApiBaseUrl();
+      } else if (err.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      }
+      Alert.alert("Ошибка входа", errorMsg);
     }
     finally { setLoading(false); }
   };

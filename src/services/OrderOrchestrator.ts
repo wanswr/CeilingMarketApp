@@ -44,8 +44,7 @@ class OrderOrchestrator {
    */
   syncMap = async (force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!region) {
-      // Background sync for global updates
-      await this.syncDelta(force);
+      // Delta sync is now handled primarily by WebSockets in V4
       return;
     }
 
@@ -106,31 +105,6 @@ class OrderOrchestrator {
     }
   }
 
-  /**
-   * SYNC DELTA: Fallback background synchronization.
-   */
-  private syncDelta = async (force: boolean) => {
-    const key = 'map:delta';
-    if (force) requestRouter.invalidate(key);
-
-    const lastSyncTime = entityStore.getMeta('map_last_sync') || '0';
-    try {
-        const response = await requestRouter.request<{ created: Order[] }>(
-            key,
-            async () => {
-                const res = await apiService.getMapOrders({ updatedAfter: lastSyncTime });
-                return res.data;
-            },
-            30000
-        );
-
-        if (response.created && response.created.length > 0) {
-            response.created.forEach(o => entityStore.setOrder(o));
-            this.notifySubscribers();
-        }
-        entityStore.setMeta('map_last_sync', Date.now().toString());
-    } catch (e) {}
-  }
 
   /**
    * SYNC USER: Profile fetching with Store persistence.
@@ -299,6 +273,10 @@ class OrderOrchestrator {
   parseOrderText = async (text: string) => {
     const res = await apiService.parseOrderText(text);
     return res.data;
+  }
+
+  getApiBaseUrl = () => {
+    return apiService.getBaseUrl();
   }
 }
 

@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-const DEFAULT_API_URL = 'http://192.168.100.10:3000/api/';
+const DEFAULT_API_URL = 'http://192.168.100.10:3000/api/'; // Replace with your machine's IP
 
 class ApiService {
   private api: AxiosInstance;
@@ -18,6 +18,11 @@ class ApiService {
     });
 
     this.setupInterceptors();
+  }
+
+  setBaseUrl(url: string) {
+    this.baseURL = url;
+    this.api.defaults.baseURL = url;
   }
 
   private setupInterceptors() {
@@ -45,7 +50,6 @@ class ApiService {
 
   // Orders
   getOrders = (params: any) => this.api.get('orders', { params });
-  getMapOrders = (params?: any) => this.api.get('orders/map', { params });
   getMapOrdersInBounds = (bounds: any, updatedAfter?: string) =>
     this.api.get('orders/map/bounds', { params: { ...bounds, updatedAfter } });
 
