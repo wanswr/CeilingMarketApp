@@ -5,12 +5,12 @@ import {
   Text, 
   ActivityIndicator, 
   TouchableOpacity, 
-  SafeAreaView, 
   TextInput,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -144,6 +144,10 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
+  if (__DEV__) {
+      console.log('[MAP DEBUG] Rendering MapScreen, items:', displayedItems.length);
+  }
+
   return (
     <ErrorBoundary>
     <View style={styles.container}>
@@ -154,7 +158,6 @@ const MapScreen = ({ navigation }: any) => {
       )}
       <MapView
         ref={mapRef}
-        provider={PROVIDER_GOOGLE}
         style={styles.map}
         initialRegion={region}
         showsUserLocation={true}
