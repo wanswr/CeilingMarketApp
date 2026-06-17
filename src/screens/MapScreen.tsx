@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -35,7 +35,7 @@ const MapScreen = ({ navigation }: any) => {
     longitudeDelta: 0.1,
   });
 
-  // 1. Subscribe to Orchestrator
+  // 1. Subscribe to MapEngine
   useEffect(() => {
     const unsubscribe = mapEngine.subscribe((newOrders) => {
       setAllOrders(newOrders);
@@ -48,28 +48,35 @@ const MapScreen = ({ navigation }: any) => {
   useFocusEffect(
     useCallback(() => {
       (async () => {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({});
-          setLocation(loc);
-          const initialRegion = {
-            ...region,
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude
-          };
-          setRegion(initialRegion);
-          // V6: Initial Spatial Load (100km radius)
-          mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
-        } else {
-          mapEngine.syncMap();
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status === 'granted') {
+              const loc = await Location.getCurrentPositionAsync({});
+              setLocation(loc);
+              const initialRegion = {
+                ...region,
+                latitude: loc.coords.latitude,
+                longitude: loc.coords.longitude
+              };
+              setRegion(initialRegion);
+              // V6: Initial Spatial Load (100km radius)
+              mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
+            } else {
+              mapEngine.syncMap(false, region);
+            }
+        } catch (e) {
+            console.error('[MapScreen] Location error:', e);
+            mapEngine.syncMap(false, region);
         }
       })();
     }, [])
   );
 
   const handleRegionChangeComplete = (newRegion: Region) => {
+    if (!newRegion || !newRegion.latitude || !newRegion.longitude) return;
+
     setRegion(newRegion);
-    // Engine V6: Normalized Spatial BBOX Trigger
+    // V6 Normalization
     mapEngine.triggerMapUpdate({
       latitude: Number(newRegion.latitude.toFixed(3)),
       longitude: Number(newRegion.longitude.toFixed(3)),
@@ -78,23 +85,22 @@ const MapScreen = ({ navigation }: any) => {
     });
   };
 
-  // 3. UI Clustering (Refined Spatial Filtering)
-  const displayedItems = useMemo(() => {
-    const start = Date.now();
-
-    // Engine V4: Use the store's spatial index via mapEngine
-    const candidates = mapEngine.getOrdersInBounds(
+  // 3. UI Clustering & Spatial Filtering
+  const candidates = useMemo(() => {
+    return mapEngine.getOrdersInBounds(
         region.latitude - region.latitudeDelta,
         region.latitude + region.latitudeDelta,
         region.longitude - region.longitudeDelta,
         region.longitude + region.longitudeDelta
     );
+  }, [allOrders, region]);
 
+  const displayedItems = useMemo(() => {
+    const start = Date.now();
     let result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
 
     // Fallback: If clustering logic failed but candidates exist, show them as raw markers
     if (result.length === 0 && candidates.length > 0) {
-        if (__DEV__) console.log('[MAP DEBUG] Clustering returned empty, using candidates fallback');
         result = candidates;
     }
 
@@ -105,32 +111,20 @@ const MapScreen = ({ navigation }: any) => {
 
     if (__DEV__) {
         const time = Date.now() - start;
-        console.log('[MAP DEBUG]:', {
-            totalOrders: allOrders.length,
-            candidatesInView: candidates.length,
-            renderedItems: result.length,
-            lat: region.latitude.toFixed(3),
-            lng: region.longitude.toFixed(3),
-            timeMs: time
-        });
         const meta = mapEngine.entityStore?.meta;
         if (meta) meta.lastClusterTime = time;
     }
 
     return result;
-  }, [allOrders, region]);
+  }, [candidates, region.latitudeDelta]);
 
-  useEffect(() => {
-    if (__DEV__) {
-      console.log('[MAP DEBUG] Component State:', {
-        ordersCount: allOrders.length,
-        itemsToRender: displayedItems.length,
-        regionLat: region.latitude,
-        regionLng: region.longitude,
-        hasLocation: !!location
+  const safeItems = useMemo(() => {
+      return displayedItems.filter(item => {
+          const lat = Number(item.latitude ?? (item as any).lat);
+          const lng = Number(item.longitude ?? (item as any).lng);
+          return Number.isFinite(lat) && Number.isFinite(lng);
       });
-    }
-  }, [allOrders, displayedItems, region, location]);
+  }, [displayedItems]);
 
   const centerToUser = async () => {
     if (location && mapRef.current) {
@@ -145,173 +139,179 @@ const MapScreen = ({ navigation }: any) => {
   };
 
   if (__DEV__) {
-      console.log('[MAP DEBUG] Rendering MapScreen, items:', displayedItems.length);
+    console.log('[MAP DEBUG] Rendering:', {
+        items: safeItems.length,
+        regionLat: region.latitude,
+        regionLng: region.longitude
+    });
   }
 
   return (
     <ErrorBoundary>
-    <View style={styles.container}>
-      {loading && allOrders.length === 0 && (
-          <View style={styles.initialLoadingOverlay}>
-              <ActivityIndicator size={50} color={COLORS.primary} />
-          </View>
-      )}
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={region}
-        showsUserLocation={true}
-        onPress={() => setSelectedOrder(null)}
-        onRegionChangeComplete={handleRegionChangeComplete}
-        customMapStyle={mapStyle}
-        mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
-      >
-        {displayedItems.map((item: any) => {
-          if (item.isCluster) {
-            if (isNaN(item.latitude) || isNaN(item.longitude)) return null;
+      <View style={styles.container}>
+        <MapView
+          ref={mapRef}
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+          style={styles.map}
+          initialRegion={region}
+          showsUserLocation={true}
+          onPress={() => setSelectedOrder(null)}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          onMapReady={() => {
+              if (__DEV__) console.log('[MAP VIEW OK]');
+          }}
+          customMapStyle={mapStyle}
+          mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
+        >
+          {safeItems.map((item: any) => {
+            const lat = Number(item.latitude ?? (item as any).lat);
+            const lng = Number(item.longitude ?? (item as any).lng);
+
+            if (item.isCluster) {
+              return (
+                <Marker
+                  key={item.id}
+                  coordinate={{ latitude: lat, longitude: lng }}
+                  onPress={() => {
+                      mapRef.current?.animateToRegion({
+                          latitude: lat,
+                          longitude: lng,
+                          latitudeDelta: region.latitudeDelta / 4,
+                          longitudeDelta: region.longitudeDelta / 4,
+                      }, 500);
+                  }}
+                >
+                  <View style={[styles.clusterMarker, item.type === 'strong' && styles.clusterMarkerStrong]}>
+                    <Text style={styles.clusterText}>{item.count}</Text>
+                  </View>
+                </Marker>
+              );
+            }
+
             return (
               <Marker
                 key={item.id}
-                coordinate={{ latitude: item.latitude, longitude: item.longitude }}
-                onPress={() => {
-                    mapRef.current?.animateToRegion({
-                        latitude: item.latitude,
-                        longitude: item.longitude,
-                        latitudeDelta: region.latitudeDelta / 4,
-                        longitudeDelta: region.longitudeDelta / 4,
-                    }, 500);
+                coordinate={{ latitude: lat, longitude: lng }}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setSelectedOrder(item);
                 }}
+                tracksViewChanges={false}
               >
-                <View style={[styles.clusterMarker, item.type === 'strong' && styles.clusterMarkerStrong]}>
-                  <Text style={styles.clusterText}>{item.count}</Text>
+                <View style={[styles.customMarker, selectedOrder?.id === item.id && styles.customMarkerActive]}>
+                  <Text style={[styles.markerPrice, selectedOrder?.id === item.id && styles.markerPriceActive]}>
+                    {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
+                  </Text>
                 </View>
               </Marker>
             );
-          }
+          })}
+        </MapView>
 
-          const coords = mapEngine.getOrderCoords(item);
-          if (!coords || isNaN(coords.latitude) || isNaN(coords.longitude)) return null;
-
-          return (
-            <Marker
-              key={item.id}
-              coordinate={coords}
-              onPress={(e) => {
-                e.stopPropagation();
-                setSelectedOrder(item);
-              }}
-              tracksViewChanges={false}
-            >
-              <View style={[styles.customMarker, selectedOrder?.id === item.id && styles.customMarkerActive]}>
-                <Text style={[styles.markerPrice, selectedOrder?.id === item.id && styles.markerPriceActive]}>
-                  {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
-                </Text>
-              </View>
-            </Marker>
-          );
-        })}
-      </MapView>
-
-      <SafeAreaView style={styles.headerOverlay}>
-        <BlurView intensity={80} tint="light" style={styles.searchBar}>
-          <Ionicons name="search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
-          <TextInput
-            placeholder="Поиск заказов..."
-            style={styles.searchInput}
-            placeholderTextColor={COLORS.gray}
-          />
-          <TouchableOpacity style={styles.filterBtn} onPress={() => {
-             mapEngine.forceRefresh();
-          }}>
-            <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
-          </TouchableOpacity>
-        </BlurView>
-      </SafeAreaView>
-
-      <TouchableOpacity style={styles.myLocationBtn} onPress={centerToUser}>
-         <Ionicons name="locate" size={24} color={COLORS.primary} />
-      </TouchableOpacity>
-
-      {selectedOrder && (
-        <TouchableOpacity
-          activeOpacity={0.95}
-          onPress={() => navigation.navigate('OrderDetail', { orderId: selectedOrder.id })}
-          style={styles.previewCardContainer}
-        >
-          <BlurView intensity={100} tint="light" style={styles.previewCard}>
-            <View style={styles.previewContent}>
-                <View style={styles.previewHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.previewTitle} numberOfLines={1}>{selectedOrder.title || selectedOrder.address}</Text>
-                    <View style={styles.previewInfoRow}>
-                      <View style={styles.infoBadge}>
-                        <Ionicons name="calendar-outline" size={12} color={COLORS.gray} />
-                        <Text style={styles.infoBadgeText}>{formatDate(selectedOrder.date)}</Text>
-                      </View>
-                      <View style={styles.infoBadge}>
-                        <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
-                        <Text style={[styles.infoBadgeText, { color: COLORS.primary }]}>{selectedOrder.distance?.toFixed(1) || '0.0'} км</Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.priceBadge}>
-                    <Text style={styles.previewPrice}>{selectedOrder.price} ₽</Text>
-                  </View>
-                </View>
-
-                {selectedOrder.details && (
-                  <Text style={styles.previewDetails} numberOfLines={2}>
-                    {selectedOrder.details}
-                  </Text>
-                )}
-
-                <View style={styles.footerRow}>
-                  <TouchableOpacity
-                    style={styles.employerLink}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      navigation.navigate('Profile', { userId: selectedOrder.employerId });
-                    }}
-                  >
-                    <View style={styles.avatarSmall}>
-                      <Text style={styles.avatarTextSmall}>{(selectedOrder.employer?.name || 'U')[0]}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.employerNameSmall}>{selectedOrder.employer?.name || 'Заказчик'}</Text>
-                      <View style={styles.ratingRowSmall}>
-                        <Ionicons name="star" size={10} color={COLORS.warning} />
-                        <Text style={styles.ratingTextSmall}>{selectedOrder.employer?.rating?.toFixed(1) || '5.0'}</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-
-                  <View style={styles.previewActions}>
-                    <TouchableOpacity
-                      style={styles.iconButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        navigation.navigate('Chats', { orderId: selectedOrder.id });
-                      }}
-                    >
-                      <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.mainActionBtn}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        navigation.navigate('OrderDetail', { orderId: selectedOrder.id });
-                      }}
-                    >
-                      <Text style={styles.mainActionText}>Отклик</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-            </View>
+        <SafeAreaView style={styles.headerOverlay} pointerEvents="box-none">
+          <BlurView intensity={80} tint="light" style={styles.searchBar}>
+            <Ionicons name="search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
+            <TextInput
+              placeholder="Поиск заказов..."
+              style={styles.searchInput}
+              placeholderTextColor={COLORS.gray}
+            />
+            <TouchableOpacity style={styles.filterBtn} onPress={() => mapEngine.forceRefresh()}>
+              <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
           </BlurView>
+        </SafeAreaView>
+
+        <TouchableOpacity style={styles.myLocationBtn} onPress={centerToUser}>
+           <Ionicons name="locate" size={24} color={COLORS.primary} />
         </TouchableOpacity>
-      )}
-    </View>
+
+        {selectedOrder && (
+          <TouchableOpacity
+            activeOpacity={0.95}
+            onPress={() => navigation.navigate('OrderDetail', { orderId: selectedOrder.id })}
+            style={styles.previewCardContainer}
+          >
+            <BlurView intensity={100} tint="light" style={styles.previewCard}>
+              <View style={styles.previewContent}>
+                  <View style={styles.previewHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.previewTitle} numberOfLines={1}>{selectedOrder.title || selectedOrder.address}</Text>
+                      <View style={styles.previewInfoRow}>
+                        <View style={styles.infoBadge}>
+                          <Ionicons name="calendar-outline" size={12} color={COLORS.gray} />
+                          <Text style={styles.infoBadgeText}>{formatDate(selectedOrder.date)}</Text>
+                        </View>
+                        <View style={styles.infoBadge}>
+                          <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
+                          <Text style={[styles.infoBadgeText, { color: COLORS.primary }]}>{selectedOrder.distance?.toFixed(1) || '0.0'} км</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={styles.priceBadge}>
+                      <Text style={styles.previewPrice}>{selectedOrder.price} ₽</Text>
+                    </View>
+                  </View>
+
+                  {selectedOrder.details && (
+                    <Text style={styles.previewDetails} numberOfLines={2}>
+                      {selectedOrder.details}
+                    </Text>
+                  )}
+
+                  <View style={styles.footerRow}>
+                    <TouchableOpacity
+                      style={styles.employerLink}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        navigation.navigate('Profile', { userId: selectedOrder.employerId });
+                      }}
+                    >
+                      <View style={styles.avatarSmall}>
+                        <Text style={styles.avatarTextSmall}>{(selectedOrder.employer?.name || 'U')[0]}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.employerNameSmall}>{selectedOrder.employer?.name || 'Заказчик'}</Text>
+                        <View style={styles.ratingRowSmall}>
+                          <Ionicons name="star" size={10} color={COLORS.warning} />
+                          <Text style={styles.ratingTextSmall}>{selectedOrder.employer?.rating?.toFixed(1) || '5.0'}</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.previewActions}>
+                      <TouchableOpacity
+                        style={styles.iconButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          navigation.navigate('Chats', { orderId: selectedOrder.id });
+                        }}
+                      >
+                        <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.mainActionBtn}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          navigation.navigate('OrderDetail', { orderId: selectedOrder.id });
+                        }}
+                      >
+                        <Text style={styles.mainActionText}>Отклик</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+              </View>
+            </BlurView>
+          </TouchableOpacity>
+        )}
+
+        {loading && allOrders.length === 0 && (
+            <View style={styles.loaderOverlay} pointerEvents="none">
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        )}
+      </View>
     </ErrorBoundary>
   );
 };
@@ -323,17 +323,11 @@ const mapStyle = [
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  initialLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    zIndex: 20
-  },
-  map: { width: '100%', height: '100%' },
-  headerOverlay: { position: 'absolute', top: 10, left: 0, right: 0, zIndex: 10 },
+  map: { flex: 1, ...StyleSheet.absoluteFillObject },
+  headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   searchBar: {
     marginHorizontal: 20,
+    marginTop: 10,
     height: 54,
     borderRadius: 27,
     flexDirection: 'row',
@@ -355,7 +349,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-    ...SHADOWS.medium
+    ...SHADOWS.medium,
+    zIndex: 5
+  },
+  loaderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100
   },
   clusterMarker: {
     backgroundColor: COLORS.primary,
@@ -369,7 +371,7 @@ const styles = StyleSheet.create({
     ...SHADOWS.medium
   },
   clusterMarkerStrong: {
-    backgroundColor: '#1E3A8A', // Darker blue for high density
+    backgroundColor: '#1E3A8A',
     width: 42,
     height: 42,
     borderRadius: 21,

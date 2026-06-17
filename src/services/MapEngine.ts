@@ -47,6 +47,7 @@ class MapEngine {
     this.subscribers.add(callback);
     // V6 Hardening: Ensure initial state is pushed correctly
     const currentOrders = this.getOrdersArray();
+    if (__DEV__) console.log('[MapEngine] New Subscriber. Pushing orders:', currentOrders.length);
     callback(currentOrders);
     return () => { this.subscribers.delete(callback); };
   }
