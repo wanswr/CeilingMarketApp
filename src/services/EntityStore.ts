@@ -22,6 +22,9 @@ class EntityStore {
   public reviewsById: Map<string, any> = new Map();
   public messagesById: Map<string, any> = new Map();
 
+  // Task #3: Spatial Grid Index (for O(1) viewport filtering)
+  private spatialGrid: Map<string, Set<string>> = new Map();
+
   private currentUserId: string | null = null;
 
   public meta: StoreMeta = {
@@ -75,10 +78,28 @@ class EntityStore {
     this.ordersById.set(order.id, order);
     this.meta.lastUpdated.set(`order:${order.id}`, Date.now());
     this.meta.writes++;
+
+    // Update Spatial Index
+    this.updateOrderInGrid(order);
+  }
+
+  removeOrder = (id: string) => {
+    const order = this.ordersById.get(id);
+    if (order) {
+        this.removeFromGrid(order);
+        this.ordersById.delete(id);
+        this.meta.writes++;
+    }
   }
 
   setOrders = (orders: Order[]) => {
     orders.forEach(o => this.setOrder(o));
+  }
+
+  applyPatch = (patch: { created?: Order[], updated?: Order[], deleted?: string[] }) => {
+      if (patch.created) patch.created.forEach(o => this.setOrder(o));
+      if (patch.updated) patch.updated.forEach(o => this.setOrder(o));
+      if (patch.deleted) patch.deleted.forEach(id => this.removeOrder(id));
   }
 
   setUser = (user: UserProfile) => {
@@ -104,6 +125,58 @@ class EntityStore {
   getAllOrders = (): Order[] => {
     this.meta.reads++;
     return Array.from(this.ordersById.values());
+  }
+
+  /**
+   * Spatial Grid Logic: Indexes orders into ~5km buckets.
+   */
+  private getGridKey = (lat: number, lng: number) => {
+      const scale = 5; // ~20km grid size for coarse filtering
+      const x = Math.floor(lat * scale);
+      const y = Math.floor(lng * scale);
+      return `${x}:${y}`;
+  }
+
+  private updateOrderInGrid = (order: Order) => {
+      const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
+      const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
+      if (typeof lat !== 'number') return;
+
+      const key = this.getGridKey(lat, lng);
+      if (!this.spatialGrid.has(key)) this.spatialGrid.set(key, new Set());
+      this.spatialGrid.get(key)!.add(order.id);
+  }
+
+  private removeFromGrid = (order: Order) => {
+      const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
+      const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
+      if (typeof lat !== 'number') return;
+      const key = this.getGridKey(lat, lng);
+      this.spatialGrid.get(key)?.delete(order.id);
+  }
+
+  /**
+   * Viewport Query: Returns orders within specified bounds using the grid index.
+   */
+  getOrdersInBounds = (minLat: number, maxLat: number, minLng: number, maxLng: number): Order[] => {
+      const scale = 5;
+      const startX = Math.floor(minLat * scale);
+      const endX = Math.floor(maxLat * scale);
+      const startY = Math.floor(minLng * scale);
+      const endY = Math.floor(maxLng * scale);
+
+      const resultIds = new Set<string>();
+      for (let x = startX; x <= endX; x++) {
+          for (let y = startY; y <= endY; y++) {
+              const ids = this.spatialGrid.get(`${x}:${y}`);
+              if (ids) ids.forEach(id => resultIds.add(id));
+          }
+      }
+
+      this.meta.reads++;
+      return Array.from(resultIds)
+          .map(id => this.ordersById.get(id))
+          .filter(Boolean) as Order[];
   }
 
 
@@ -133,9 +206,17 @@ class EntityStore {
   logDiagnostics = () => {
     if (__DEV__) {
       const { requestRouter } = require('./RequestRouter');
+      const network = requestRouter.getMetrics();
+      const store = this.getMetrics();
+
       console.log('[Diagnostics] MapEngine V4:', {
-          store: this.getMetrics(),
-          network: requestRouter.getMetrics()
+          orders: store.ordersCount,
+          spatialSyncs: store.spatialSyncs,
+          apiCalls: network.apiCalls,
+          cacheHits: network.cacheHits,
+          bboxHits: network.bboxHits,
+          websocketUpdates: (this.meta as any).wsUpdates || 0,
+          clusterTimeMs: (this.meta as any).lastClusterTime || 0
       });
     }
   }
@@ -143,6 +224,7 @@ class EntityStore {
   clear = () => {
     this.ordersById.clear();
     this.usersById.clear();
+    this.spatialGrid.clear();
     this.meta.lastUpdated.clear();
     this.meta.reads = 0;
     this.meta.writes = 0;

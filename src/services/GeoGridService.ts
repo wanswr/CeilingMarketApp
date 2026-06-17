@@ -6,20 +6,6 @@ import { LatLng } from '../types';
  */
 export const GeoGridService = {
   /**
-   * Tile Engine V3: Generates a stable tile coordinate based on world coordinates and zoom.
-   * Logic: (lat, lng) -> (tileX, tileY)
-   */
-  getTileKey(lat: number, lng: number, zoomLevel: number): string {
-    // Zoom levels: 0 (World) to 20 (Building)
-    const n = Math.pow(2, zoomLevel);
-    const xtile = Math.floor(((lng + 180) / 360) * n);
-    const ytile = Math.floor(
-      ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * n
-    );
-    return `tile:${zoomLevel}:${xtile}:${ytile}`;
-  },
-
-  /**
    * Maps latitudeDelta to a zoom level (approximate).
    */
   getZoomLevel(latDelta: number): number {

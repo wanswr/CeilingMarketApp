@@ -14,13 +14,21 @@ class SocketService {
     });
 
     this.socket.on('order_created', (order: any) => {
-      if (__DEV__) console.log('[WebSocket] New order received:', order.id);
+      if (__DEV__) {
+          console.log('[WebSocket] New order received:', order.id);
+          const meta = entityStore.meta as any;
+          meta.wsUpdates = (meta.wsUpdates || 0) + 1;
+      }
       entityStore.setOrder(order);
       orderOrchestrator.triggerNotify();
     });
 
     this.socket.on('order_updated', (order: any) => {
-      if (__DEV__) console.log('[WebSocket] Order update received:', order.id);
+      if (__DEV__) {
+          console.log('[WebSocket] Order update received:', order.id);
+          const meta = entityStore.meta as any;
+          meta.wsUpdates = (meta.wsUpdates || 0) + 1;
+      }
       entityStore.setOrder(order);
       orderOrchestrator.triggerNotify();
     });

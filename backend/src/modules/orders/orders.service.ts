@@ -237,8 +237,21 @@ export class OrdersService {
       include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
     });
 
-    // In a real scenario, we would also track deleted IDs in a separate table/soft-delete
-    return { created, updated, deleted: [] };
+    // Deleted tracking: Simplified to only return recently updated orders with non-PUBLISHED status
+    // if statusFilter is PUBLISHED (typical case for map)
+    let deleted: string[] = [];
+    if (updatedAfter && statusFilter === OrderStatus.PUBLISHED) {
+        const removed = await this.prisma.order.findMany({
+            where: {
+                status: { not: OrderStatus.PUBLISHED },
+                updatedAt: { gt: updatedAfter },
+            },
+            select: { id: true }
+        });
+        deleted = removed.map(r => r.id);
+    }
+
+    return { created, updated, deleted };
   }
 
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {

@@ -11,9 +11,17 @@ type OrderCallback = (orders: Order[]) => void;
  * Persists data into EntityStore (Single Source of Truth).
  * Notifies UI subscribers of store changes.
  */
+interface BBox {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+}
+
 class OrderOrchestrator {
   private subscribers: Set<OrderCallback> = new Set();
   private debounceTimer: NodeJS.Timeout | null = null;
+  private loadedBounds: BBox[] = [];
 
   /**
    * Subscribe to global order updates.
@@ -44,24 +52,36 @@ class OrderOrchestrator {
    */
   syncMap = async (force: boolean = false, region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!region) {
-      // Delta sync is now handled primarily by WebSockets in V4
       return;
     }
 
     // 1. Calculate BBOX from region
-    // We expand the bbox slightly (buffer) to avoid frequent re-fetches on small pans
-    const latBuffer = region.latitudeDelta * 0.5;
-    const lngBuffer = region.longitudeDelta * 0.5;
+    // We expand the bbox significantly (buffer) to reduce network requests on pan
+    const latBuffer = region.latitudeDelta * 1.0;
+    const lngBuffer = region.longitudeDelta * 1.0;
 
-    const bounds = {
+    const bounds: BBox = {
       minLat: region.latitude - region.latitudeDelta - latBuffer,
       maxLat: region.latitude + region.latitudeDelta + latBuffer,
       minLng: region.longitude - region.longitudeDelta - lngBuffer,
       maxLng: region.longitude + region.longitudeDelta + lngBuffer
     };
 
-    // 2. Normalize key for RequestRouter to increase BBOX hits
-    // Round to ~1km precision to avoid jitter-induced cache misses
+    // 2. CHECK LOCAL CACHE: Does any loaded region fully cover this new request?
+    if (!force) {
+      const isLoaded = this.loadedBounds.some(b =>
+        bounds.minLat >= b.minLat && bounds.maxLat <= b.maxLat &&
+        bounds.minLng >= b.minLng && bounds.maxLng <= b.maxLng
+      );
+
+      if (isLoaded) {
+        if (__DEV__) console.log('[OrderOrchestrator] BBOX CACHE HIT - Skipping network');
+        (requestRouter as any).metrics.bboxHits++;
+        return;
+      }
+    }
+
+    // 3. Normalize key for RequestRouter
     const precision = 2;
     const normBounds = {
       minLat: Number(bounds.minLat.toFixed(precision)),
@@ -70,14 +90,9 @@ class OrderOrchestrator {
       maxLng: Number(bounds.maxLng.toFixed(precision)),
     };
 
-    // SAFETY CHECK: Prevent NaN and ensure API exists
-    if (isNaN(normBounds.minLat) || isNaN(normBounds.minLng)) {
-        console.warn('[OrderOrchestrator] Invalid spatial bounds detected');
-        return;
-    }
+    if (isNaN(normBounds.minLat) || isNaN(normBounds.minLng)) return;
 
     const spatialKey = `bbox:${normBounds.minLat}:${normBounds.maxLat}:${normBounds.minLng}:${normBounds.maxLng}`;
-
     if (force) requestRouter.invalidate(spatialKey);
 
     try {
@@ -89,11 +104,17 @@ class OrderOrchestrator {
           const res = await apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
           return res.data;
         },
-        60000 // 60s TTL for specific viewport
+        300000 // 5 min TTL for spatial buckets
       );
 
-      if (response && response.created && response.created.length > 0) {
-        response.created.forEach(o => entityStore.setOrder(o));
+      if (response) {
+        entityStore.applyPatch(response);
+
+        // Add to loaded bounds tracker
+        this.loadedBounds.push(normBounds);
+        // Keep tracker small (last 10 regions)
+        if (this.loadedBounds.length > 10) this.loadedBounds.shift();
+
         this.notifySubscribers();
       }
 
@@ -101,7 +122,7 @@ class OrderOrchestrator {
       entityStore.setMeta('map_last_sync', Date.now().toString());
       entityStore.logDiagnostics();
     } catch (error) {
-      console.error(`[OrderOrchestrator] Spatial sync failed for ${spatialKey}`, error);
+      console.error(`[OrderOrchestrator] Spatial sync failed`, error);
     }
   }
 
@@ -217,6 +238,7 @@ class OrderOrchestrator {
    * Full cache clear and re-fetch.
    */
   forceRefresh = async () => {
+    this.loadedBounds = [];
     entityStore.clear();
     requestRouter.clear();
     return this.syncMap(true);

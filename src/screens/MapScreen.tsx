@@ -77,10 +77,27 @@ const MapScreen = ({ navigation }: any) => {
     });
   };
 
-  // 3. UI Clustering (Refined)
+  // 3. UI Clustering (Refined Spatial Filtering)
   const displayedItems = useMemo(() => {
-    return GeoClusterService.clusterOrders(allOrders, region.latitudeDelta);
-  }, [allOrders, region.latitudeDelta]);
+    const start = Date.now();
+
+    // Engine V4: Use the store's spatial index to find candidates
+    const candidates = entityStore.getOrdersInBounds(
+        region.latitude - region.latitudeDelta,
+        region.latitude + region.latitudeDelta,
+        region.longitude - region.longitudeDelta,
+        region.longitude + region.longitudeDelta
+    );
+
+    const result = GeoClusterService.clusterOrders(candidates, region.latitudeDelta);
+
+    if (__DEV__) {
+        const time = Date.now() - start;
+        (entityStore.meta as any).lastClusterTime = time;
+    }
+
+    return result;
+  }, [allOrders, region]);
 
   const centerToUser = async () => {
     if (location && mapRef.current) {
