@@ -92,6 +92,12 @@ const MapScreen = ({ navigation }: any) => {
 
     let result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
 
+    // Fallback: If clustering logic failed but candidates exist, show them as raw markers
+    if (result.length === 0 && candidates.length > 0) {
+        if (__DEV__) console.log('[MAP DEBUG] Clustering returned empty, using candidates fallback');
+        result = candidates;
+    }
+
     // Performance: Filter out individual markers if zoomed out too far
     if (region.latitudeDelta > 2) {
         result = result.filter((item: any) => item.isCluster);
@@ -114,6 +120,18 @@ const MapScreen = ({ navigation }: any) => {
     return result;
   }, [allOrders, region]);
 
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[MAP DEBUG] Component State:', {
+        ordersCount: allOrders.length,
+        itemsToRender: displayedItems.length,
+        regionLat: region.latitude,
+        regionLng: region.longitude,
+        hasLocation: !!location
+      });
+    }
+  }, [allOrders, displayedItems, region, location]);
+
   const centerToUser = async () => {
     if (location && mapRef.current) {
       mapRef.current.animateToRegion({
@@ -126,15 +144,14 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
-  if (loading && allOrders.length === 0) return (
-    <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: '#fff'}}>
-      <ActivityIndicator size={50} color={COLORS.primary} />
-    </View>
-  );
-
   return (
     <ErrorBoundary>
     <View style={styles.container}>
+      {loading && allOrders.length === 0 && (
+          <View style={styles.initialLoadingOverlay}>
+              <ActivityIndicator size={50} color={COLORS.primary} />
+          </View>
+      )}
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -148,6 +165,7 @@ const MapScreen = ({ navigation }: any) => {
       >
         {displayedItems.map((item: any) => {
           if (item.isCluster) {
+            if (isNaN(item.latitude) || isNaN(item.longitude)) return null;
             return (
               <Marker
                 key={item.id}
@@ -169,7 +187,7 @@ const MapScreen = ({ navigation }: any) => {
           }
 
           const coords = mapEngine.getOrderCoords(item);
-          if (!coords) return null;
+          if (!coords || isNaN(coords.latitude) || isNaN(coords.longitude)) return null;
 
           return (
             <Marker
@@ -302,6 +320,13 @@ const mapStyle = [
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  initialLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    zIndex: 20
+  },
   map: { width: '100%', height: '100%' },
   headerOverlay: { position: 'absolute', top: 10, left: 0, right: 0, zIndex: 10 },
   searchBar: {
