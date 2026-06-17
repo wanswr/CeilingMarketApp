@@ -129,26 +129,45 @@ export class OrdersService {
 
   async findAll(filters: { lat?: number; lng?: number; radius?: number; minPrice?: number; status?: string }) {
     const { lat, lng, radius, minPrice, status } = filters;
+
+    if (lat && lng && radius) {
+      return this.findNearby(lat, lng, radius);
+    }
+
     const where: any = {};
     if (minPrice) where.price = { gte: minPrice };
     if (status) where.status = status as OrderStatus;
 
-    const orders = await this.prisma.order.findMany({
+    return this.prisma.order.findMany({
       where,
       include: {
         employer: { select: { id: true, name: true, rating: true, avatar: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
+  }
 
-    if (lat && lng && radius) {
-      return orders.filter(order => {
-        const d = this.calculateDistance(lat, lng, order.latitude, order.longitude);
-        (order as any).distance = d;
-        return d <= radius;
-      });
-    }
-    return orders;
+  /**
+   * PostGIS Nearby Search: Finds orders in a radius using spatial index.
+   */
+  async findNearby(lat: number, lng: number, radiusKm: number = 100) {
+    return this.prisma.$queryRaw<any[]>`
+      SELECT o.*,
+             u.name as "employerName", u.rating as "employerRating", u.avatar as "employerAvatar"
+      FROM "Order" o
+      LEFT JOIN "User" u ON o."employerId" = u.id
+      WHERE o.status = 'PUBLISHED'
+      AND ST_DWithin(
+        ST_SetSRID(ST_MakePoint(o.longitude, o.latitude), 4326)::geography,
+        ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+        ${radiusKm * 1000}
+      )
+      ORDER BY ST_Distance(
+        ST_SetSRID(ST_MakePoint(o.longitude, o.latitude), 4326)::geography,
+        ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+      )
+      LIMIT 500;
+    `;
   }
 
   async findOne(id: string) {
@@ -192,7 +211,7 @@ export class OrdersService {
   }
 
   /**
-   * SPATIAL ENGINE V6: Universal spatial search supporting Radius and BBOX modes.
+   * SPATIAL ENGINE V6: Universal spatial search supporting Radius and BBOX modes via PostGIS.
    */
   async findSpatial(params: {
     lat?: number; lng?: number; radius?: number;
@@ -201,39 +220,45 @@ export class OrdersService {
   }) {
     const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter } = params;
 
-    let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
-
-    // Mode A: Radius Search (approximate via bounding box for performance)
+    // Mode A: True Radius Search via findNearby
     if (lat !== undefined && lng !== undefined && radius !== undefined) {
-      const R = 6371; // Earth radius in km
-      const deltaLat = (radius / R) * (180 / Math.PI);
-      const deltaLng = (radius / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
+        const rawOrders = await this.findNearby(lat, lng, radius);
 
-      searchBounds = {
-        minLat: lat - deltaLat,
-        maxLat: lat + deltaLat,
-        minLng: lng - deltaLng,
-        maxLng: lng + deltaLng,
-      };
-    } else if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
-      // Mode B: BBOX Search
-      searchBounds = { minLat, maxLat, minLng, maxLng };
+        // Map raw SQL rows to the expected Prisma-like Order structure with nested employer
+        const mappedOrders = rawOrders.map(o => ({
+            ...o,
+            employer: {
+                id: o.employerId,
+                name: o.employerName,
+                rating: o.employerRating,
+                avatar: o.employerAvatar
+            }
+        }));
+
+        // Filter by updatedAfter if provided
+        const filtered = updatedAfter
+            ? mappedOrders.filter(o => new Date(o.updatedAt) > updatedAfter)
+            : mappedOrders;
+
+        return { created: filtered, updated: [], deleted: [] };
     }
 
-    if (!searchBounds) return { created: [], updated: [], deleted: [] };
+    // Mode B: BBOX Search (Keep using findMany for BBOX as it's efficient with standard indices)
+    if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
+        const orders = await this.prisma.order.findMany({
+            where: {
+              status: OrderStatus.PUBLISHED,
+              latitude: { gte: minLat, lte: maxLat },
+              longitude: { gte: minLng, lte: maxLng },
+              updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
+            },
+            take: 2000,
+            include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
+          });
+          return { created: orders, updated: [], deleted: [] };
+    }
 
-    const orders = await this.prisma.order.findMany({
-      where: {
-        status: OrderStatus.PUBLISHED,
-        latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
-        longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
-        updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
-      },
-      take: 2000,
-      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
-    });
-
-    return { created: orders, updated: [], deleted: [] };
+    return { created: [], updated: [], deleted: [] };
   }
 
   /**
