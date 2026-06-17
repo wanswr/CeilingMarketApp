@@ -79,19 +79,19 @@ class MapEngine {
         return;
     }
 
-    // 1. Calculate Spatial Bounds
-    const latBuffer = viewRegion.latitudeDelta * 0.5;
-    const lngBuffer = viewRegion.longitudeDelta * 0.5;
-
-    const bounds: BBox = {
-      minLat: viewRegion.latitude - viewRegion.latitudeDelta - latBuffer,
-      maxLat: viewRegion.latitude + viewRegion.latitudeDelta + latBuffer,
-      minLng: viewRegion.longitude - viewRegion.longitudeDelta - lngBuffer,
-      maxLng: viewRegion.longitude + viewRegion.longitudeDelta + lngBuffer
+    // 1. Calculate Spatial Bounds & ALIGN TO GEOCELLS (V6 Overlap Logic)
+    // We expand the viewport to perfectly match the 0.5-degree grid
+    const rawBounds = {
+      minLat: viewRegion.latitude - viewRegion.latitudeDelta,
+      maxLat: viewRegion.latitude + viewRegion.latitudeDelta,
+      minLng: viewRegion.longitude - viewRegion.longitudeDelta,
+      maxLng: viewRegion.longitude + viewRegion.longitudeDelta
     };
 
+    const aligned = this.spatialManager.getAlignedBounds(rawBounds.minLat, rawBounds.maxLat, rawBounds.minLng, rawBounds.maxLng);
+
     // 2. CHECK SPATIAL CACHE (V6 Chunking)
-    if (!force && this.spatialManager.isAreaLoaded(bounds.minLat, bounds.maxLat, bounds.minLng, bounds.maxLng)) {
+    if (!force && this.spatialManager.isAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng)) {
         if (__DEV__) console.log('[MapEngine] SPATIAL CACHE HIT - Skipping network');
         this.requestRouter.metrics.spatialCacheHits++;
         return;
@@ -100,17 +100,7 @@ class MapEngine {
     this.requestRouter.metrics.spatialCacheMisses++;
 
     // 3. UNIVERSAL SPATIAL FETCH (V6)
-    const precision = 2;
-    const normBounds = {
-      minLat: Number(bounds.minLat.toFixed(precision)),
-      maxLat: Number(bounds.maxLat.toFixed(precision)),
-      minLng: Number(bounds.minLng.toFixed(precision)),
-      maxLng: Number(bounds.maxLng.toFixed(precision)),
-    };
-
-    if (isNaN(normBounds.minLat) || isNaN(normBounds.minLng)) return;
-
-    const spatialKey = `spatial:${normBounds.minLat}:${normBounds.maxLat}:${normBounds.minLng}:${normBounds.maxLng}`;
+    const spatialKey = `spatial:${aligned.minLat}:${aligned.maxLat}:${aligned.minLng}:${aligned.maxLng}`;
     if (force) this.requestRouter.invalidate(spatialKey);
 
     try {
@@ -120,12 +110,12 @@ class MapEngine {
       const response = await this.requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
-          // Explicitly pass bbox params
+          // Explicitly pass aligned bbox params
           const res = await this.apiService.getSpatialOrders({
-              minLat: normBounds.minLat,
-              maxLat: normBounds.maxLat,
-              minLng: normBounds.minLng,
-              maxLng: normBounds.maxLng,
+              minLat: aligned.minLat,
+              maxLat: aligned.maxLat,
+              minLng: aligned.minLng,
+              maxLng: aligned.maxLng,
               updatedAfter: force ? '0' : lastSyncTime
           });
           return res.data;
@@ -136,8 +126,8 @@ class MapEngine {
       if (response) {
         this.entityStore.applyPatch(response);
 
-        // Mark area as loaded in SpatialManager
-        this.spatialManager.markAreaLoaded(bounds.minLat, bounds.maxLat, bounds.minLng, bounds.maxLng);
+        // Mark area as loaded in SpatialManager (using aligned bounds for persistence)
+        this.spatialManager.markAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng);
         this.requestRouter.metrics.spatialChunksLoaded = this.spatialManager.getLoadedChunksCount();
 
         this.notifySubscribers();

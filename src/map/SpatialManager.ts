@@ -66,15 +66,29 @@ class SpatialManager {
   }
 
   /**
+   * Aligns any BBOX to geocell boundaries to prevent jitter-induced cache misses.
+   * Returns a larger BBOX that perfectly fits the geocell grid.
+   */
+  getAlignedBounds(minLat: number, maxLat: number, minLng: number, maxLng: number) {
+      return {
+          minLat: Math.floor(minLat / this.cellSize) * this.cellSize,
+          maxLat: Math.ceil(maxLat / this.cellSize) * this.cellSize,
+          minLng: Math.floor(minLng / this.cellSize) * this.cellSize,
+          maxLng: Math.ceil(maxLng / this.cellSize) * this.cellSize,
+      };
+  }
+
+  /**
    * Marks all chunks covered by a BBOX as loaded.
    */
   markAreaLoaded(minLat: number, maxLat: number, minLng: number, maxLng: number) {
-    for (let lat = minLat; lat <= maxLat; lat += this.cellSize) {
-      for (let lng = minLng; lng <= maxLng; lng += this.cellSize) {
+    const aligned = this.getAlignedBounds(minLat, maxLat, minLng, maxLng);
+
+    for (let lat = aligned.minLat; lat <= aligned.maxLat; lat += this.cellSize) {
+      for (let lng = aligned.minLng; lng <= aligned.maxLng; lng += this.cellSize) {
         this.markChunkLoaded(lat, lng);
       }
     }
-    this.markChunkLoaded(maxLat, maxLng);
   }
 
   getLoadedChunksCount(): number {

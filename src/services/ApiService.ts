@@ -29,7 +29,8 @@ class ApiService {
     this.api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
       const token = await SecureStore.getItemAsync('userToken');
       if (__DEV__) {
-        console.log(`[API] ${config.method?.toUpperCase()} -> ${config.url}`);
+        const queryStr = config.params ? '?' + new URLSearchParams(config.params).toString() : '';
+        console.log(`[API] ${config.method?.toUpperCase()} -> ${config.url}${queryStr}`);
       }
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
