@@ -23,6 +23,12 @@ class OrderOrchestrator {
   private debounceTimer: NodeJS.Timeout | null = null;
   private loadedBounds: BBox[] = [];
 
+  constructor(
+      private apiService: any,
+      private entityStore: any,
+      private requestRouter: any
+  ) {}
+
   /**
    * Subscribe to global order updates.
    */
@@ -42,7 +48,7 @@ class OrderOrchestrator {
   }
 
   private getOrdersArray = (): Order[] => {
-    return entityStore.getAllOrders()
+    return this.entityStore.getAllOrders()
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
@@ -76,7 +82,7 @@ class OrderOrchestrator {
 
       if (isLoaded) {
         if (__DEV__) console.log('[OrderOrchestrator] BBOX CACHE HIT - Skipping network');
-        (requestRouter as any).metrics.bboxHits++;
+        this.requestRouter.metrics.bboxHits++;
         return;
       }
     }
@@ -93,22 +99,22 @@ class OrderOrchestrator {
     if (isNaN(normBounds.minLat) || isNaN(normBounds.minLng)) return;
 
     const spatialKey = `bbox:${normBounds.minLat}:${normBounds.maxLat}:${normBounds.minLng}:${normBounds.maxLng}`;
-    if (force) requestRouter.invalidate(spatialKey);
+    if (force) this.requestRouter.invalidate(spatialKey);
 
     try {
-      const lastSyncTime = entityStore.getMeta('map_last_sync') || '0';
+      const lastSyncTime = this.entityStore.getMeta('map_last_sync') || '0';
 
-      const response = await requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
+      const response = await this.requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
-          const res = await apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
+          const res = await this.apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
           return res.data;
         },
         300000 // 5 min TTL for spatial buckets
       );
 
       if (response) {
-        entityStore.applyPatch(response);
+        this.entityStore.applyPatch(response);
 
         // Add to loaded bounds tracker
         this.loadedBounds.push(normBounds);
@@ -118,9 +124,9 @@ class OrderOrchestrator {
         this.notifySubscribers();
       }
 
-      entityStore.meta.spatialSyncs++;
-      entityStore.setMeta('map_last_sync', Date.now().toString());
-      entityStore.logDiagnostics();
+      this.entityStore.meta.spatialSyncs++;
+      this.entityStore.setMeta('map_last_sync', Date.now().toString());
+      this.entityStore.logDiagnostics();
     } catch (error) {
       console.error(`[OrderOrchestrator] Spatial sync failed`, error);
     }
@@ -134,26 +140,26 @@ class OrderOrchestrator {
     const key = 'user:profile';
 
     if (!force) {
-      const lastUpdate = entityStore.getMeta('user_last_sync');
+      const lastUpdate = this.entityStore.getMeta('user_last_sync');
       if (lastUpdate && (Date.now() - Number(lastUpdate)) < 60000) {
-        return entityStore.getCurrentUser();
+        return this.entityStore.getCurrentUser();
       }
     }
 
-    if (force) requestRouter.invalidate(key);
+    if (force) this.requestRouter.invalidate(key);
 
-    const userData = await requestRouter.request(
+    const userData = await this.requestRouter.request(
       key,
       async () => {
-        const res = await apiService.getProfile();
+        const res = await this.apiService.getProfile();
         return res.data;
       },
       60000 // 60s TTL
     );
 
     // Mark as current user for the selector
-    entityStore.setUser({ ...userData, isMe: true });
-    entityStore.setMeta('user_last_sync', Date.now().toString());
+    this.entityStore.setUser({ ...userData, isMe: true });
+    this.entityStore.setMeta('user_last_sync', Date.now().toString());
     return userData;
   }
 
@@ -162,21 +168,21 @@ class OrderOrchestrator {
    */
   getExternalUser = async (userId: string, force: boolean = false) => {
     if (!force) {
-      const cached = entityStore.getUser(userId);
+      const cached = this.entityStore.getUser(userId);
       if (cached) return cached;
     }
 
     const key = `user:${userId}`;
-    const userData = await requestRouter.request(
+    const userData = await this.requestRouter.request(
       key,
       async () => {
-        const res = await apiService.getUserProfile(userId);
+        const res = await this.apiService.getUserProfile(userId);
         return res.data;
       },
       60000
     );
 
-    entityStore.setUser(userData);
+    this.entityStore.setUser(userData);
     return userData;
   }
 
@@ -185,19 +191,19 @@ class OrderOrchestrator {
    */
   syncOrder = async (orderId: string, force: boolean = false) => {
     const key = `order:${orderId}`;
-    if (force) requestRouter.invalidate(key);
+    if (force) this.requestRouter.invalidate(key);
 
     try {
-      const orderData = await requestRouter.request(
+      const orderData = await this.requestRouter.request(
         key,
         async () => {
-          const res = await apiService.getOrderDetails(orderId);
+          const res = await this.apiService.getOrderDetails(orderId);
           return res.data;
         },
         30000
       );
 
-      entityStore.setOrder(orderData);
+      this.entityStore.setOrder(orderData);
       this.notifySubscribers();
       return orderData;
     } catch (error) {
@@ -223,15 +229,15 @@ class OrderOrchestrator {
 
   // Task #3: Selectors
   getOrder = (id: string) => {
-    return entityStore.getOrder(id);
+    return this.entityStore.getOrder(id);
   }
 
   getUser = (id: string) => {
-    return entityStore.getUser(id);
+    return this.entityStore.getUser(id);
   }
 
   getCurrentUser = () => {
-    return entityStore.getCurrentUser();
+    return this.entityStore.getCurrentUser();
   }
 
   /**
@@ -239,67 +245,67 @@ class OrderOrchestrator {
    */
   forceRefresh = async () => {
     this.loadedBounds = [];
-    entityStore.clear();
-    requestRouter.clear();
+    this.entityStore.clear();
+    this.requestRouter.clear();
     return this.syncMap(true);
   }
 
   // Task #4: Move API calls to Orchestrator
 
   updateProfile = async (profileData: any) => {
-    const res = await apiService.updateProfile(profileData);
-    entityStore.setUser({ ...res.data, isMe: true });
-    requestRouter.invalidate('user:profile');
+    const res = await this.apiService.updateProfile(profileData);
+    this.entityStore.setUser({ ...res.data, isMe: true });
+    this.requestRouter.invalidate('user:profile');
     return res.data;
   }
 
   createOrder = async (orderData: any) => {
-    const res = await apiService.createOrder(orderData);
-    entityStore.setOrder(res.data);
-    requestRouter.invalidate('map:orders');
+    const res = await this.apiService.createOrder(orderData);
+    this.entityStore.setOrder(res.data);
+    this.requestRouter.invalidate('map:orders');
     this.notifySubscribers();
     return res.data;
   }
 
   updateOrder = async (orderId: string, orderData: any) => {
-    const res = await apiService.updateOrder(orderId, orderData);
-    entityStore.setOrder(res.data);
-    requestRouter.invalidate(`order:${orderId}`);
-    requestRouter.invalidate('map:orders');
+    const res = await this.apiService.updateOrder(orderId, orderData);
+    this.entityStore.setOrder(res.data);
+    this.requestRouter.invalidate(`order:${orderId}`);
+    this.requestRouter.invalidate('map:orders');
     this.notifySubscribers();
     return res.data;
   }
 
   applyForOrder = async (orderId: string) => {
-    const res = await apiService.applyForOrder(orderId);
+    const res = await this.apiService.applyForOrder(orderId);
     // Refresh order details to show updated candidates/status
     await this.syncOrder(orderId, true);
     return res.data;
   }
 
   activateSubscription = async (days: number) => {
-    const res = await apiService.activateSubscription(days);
+    const res = await this.apiService.activateSubscription(days);
     await this.syncUser(true);
     return res.data;
   }
 
   // Auth Operations (Task #4)
   login = async (phone: string) => {
-    const res = await apiService.login(phone);
+    const res = await this.apiService.login(phone);
     if (res.data.user) {
-      entityStore.setUser({ ...res.data.user, isMe: true });
+      this.entityStore.setUser({ ...res.data.user, isMe: true });
     }
     return res.data;
   }
 
   parseOrderText = async (text: string) => {
-    const res = await apiService.parseOrderText(text);
+    const res = await this.apiService.parseOrderText(text);
     return res.data;
   }
 
   getApiBaseUrl = () => {
-    return apiService.getBaseUrl();
+    return this.apiService.getBaseUrl();
   }
 }
 
-export const orderOrchestrator = new OrderOrchestrator();
+export const orderOrchestrator = new OrderOrchestrator(apiService, entityStore, requestRouter);

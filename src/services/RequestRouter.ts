@@ -13,7 +13,7 @@ class RequestRouter {
   private inFlight: Map<string, Promise<any>> = new Map();
 
   // Task #6: Metrics
-  private metrics = {
+  public metrics = {
     apiCalls: 0,
     cacheHits: 0,
     bboxHits: 0,
@@ -30,7 +30,7 @@ class RequestRouter {
    * Primary request method with deduplication and caching.
    * Handles In-Flight locking (Deduplication) first to prevent race conditions.
    */
-  async request<T>(key: string, fetchFn: () => Promise<T>, ttl: number = 30000): Promise<T> {
+  request = async <T>(key: string, fetchFn: () => Promise<T>, ttl: number = 30000): Promise<T> => {
     const now = Date.now();
 
     // 1. Handle In-Flight (Deduplication) - TASK #1: Locking
@@ -80,21 +80,23 @@ class RequestRouter {
   /**
    * Force invalidate a specific cache key.
    */
-  invalidate(key: string) {
+  invalidate = (key: string) => {
     this.cache.delete(key);
   }
 
   /**
    * Clear all cache (useful for logout or manual refresh).
    */
-  clear() {
+  clear = () => {
     this.cache.clear();
     this.inFlight.clear();
     this.metrics.apiCalls = 0;
     this.metrics.cacheHits = 0;
+    this.metrics.bboxHits = 0;
+    this.metrics.dedupHits = 0;
   }
 
-  getMetrics() {
+  getMetrics = () => {
     return { ...this.metrics };
   }
 }
