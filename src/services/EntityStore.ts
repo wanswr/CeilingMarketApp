@@ -209,11 +209,13 @@ class EntityStore {
       const network = requestRouter?.getMetrics() || {};
       const store = this.getMetrics();
 
+      const cacheSizeMb = ((store.ordersCount * 2) / 1024).toFixed(2);
       console.log('MapEngine diagnostics:', {
           loadedChunks: network.spatialChunksLoaded || 0,
           cacheHits: network.spatialCacheHits || 0,
           cacheMisses: network.spatialCacheMisses || 0,
-          ordersInMemory: store.ordersCount
+          ordersInMemory: store.ordersCount,
+          cacheSizeMb: `${cacheSizeMb} MB`
       });
     }
   }

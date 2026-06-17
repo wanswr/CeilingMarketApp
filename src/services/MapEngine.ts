@@ -73,6 +73,12 @@ class MapEngine {
     if (!this.entityStore) return;
     if (!viewRegion) return;
 
+    // 0. Area Limit: Don't load spatial data if zoomed out too far (country level)
+    if (viewRegion.latitudeDelta > 10) {
+        if (__DEV__) console.log('[MapEngine] Viewport too large - skipping spatial sync');
+        return;
+    }
+
     // 1. Calculate Spatial Bounds
     const latBuffer = viewRegion.latitudeDelta * 0.5;
     const lngBuffer = viewRegion.longitudeDelta * 0.5;
@@ -114,7 +120,14 @@ class MapEngine {
       const response = await this.requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
-          const res = await this.apiService.getSpatialOrders({ ...normBounds, updatedAfter: force ? '0' : lastSyncTime });
+          // Explicitly pass bbox params
+          const res = await this.apiService.getSpatialOrders({
+              minLat: normBounds.minLat,
+              maxLat: normBounds.maxLat,
+              minLng: normBounds.minLng,
+              maxLng: normBounds.maxLng,
+              updatedAfter: force ? '0' : lastSyncTime
+          });
           return res.data;
         },
         300000 // 5 min TTL
@@ -132,6 +145,7 @@ class MapEngine {
 
       this.entityStore.meta.spatialSyncs++;
       this.entityStore.setMeta('map_last_sync', Date.now().toString());
+      this.logMemoryUsage();
       this.entityStore.logDiagnostics();
     } catch (error) {
       console.error(`[MapEngine] Spatial sync failed`, error);
@@ -341,6 +355,21 @@ class MapEngine {
 
   getApiBaseUrl = () => {
     return this.apiService.getBaseUrl();
+  }
+
+  logMemoryUsage = () => {
+      if (__DEV__) {
+          const ordersCount = this.entityStore.getAllOrders().length;
+          const chunksCount = this.spatialManager.getLoadedChunksCount();
+          // Heuristic: ~2KB per order record
+          const cacheSizeMb = ((ordersCount * 2) / 1024).toFixed(2);
+
+          console.log('[MapEngine] Memory:', {
+              loadedChunks: chunksCount,
+              ordersInMemory: ordersCount,
+              cacheSizeMb: `${cacheSizeMb} MB`
+          });
+      }
   }
 }
 

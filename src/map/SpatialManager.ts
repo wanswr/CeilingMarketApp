@@ -11,6 +11,7 @@ interface ChunkMetadata {
 class SpatialManager {
   private cache: Map<string, ChunkMetadata> = new Map();
   private cellSize = 0.5; // Approx 50km cells
+  private maxChunks = 500; // LRU Limit
 
   /**
    * Generates a unique key for a geographic cell.
@@ -39,11 +40,28 @@ class SpatialManager {
   isChunkLoaded(lat: number, lng: number): boolean {
     const key = this.getChunkKey(lat, lng);
     const chunk = this.cache.get(key);
-    return !!chunk && chunk.loaded && (Date.now() - chunk.timestamp < 3600000); // 1h TTL
+
+    if (chunk) {
+        // LRU Refresh: Move to the end of the Map
+        this.cache.delete(key);
+        this.cache.set(key, chunk);
+        return chunk.loaded && (Date.now() - chunk.timestamp < 3600000);
+    }
+
+    return false;
   }
 
   markChunkLoaded(lat: number, lng: number) {
     const key = this.getChunkKey(lat, lng);
+
+    if (this.cache.has(key)) {
+        this.cache.delete(key);
+    } else if (this.cache.size >= this.maxChunks) {
+        // Evict oldest (first item in Map iterator)
+        const oldestKey = this.cache.keys().next().value;
+        if (oldestKey) this.cache.delete(oldestKey);
+    }
+
     this.cache.set(key, { loaded: true, timestamp: Date.now() });
   }
 

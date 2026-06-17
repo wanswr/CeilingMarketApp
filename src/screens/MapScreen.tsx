@@ -92,6 +92,10 @@ const MapScreen = ({ navigation }: any) => {
 
     let result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
 
+    // Performance: Filter out individual markers if zoomed out too far
+    if (region.latitudeDelta > 2) {
+        result = result.filter((item: any) => item.isCluster);
+    }
 
     if (__DEV__) {
         const time = Date.now() - start;
