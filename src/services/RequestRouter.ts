@@ -17,7 +17,9 @@ class RequestRouter {
     apiCalls: 0,
     cacheHits: 0,
     bboxHits: 0,
-    dedupHits: 0
+    bboxMisses: 0,
+    dedupHits: 0,
+    websocketUpdates: 0
   };
 
   /**
@@ -92,7 +94,9 @@ class RequestRouter {
     this.metrics.apiCalls = 0;
     this.metrics.cacheHits = 0;
     this.metrics.bboxHits = 0;
+    this.metrics.bboxMisses = 0;
     this.metrics.dedupHits = 0;
+    this.metrics.websocketUpdates = 0;
   }
 
   getMetrics = () => {

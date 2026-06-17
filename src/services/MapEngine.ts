@@ -120,6 +120,7 @@ class MapEngine {
       const response = await this.requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
+          this.requestRouter.metrics.bboxMisses++;
           const res = await this.apiService.getMapOrdersInBounds(normBounds, force ? '0' : lastSyncTime);
           return res.data;
         },

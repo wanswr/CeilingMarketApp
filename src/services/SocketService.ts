@@ -14,6 +14,7 @@ class SocketService {
     });
 
     this.socket.on('order_created', (order: any) => {
+      mapEngine.requestRouter.metrics.websocketUpdates++;
       if (__DEV__) {
           console.log('[WebSocket] New order received:', order.id);
           const meta = mapEngine.entityStore?.meta;
@@ -24,6 +25,7 @@ class SocketService {
     });
 
     this.socket.on('order_updated', (order: any) => {
+      mapEngine.requestRouter.metrics.websocketUpdates++;
       if (__DEV__) {
           console.log('[WebSocket] Order update received:', order.id);
           const meta = mapEngine.entityStore?.meta;
@@ -34,6 +36,7 @@ class SocketService {
     });
 
     this.socket.on('order_claimed', (order: any) => {
+      mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('[WebSocket] Order claimed received:', order.id);
       mapEngine.entityStore?.setOrder(order);
     });

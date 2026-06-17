@@ -212,10 +212,12 @@ class EntityStore {
       console.log('MapEngine V4 diagnostics:', {
           apiCalls: network.apiCalls,
           bboxHits: network.bboxHits,
+          bboxMisses: network.bboxMisses,
           cacheHits: network.cacheHits,
           clusterTimeMs: (this.meta as any).lastClusterTime || 0,
           orders: store.ordersCount,
           spatialSyncs: store.spatialSyncs,
+          websocketUpdates: network.websocketUpdates,
       });
     }
   }
