@@ -192,106 +192,6 @@ export class OrdersService {
   }
 
   /**
-   * SPATIAL ENGINE V4: Finds orders within a Bounding Box.
-   */
-  async findInBounds(bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }, updatedAfter?: Date) {
-    const { minLat, maxLat, minLng, maxLng } = bounds;
-
-    const orders = await this.prisma.order.findMany({
-      where: {
-        status: OrderStatus.PUBLISHED,
-        latitude: { gte: minLat, lte: maxLat },
-        longitude: { gte: minLng, lte: maxLng },
-        updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
-      },
-      take: 2000, // Reasonable cap for viewport
-      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
-    });
-
-    // Wrapped in { created: [] } to maintain compatibility with frontend Orchestrator V2.1+
-    return { created: orders, updated: [], deleted: [] };
-  }
-
-  async findIncremental(filters: { updatedAfter?: Date; status?: string }) {
-    const { updatedAfter, status } = filters;
-
-    const statusFilter = status ? (status as OrderStatus) : undefined;
-
-    // Stage 3: Fetch only changes since last sync (with safety limit for legacy)
-    const created = await this.prisma.order.findMany({
-      where: {
-        status: statusFilter,
-        createdAt: updatedAfter ? { gt: updatedAfter } : { gt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }, // Last 30 days fallback
-      },
-      take: 1000, // Safety cap for performance
-      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
-    });
-
-    const updated = await this.prisma.order.findMany({
-      where: {
-        status: statusFilter,
-        updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
-        createdAt: updatedAfter ? { lte: updatedAfter } : undefined,
-      },
-      take: 1000,
-      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
-    });
-
-    // Deleted tracking: Simplified to only return recently updated orders with non-PUBLISHED status
-    // if statusFilter is PUBLISHED (typical case for map)
-    let deleted: string[] = [];
-    if (updatedAfter && statusFilter === OrderStatus.PUBLISHED) {
-        const removed = await this.prisma.order.findMany({
-            where: {
-                status: { not: OrderStatus.PUBLISHED },
-                updatedAt: { gt: updatedAfter },
-            },
-            select: { id: true }
-        });
-        deleted = removed.map(r => r.id);
-    }
-
-    return { created, updated, deleted };
-  }
-
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  }
-
-  /**
-   * REGIONAL ENGINE V5: Finds orders for a specific predefined region.
-   */
-  async getRegionOrders(regionId: string, updatedAfter?: Date) {
-    const regions: Record<string, any> = {
-      'moscow': { minLat: 55.1, maxLat: 56.1, minLng: 36.5, maxLng: 38.5 },
-      'spb': { minLat: 59.5, maxLat: 60.5, minLng: 29.5, maxLng: 31.0 },
-      'kazan': { minLat: 55.5, maxLat: 56.0, minLng: 48.8, maxLng: 49.5 },
-    };
-
-    const bounds = regions[regionId.toLowerCase()];
-    if (!bounds) {
-      // Fallback: search by region string in address if bounds not predefined
-      const orders = await this.prisma.order.findMany({
-        where: {
-          status: OrderStatus.PUBLISHED,
-          address: { contains: regionId, mode: 'insensitive' },
-          updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
-        },
-        take: 1000,
-        include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
-      });
-      return { region: regionId, created: orders, updated: [], deleted: [] };
-    }
-
-    const result = await this.findInBounds(bounds, updatedAfter);
-    return { region: regionId, ...result };
-  }
-
-  /**
    * SPATIAL ENGINE V6: Universal spatial search supporting Radius and BBOX modes.
    */
   async findSpatial(params: {
@@ -301,28 +201,39 @@ export class OrdersService {
   }) {
     const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter } = params;
 
+    let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
+
     // Mode A: Radius Search (approximate via bounding box for performance)
     if (lat !== undefined && lng !== undefined && radius !== undefined) {
       const R = 6371; // Earth radius in km
       const deltaLat = (radius / R) * (180 / Math.PI);
       const deltaLng = (radius / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
 
-      const bounds = {
+      searchBounds = {
         minLat: lat - deltaLat,
         maxLat: lat + deltaLat,
         minLng: lng - deltaLng,
         maxLng: lng + deltaLng,
       };
-
-      return this.findInBounds(bounds, updatedAfter);
+    } else if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
+      // Mode B: BBOX Search
+      searchBounds = { minLat, maxLat, minLng, maxLng };
     }
 
-    // Mode B: BBOX Search
-    if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
-      return this.findInBounds({ minLat, maxLat, minLng, maxLng }, updatedAfter);
-    }
+    if (!searchBounds) return { created: [], updated: [], deleted: [] };
 
-    return { created: [], updated: [], deleted: [] };
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.PUBLISHED,
+        latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
+        longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
+        updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
+      },
+      take: 2000,
+      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
+    });
+
+    return { created: orders, updated: [], deleted: [] };
   }
 
   /**
