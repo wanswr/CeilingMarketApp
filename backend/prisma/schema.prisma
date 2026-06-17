@@ -56,7 +56,10 @@ model Order {
   longitude         Float
   date              DateTime
 
-  @@index([latitude, longitude]) // Stage 5: Spatial indexing for performance
+  @@index([status, latitude, longitude]) // V6: Composite index for optimized BBOX spatial queries
+  @@index([latitude])
+  @@index([longitude])
+  @@index([status])
   @@index([createdAt])
   @@index([updatedAt])
   price             Float
