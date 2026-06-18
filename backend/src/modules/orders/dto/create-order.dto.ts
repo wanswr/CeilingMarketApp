@@ -25,6 +25,10 @@ export class CreateOrderDto {
   @IsOptional()
   details?: string;
 
+  @IsString()
+  @IsOptional()
+  workType?: string;
+
   @IsArray()
   @IsString({ each: true })
   @IsOptional()

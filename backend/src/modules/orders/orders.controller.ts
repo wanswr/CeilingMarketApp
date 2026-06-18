@@ -79,8 +79,18 @@ export class OrdersController {
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/apply')
-  apply(@Param('id') id: string, @Req() req: any) {
-    return this.ordersService.claim(id, req.user.id);
+  apply(
+    @Param('id') id: string,
+    @Body('price') price: number,
+    @Req() req: any
+  ) {
+    return this.ordersService.apply(id, req.user.id, price);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('applications/:id/accept')
+  acceptApplication(@Param('id') id: string, @Req() req: any) {
+    return this.ordersService.acceptApplication(id, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)

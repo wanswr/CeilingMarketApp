@@ -1,4 +1,4 @@
-export type OrderStatus = 'PENDING' | 'PUBLISHED' | 'CLAIMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DISPUTE';
+export type OrderStatus = 'PENDING' | 'PUBLISHED' | 'HAS_RESPONSES' | 'CLAIMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DISPUTE';
 export interface LatLng { latitude: number; longitude: number; }
 export interface UserProfile {
   uid: string;
@@ -26,6 +26,16 @@ export interface UserProfile {
   updatedAt: number;
 }
 
+export interface Application {
+  id: string;
+  orderId: string;
+  executorId: string;
+  price?: number;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  createdAt: number;
+  executor?: UserProfile;
+}
+
 export interface Order {
   id: string;
   employerId: string;
@@ -43,12 +53,14 @@ export interface Order {
   fixturesCount: number;
   chandeliersCount: number;
   curtainRodsCount: number;
+  workType?: string;
   status: OrderStatus;
   createdAt: number;
   updatedAt: number;
   comments?: string;
   details?: string;
   candidates?: any[];
+  applications?: Application[];
   executorId?: string;
   images?: string[];
   timestamp?: any;

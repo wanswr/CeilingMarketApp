@@ -334,9 +334,15 @@ class MapEngine {
     return res.data;
   }
 
-  applyForOrder = async (orderId: string) => {
-    const res = await this.apiService.applyForOrder(orderId);
+  applyForOrder = async (orderId: string, price?: number) => {
+    const res = await this.apiService.applyForOrder(orderId, price);
     // Refresh order details to show updated candidates/status
+    await this.syncOrder(orderId, true);
+    return res.data;
+  }
+
+  acceptApplication = async (applicationId: string, orderId: string) => {
+    const res = await this.apiService.acceptApplication(applicationId);
     await this.syncOrder(orderId, true);
     return res.data;
   }

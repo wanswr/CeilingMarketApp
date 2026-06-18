@@ -56,7 +56,8 @@ class ApiService {
   parseOrderText = (text: string) => this.api.post('orders/parse', { text });
   createOrder = (data: any) => this.api.post('orders', data);
   getOrderDetails = (id: string) => this.api.get(`orders/${id}`);
-  applyForOrder = (id: string) => this.api.post(`orders/${id}/apply`);
+  applyForOrder = (id: string, price?: number) => this.api.post(`orders/${id}/apply`, { price });
+  acceptApplication = (applicationId: string) => this.api.post(`orders/applications/${applicationId}/accept`);
   startOrder = (id: string) => this.api.post(`orders/${id}/start`);
   completeOrder = (id: string) => this.api.post(`orders/${id}/complete`);
   updateOrder = (id: string, data: any) => this.api.patch(`orders/${id}`, data);

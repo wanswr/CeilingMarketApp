@@ -199,8 +199,16 @@ const MapScreen = ({ navigation }: any) => {
                 }}
                 tracksViewChanges={false}
               >
-                <View style={[styles.customMarker, selectedOrder?.id === item.id && styles.customMarkerActive]}>
-                  <Text style={[styles.markerPrice, selectedOrder?.id === item.id && styles.markerPriceActive]}>
+                <View style={[
+                  styles.customMarker,
+                  selectedOrder?.id === item.id && styles.customMarkerActive,
+                  item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { borderColor: '#F59E0B' }
+                ]}>
+                  <Text style={[
+                    styles.markerPrice,
+                    selectedOrder?.id === item.id && styles.markerPriceActive,
+                    item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { color: '#F59E0B' }
+                  ]}>
                     {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
                   </Text>
                 </View>

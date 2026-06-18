@@ -16,7 +16,8 @@ export class OrdersService {
    */
   private readonly transitions: Record<OrderStatus, OrderStatus[]> = {
     [OrderStatus.PENDING]: [OrderStatus.PUBLISHED, OrderStatus.CANCELLED],
-    [OrderStatus.PUBLISHED]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
+    [OrderStatus.PUBLISHED]: [OrderStatus.HAS_RESPONSES, OrderStatus.CLAIMED, OrderStatus.CANCELLED],
+    [OrderStatus.HAS_RESPONSES]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
     [OrderStatus.CLAIMED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
     [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.DISPUTE],
     [OrderStatus.COMPLETED]: [],
@@ -44,6 +45,7 @@ export class OrdersService {
         longitude: dto.longitude,
         price: dto.price,
         details: dto.details,
+        workType: dto.workType,
         date: new Date(dto.date),
         images: dto.images || [],
         employerId,
@@ -57,37 +59,82 @@ export class OrdersService {
   }
 
   /**
-   * ATOMIC CLAIM: Postgres Transaction + row-level locking
+   * APPLY for order: Creates an Application and updates order status if needed.
    */
-  async claim(orderId: string, executorId: string) {
+  async apply(orderId: string, executorId: string, price?: number) {
     const result = await this.prisma.$transaction(async (tx) => {
-      // 1. SELECT FOR UPDATE to lock the row and prevent concurrent claims
-      const orderArray = await tx.$queryRaw<any[]>`
-        SELECT * FROM "Order"
-        WHERE "id" = ${orderId}
-        FOR UPDATE
-      `;
-      const order = orderArray[0];
-
+      const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new NotFoundException('Order not found');
 
-      // 2. State machine guard
-      if (order.status !== OrderStatus.PUBLISHED) {
-        throw new ConflictException(`Cannot claim order in ${order.status} state`);
+      if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
+        throw new ConflictException('Order is no longer available for applications');
       }
 
-      // 3. Subscription check
-      const sub = await tx.subscription.findUnique({ where: { userId: executorId } });
-      if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
-        throw new ForbiddenException('Active subscription required');
+      // Create application
+      const application = await tx.application.create({
+        data: {
+          orderId,
+          executorId,
+          price: price || order.price,
+        },
+        include: {
+          executor: { select: { id: true, name: true, rating: true, avatar: true, completedOrders: true } }
+        }
+      });
+
+      // Update order status if first application
+      let updatedOrder = order;
+      if (order.status === OrderStatus.PUBLISHED) {
+        updatedOrder = await tx.order.update({
+          where: { id: orderId },
+          data: { status: OrderStatus.HAS_RESPONSES }
+        });
       }
 
-      // 4. Atomic update
-      return tx.order.update({
-        where: { id: orderId },
+      return { application, order: updatedOrder };
+    });
+
+    this.gateway.broadcast('order.application_created', result.application);
+    this.gateway.broadcast('order.status_changed', result.order);
+    return result;
+  }
+
+  /**
+   * ACCEPT APPLICATION: Employer selects an executor.
+   */
+  async acceptApplication(applicationId: string, employerId: string) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const application = await tx.application.findUnique({
+        where: { id: applicationId },
+        include: { order: true }
+      });
+
+      if (!application) throw new NotFoundException('Application not found');
+      if (application.order.employerId !== employerId) throw new ForbiddenException();
+
+      // Update application status
+      await tx.application.update({
+        where: { id: applicationId },
+        data: { status: 'ACCEPTED' }
+      });
+
+      // Reject other applications
+      const otherApplications = await tx.application.findMany({
+        where: { orderId: application.orderId, id: { not: applicationId } },
+        select: { id: true, executorId: true }
+      });
+
+      await tx.application.updateMany({
+        where: { orderId: application.orderId, id: { not: applicationId } },
+        data: { status: 'REJECTED' }
+      });
+
+      // Update order
+      const updatedOrder = await tx.order.update({
+        where: { id: application.orderId },
         data: {
           status: OrderStatus.CLAIMED,
-          executorId,
+          executorId: application.executorId,
           claimedAt: new Date(),
         },
         include: {
@@ -95,9 +142,19 @@ export class OrdersService {
           executor: { select: { id: true, name: true, avatar: true } }
         }
       });
+
+      return {
+        order: updatedOrder,
+        acceptedApplicationId: applicationId,
+        rejectedApplicationIds: otherApplications.map(a => a.id)
+      };
     });
 
-    this.gateway.broadcast('order.claimed', result);
+    this.gateway.broadcast('order.claimed', result.order);
+    this.gateway.broadcast('application.accepted', { id: result.acceptedApplicationId });
+    result.rejectedApplicationIds.forEach(id => {
+      this.gateway.broadcast('application.rejected', { id });
+    });
     return result;
   }
 
@@ -275,7 +332,7 @@ export class OrdersService {
 
     const orders = await this.prisma.order.findMany({
       where: {
-        status: OrderStatus.PUBLISHED,
+        status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] },
         latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
         longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
         updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,

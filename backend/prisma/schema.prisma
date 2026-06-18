@@ -15,11 +15,18 @@ enum Role {
 enum OrderStatus {
   PENDING
   PUBLISHED
+  HAS_RESPONSES
   CLAIMED
   IN_PROGRESS
   COMPLETED
   CANCELLED
   DISPUTE
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 model User {
@@ -58,6 +65,7 @@ model Order {
   latitude          Float
   longitude         Float
   date              DateTime
+  workType          String?
 
   @@index([status, latitude, longitude]) // V6: Composite index for optimized BBOX spatial queries
   @@index([latitude])
@@ -113,6 +121,8 @@ model Application {
   id                String         @id @default(uuid())
   orderId           String
   executorId        String
+  price             Float?
+  status            ApplicationStatus @default(PENDING)
   idempotencyKey    String?        @unique
   createdAt         DateTime       @default(now())
 

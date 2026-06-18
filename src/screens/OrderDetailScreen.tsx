@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,8 +14,11 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
   const [loading, setLoading] = useState(!order);
   const [submitting, setSubmitting] = useState(false);
+  const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
+  const [showApplications, setShowApplications] = useState(false);
 
   useEffect(() => {
+    mapEngine.syncUser().then(setCurrentUser);
     const unsubscribe = mapEngine.subscribe(() => {
       const updated = mapEngine.getOrder(orderId);
       if (updated) {
@@ -35,15 +38,56 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }, [orderId]);
 
   const handleApply = async () => {
-    setSubmitting(true);
-    try {
-      await mapEngine.applyForOrder(orderId);
-      Alert.alert('Успех', 'Вы взяли заказ в работу!');
-    } catch (error: any) {
-      Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось взять заказ');
-    } finally {
-      setSubmitting(false);
-    }
+    Alert.prompt(
+      'Ваше предложение',
+      'Введите вашу цену за работу (оставьте пустым для цены заказчика)',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Откликнуться',
+          onPress: async (price) => {
+            setSubmitting(true);
+            try {
+              const numericPrice = price ? parseFloat(price) : undefined;
+              await mapEngine.applyForOrder(orderId, numericPrice);
+              Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
+              await mapEngine.syncOrder(orderId, true);
+            } catch (error: any) {
+              Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
+            } finally {
+              setSubmitting(false);
+            }
+          }
+        }
+      ],
+      'plain-text',
+      order?.price.toString()
+    );
+  };
+
+  const handleAcceptApplication = async (applicationId: string) => {
+    Alert.alert(
+      'Выбор исполнителя',
+      'Вы уверены, что хотите выбрать этого исполнителя? Остальные отклики будут отклонены.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Подтвердить',
+          onPress: async () => {
+            setSubmitting(true);
+            try {
+              await mapEngine.acceptApplication(applicationId, orderId);
+              setShowApplications(false);
+              Alert.alert('Успех', 'Исполнитель выбран');
+            } catch (e) {
+              Alert.alert('Ошибка', 'Не удалось выбрать исполнителя');
+            } finally {
+              setSubmitting(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleStartWork = async () => {
@@ -69,6 +113,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       setSubmitting(false);
     }
   };
+
+  const isEmployer = currentUser?.uid === order?.employerId;
+  const isExecutor = currentUser?.uid === order?.executorId;
+  const hasApplied = order?.applications?.some(a => a.executorId === currentUser?.uid);
 
   if (loading || !order) {
     return (
@@ -125,17 +173,22 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             <View style={[
                 styles.statusBadge,
                 order.status === 'PUBLISHED' && { backgroundColor: 'rgba(45, 91, 255, 0.1)' },
-                order.status === 'IN_PROGRESS' && { backgroundColor: 'rgba(255, 165, 0, 0.1)' },
-                order.status === 'COMPLETED' && { backgroundColor: 'rgba(76, 175, 80, 0.1)' }
+                order.status === 'HAS_RESPONSES' && { backgroundColor: 'rgba(245, 158, 11, 0.1)' },
+                order.status === 'CLAIMED' && { backgroundColor: 'rgba(59, 130, 246, 0.1)' },
+                order.status === 'IN_PROGRESS' && { backgroundColor: 'rgba(139, 92, 246, 0.1)' },
+                order.status === 'COMPLETED' && { backgroundColor: 'rgba(16, 185, 129, 0.1)' }
             ]}>
                <Text style={[
                    styles.statusText,
                    order.status === 'PUBLISHED' && { color: COLORS.primary },
-                   order.status === 'IN_PROGRESS' && { color: '#FFA500' },
-                   order.status === 'COMPLETED' && { color: '#4CAF50' }
+                   order.status === 'HAS_RESPONSES' && { color: '#F59E0B' },
+                   order.status === 'CLAIMED' && { color: '#3B82F6' },
+                   order.status === 'IN_PROGRESS' && { color: '#8B5CF6' },
+                   order.status === 'COMPLETED' && { color: '#10B981' }
                ]}>
-                   {order.status === 'PUBLISHED' ? 'Активен' :
-                    order.status === 'CLAIMED' ? 'Забронирован' :
+                   {order.status === 'PUBLISHED' ? 'Ожидает откликов' :
+                    order.status === 'HAS_RESPONSES' ? 'Есть отклики' :
+                    order.status === 'CLAIMED' ? 'Мастер выбран' :
                     order.status === 'IN_PROGRESS' ? 'В работе' :
                     order.status === 'COMPLETED' ? 'Выполнен' : order.status}
                </Text>
@@ -145,6 +198,18 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           <Text style={styles.title}>{order.title}</Text>
 
           <View style={styles.infoGrid}>
+            {order.workType && (
+              <View style={styles.infoItem}>
+                 <View style={styles.iconContainer}>
+                   <Ionicons name="construct" size={22} color={COLORS.primary} />
+                 </View>
+                 <View style={styles.infoTextWrapper}>
+                   <Text style={styles.infoLabel}>Тип работы</Text>
+                   <Text style={styles.infoValue}>{order.workType}</Text>
+                 </View>
+              </View>
+            )}
+
             <View style={styles.infoItem}>
                <View style={styles.iconContainer}>
                  <Ionicons name="location" size={22} color={COLORS.primary} />
@@ -173,6 +238,22 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
           <View style={styles.divider} />
 
+          {isEmployer && order.applications && order.applications.length > 0 && (
+            <TouchableOpacity
+              style={styles.applicationsBanner}
+              onPress={() => setShowApplications(true)}
+            >
+              <View style={styles.applicationsBannerContent}>
+                <Ionicons name="people" size={24} color={COLORS.primary} />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.bannerTitle}>{order.applications.length} откликов</Text>
+                  <Text style={styles.bannerSubtitle}>Нажмите, чтобы выбрать исполнителя</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
+              </View>
+            </TouchableOpacity>
+          )}
+
           <Text style={styles.sectionTitle}>Заказчик</Text>
           <TouchableOpacity style={styles.employerCard} activeOpacity={0.7}>
             <View style={styles.avatar}>
@@ -192,47 +273,129 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       </ScrollView>
 
       <BlurView intensity={90} tint="light" style={styles.footer}>
-        <SafeAreaView edges={['bottom']}>
-          {order.status === 'PUBLISHED' && (
+        <SafeAreaView edges={['bottom']} style={{ flexDirection: 'row', gap: 12 }}>
+          {isEmployer ? (
+            <TouchableOpacity
+              style={styles.chatButtonFooter}
+              onPress={() => navigation.navigate('Chats', { orderId: order.id })}
+            >
+              <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+              <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
+            </TouchableOpacity>
+          ) : isExecutor ? (
+            <>
+              <TouchableOpacity
+                style={styles.iconChatBtn}
+                onPress={() => navigation.navigate('Chats', { orderId: order.id })}
+              >
+                <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+
+              {order.status === 'CLAIMED' && (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  style={[styles.applyBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
+                  onPress={handleStartWork}
+                  disabled={submitting}
+                >
+                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Начать работу</Text>}
+                </TouchableOpacity>
+              )}
+
+              {order.status === 'IN_PROGRESS' && (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  style={[styles.applyBtn, { flex: 1, backgroundColor: '#10B981' }]}
+                  onPress={handleCompleteWork}
+                  disabled={submitting}
+                >
+                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Завершить работу</Text>}
+                </TouchableOpacity>
+              )}
+
+              {order.status === 'COMPLETED' && (
+                <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.7 }]}>
+                  <Text style={styles.applyBtnText}>Заказ выполнен</Text>
+                </View>
+              )}
+            </>
+          ) : (
             <TouchableOpacity
               activeOpacity={0.9}
-              style={styles.applyBtn}
+              style={[styles.applyBtn, (hasApplied || order.status === 'CLAIMED') && { backgroundColor: COLORS.gray }]}
               onPress={handleApply}
-              disabled={submitting}
+              disabled={submitting || hasApplied || order.status === 'CLAIMED'}
             >
-              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Взять заказ</Text>}
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.applyBtnText}>
+                  {hasApplied ? 'Отклик отправлен' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Откликнуться'}
+                </Text>
+              )}
             </TouchableOpacity>
-          )}
-
-          {order.status === 'CLAIMED' && (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={[styles.applyBtn, { backgroundColor: COLORS.secondary }]}
-              onPress={handleStartWork}
-              disabled={submitting}
-            >
-              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Начать работу</Text>}
-            </TouchableOpacity>
-          )}
-
-          {order.status === 'IN_PROGRESS' && (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={[styles.applyBtn, { backgroundColor: '#4CAF50' }]}
-              onPress={handleCompleteWork}
-              disabled={submitting}
-            >
-              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Завершить работу</Text>}
-            </TouchableOpacity>
-          )}
-
-          {order.status === 'COMPLETED' && (
-            <View style={[styles.applyBtn, { backgroundColor: COLORS.gray, opacity: 0.7 }]}>
-              <Text style={styles.applyBtnText}>Заказ выполнен</Text>
-            </View>
           )}
         </SafeAreaView>
       </BlurView>
+
+      <Modal
+        visible={showApplications}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowApplications(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <BlurView intensity={100} tint="light" style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Отклики</Text>
+              <TouchableOpacity onPress={() => setShowApplications(false)}>
+                <Ionicons name="close-circle" size={32} color={COLORS.gray} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.applicationsList}>
+              {order.applications?.map((app) => (
+                <View key={app.id} style={styles.applicationCard}>
+                  <View style={styles.appHeader}>
+                    <View style={styles.avatarSmall}>
+                       <Text style={styles.avatarTextSmall}>{app.executor?.name?.[0] || '?'}</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.executorName}>{app.executor?.name || 'Мастер'}</Text>
+                      <View style={styles.ratingRow}>
+                        <Ionicons name="star" size={14} color={COLORS.warning} />
+                        <Text style={styles.ratingText}>{app.executor?.rating?.toFixed(1) || '5.0'}</Text>
+                        <Text style={styles.ordersCount}>• {app.executor?.completedOrders || 0} заказов</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.offerPrice}>{app.price || order.price} ₽</Text>
+                  </View>
+
+                  <View style={styles.appActions}>
+                     <TouchableOpacity
+                      style={styles.appChatBtn}
+                      onPress={() => {
+                        setShowApplications(false);
+                        navigation.navigate('Chats', { orderId: order.id, executorId: app.executorId });
+                      }}
+                     >
+                       <Ionicons name="chatbubble-outline" size={20} color={COLORS.primary} />
+                       <Text style={styles.appChatText}>Чат</Text>
+                     </TouchableOpacity>
+
+                     <TouchableOpacity
+                      style={styles.selectBtn}
+                      onPress={() => handleAcceptApplication(app.id)}
+                     >
+                       <Text style={styles.selectBtnText}>Выбрать</Text>
+                     </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </BlurView>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -295,7 +458,148 @@ const styles = StyleSheet.create({
     shadowColor: COLORS.primary,
     shadowOpacity: 0.3
   },
-  applyBtnText: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 0.5 }
+  applyBtnText: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 0.5 },
+  chatButtonFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary + '10',
+    gap: 8,
+    flex: 1,
+  },
+  chatButtonTextFooter: {
+    color: COLORS.primary,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  iconChatBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary + '10',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  applicationsBanner: {
+    backgroundColor: COLORS.primary + '10',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '30',
+    padding: 16,
+    marginBottom: 24,
+  },
+  applicationsBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bannerTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.dark,
+  },
+  bannerSubtitle: {
+    fontSize: 13,
+    color: COLORS.gray,
+    marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    height: '80%',
+    padding: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.dark,
+  },
+  applicationsList: {
+    gap: 16,
+    paddingBottom: 40,
+  },
+  applicationCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  appHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarSmall: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarTextSmall: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  executorName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.dark,
+  },
+  offerPrice: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: COLORS.primary,
+  },
+  appActions: {
+    flexDirection: 'row',
+    marginTop: 16,
+    gap: 12,
+  },
+  appChatBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: COLORS.primary + '30',
+    gap: 6,
+  },
+  appChatText: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  selectBtn: {
+    flex: 2,
+    height: 44,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.soft,
+  },
+  selectBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
 });
 
 export default OrderDetailScreen;
