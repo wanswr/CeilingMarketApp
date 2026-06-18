@@ -20,23 +20,23 @@ interface OrderCardProps {
 const getStatusDetails = (status: OrderStatus) => {
   switch (status) {
     case 'PUBLISHED':
-      return { label: 'NEW', color: '#EF4444', icon: 'time-outline' };
+      return { label: 'Ожидает исполнителя', color: '#EF4444', icon: 'time-outline' };
     case 'HAS_RESPONSES':
-      return { label: 'HAS_RESPONSES', color: '#F59E0B', icon: 'people-outline' };
+      return { label: 'Есть отклики', color: '#F59E0B', icon: 'people-outline' };
     case 'CLAIMED':
-      return { label: 'IN_PROGRESS', color: '#3B82F6', icon: 'checkmark-circle-outline' };
+      return { label: 'Исполнитель выбран', color: '#3B82F6', icon: 'checkmark-circle-outline' };
     case 'IN_PROGRESS':
-      return { label: 'IN_PROGRESS', color: '#8B5CF6', icon: 'hammer-outline' };
+      return { label: 'В работе', color: '#8B5CF6', icon: 'hammer-outline' };
     case 'COMPLETED':
-      return { label: 'COMPLETED', color: '#10B981', icon: 'ribbon-outline' };
+      return { label: 'Выполнено', color: '#10B981', icon: 'ribbon-outline' };
     case 'CANCELLED':
-      return { label: 'CANCELLED', color: COLORS.gray, icon: 'close-circle-outline' };
+      return { label: 'Отменен', color: COLORS.gray, icon: 'close-circle-outline' };
     default:
       return { label: status, color: COLORS.gray, icon: 'help-circle-outline' };
   }
 };
 
-export const OrderCard: React.FC<OrderCardProps> = ({
+export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string }> = ({
   order,
   isEmployer,
   onPress,
@@ -44,19 +44,34 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   onEdit,
   onStart,
   onComplete,
-  onChat
+  onChat,
+  onCancelApplication,
+  hasApplied,
+  currentUserId
 }) => {
   const statusInfo = getStatusDetails(order.status);
+  const amIExecutor = order.executorId === currentUserId;
 
   const renderRightActions = (progress: any, dragX: any) => {
-    if (!isEmployer) return null;
+    if (isEmployer) {
+      return (
+        <TouchableOpacity style={styles.deleteAction} onPress={onDelete}>
+          <Ionicons name="trash-outline" size={24} color="#fff" />
+          <Text style={styles.actionText}>Удалить</Text>
+        </TouchableOpacity>
+      );
+    }
 
-    return (
-      <TouchableOpacity style={styles.deleteAction} onPress={onDelete}>
-        <Ionicons name="trash-outline" size={24} color="#fff" />
-        <Text style={styles.actionText}>Удалить</Text>
-      </TouchableOpacity>
-    );
+    if (hasApplied && order.status === 'HAS_RESPONSES') {
+      return (
+        <TouchableOpacity style={styles.deleteAction} onPress={onCancelApplication}>
+          <Ionicons name="close-circle-outline" size={24} color="#fff" />
+          <Text style={styles.actionText}>Отказаться</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    return null;
   };
 
   const renderLeftActions = (progress: any, dragX: any) => {
@@ -69,20 +84,20 @@ export const OrderCard: React.FC<OrderCardProps> = ({
       );
     }
 
-    if (order.status === 'CLAIMED') {
+    if (!isEmployer && order.status === 'CLAIMED' && amIExecutor) {
       return (
         <TouchableOpacity style={styles.startAction} onPress={onStart}>
           <Ionicons name="play-outline" size={24} color="#fff" />
-          <Text style={styles.actionText}>Начать</Text>
+          <Text style={styles.actionText}>Приступить</Text>
         </TouchableOpacity>
       );
     }
 
-    if (order.status === 'IN_PROGRESS') {
+    if (!isEmployer && order.status === 'IN_PROGRESS' && amIExecutor) {
       return (
         <TouchableOpacity style={styles.completeAction} onPress={onComplete}>
           <Ionicons name="checkmark-done-outline" size={24} color="#fff" />
-          <Text style={styles.actionText}>Завершить</Text>
+          <Text style={styles.actionText}>Закончить</Text>
         </TouchableOpacity>
       );
     }

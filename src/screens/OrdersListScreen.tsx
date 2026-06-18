@@ -200,12 +200,20 @@ const OrdersListScreen = ({ navigation }: any) => {
           <OrderCard
             order={item}
             isEmployer={item.employerId === currentUser?.uid}
+            currentUserId={currentUser?.uid}
+            hasApplied={item.applications?.some(a => a.executorId === currentUser?.uid)}
             onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
             onDelete={() => handleDelete(item.id)}
             onEdit={() => navigation.navigate('Add', { orderId: item.id })}
             onStart={() => handleStartWork(item.id)}
             onComplete={() => handleCompleteWork(item.id)}
             onChat={() => navigation.navigate('Chats', { orderId: item.id })}
+            onCancelApplication={() => {
+              Alert.alert('Отмена отклика', 'Вы уверены?', [
+                { text: 'Нет' },
+                { text: 'Да', onPress: () => mapEngine.cancelApplication(item.id) }
+              ]);
+            }}
           />
         )}
         keyExtractor={item => item.id}

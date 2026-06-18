@@ -38,9 +38,15 @@ const MapScreen = ({ navigation }: any) => {
   // 1. Subscribe to MapEngine
   useEffect(() => {
     const unsubscribe = mapEngine.subscribe((newOrders) => {
-      setAllOrders(newOrders);
+      setAllOrders([...newOrders]); // Force spread to ensure reactivity
       setLoading(false);
     });
+
+    // Immediate local sync if store is empty to prevent blank screen
+    if (mapEngine.getOrders().length === 0) {
+      mapEngine.syncMap(false, region);
+    }
+
     return () => { unsubscribe(); };
   }, []);
 

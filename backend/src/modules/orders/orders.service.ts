@@ -211,8 +211,6 @@ export class OrdersService {
     });
 
     this.gateway.broadcast('order.status.changed', result);
-    this.gateway.broadcast('order.status.changed', result);
-    this.gateway.broadcast('order.status.changed', result);
     return result;
   }
 
@@ -238,7 +236,7 @@ export class OrdersService {
       data: { status: newStatus }
     });
 
-    this.gateway.broadcast('orderStatusChanged', result);
+    this.gateway.broadcast('order.status.changed', result);
     return result;
   }
 
@@ -326,7 +324,7 @@ export class OrdersService {
       data: dto
     });
 
-    this.gateway.broadcast('orderStatusChanged', result);
+    this.gateway.broadcast('order.status.changed', result);
     return result;
   }
 

@@ -51,7 +51,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               await mapEngine.cancelApplication(orderId);
               Alert.alert('Успех', 'Отклик отозван');
             } catch (error: any) {
-              Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отозвать отклик');
+              Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отозвать отклик (возможно, до начала осталось менее 24 часов)');
             } finally {
               setSubmitting(false);
             }
@@ -212,12 +212,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                    order.status === 'IN_PROGRESS' && { color: '#8B5CF6' },
                    order.status === 'COMPLETED' && { color: '#10B981' }
                ]}>
-                   {order.status === 'PUBLISHED' ? 'NEW' :
-                    order.status === 'HAS_RESPONSES' ? 'HAS_RESPONSES' :
-                    order.status === 'CLAIMED' ? 'IN_PROGRESS' :
-                    order.status === 'IN_PROGRESS' ? 'IN_PROGRESS' :
-                    order.status === 'COMPLETED' ? 'COMPLETED' :
-                    order.status === 'CANCELLED' ? 'CANCELLED' : order.status}
+                   {order.status === 'PUBLISHED' ? 'Ожидает исполнителя' :
+                    order.status === 'HAS_RESPONSES' ? 'Есть отклики' :
+                    order.status === 'CLAIMED' ? 'Исполнитель выбран' :
+                    order.status === 'IN_PROGRESS' ? 'В работе' :
+                    order.status === 'COMPLETED' ? 'Выполнено' :
+                    order.status === 'CANCELLED' ? 'Отменен' : order.status}
                </Text>
             </View>
           </View>
