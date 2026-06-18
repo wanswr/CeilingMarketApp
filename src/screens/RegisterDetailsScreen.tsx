@@ -1,25 +1,63 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Alert, SafeAreaView, ScrollView } from 'react-native';
 import { Button } from '../components/Button';
+import { AppInput } from '../components/Input';
+import { mapEngine } from '../services/MapEngine';
+import { useAuth } from '../context/AuthContext';
 
 const RegisterDetailsScreen = ({ navigation }: any) => {
-  const [fio, setFio] = useState('');
-  const [date, setDate] = useState('');
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { updateUser } = useAuth();
+
+  const handleNext = async () => {
+    if (!name.trim()) {
+      Alert.alert("Ошибка", "Пожалуйста, введите ФИО");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await mapEngine.updateProfile({
+        name
+      });
+
+      updateUser(data);
+      navigation.navigate('RoleSelection');
+    } catch (err: any) {
+      console.error(err);
+      Alert.alert("Ошибка", err.response?.data?.message || "Не удалось зарегистрироваться");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Ваши данные</Text>
-      <TextInput style={styles.input} placeholder="ФИО" value={fio} onChangeText={setFio} />
-      <TextInput style={styles.input} placeholder="Дата рождения" value={date} onChangeText={setDate} />
-      <Button title="Далее" onPress={() => navigation.navigate('RoleSelection')} />
-    </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Завершение регистрации</Text>
+        <AppInput
+          label="ФИО"
+          value={name}
+          onChangeText={setName}
+          placeholder="Иван Иванов"
+        />
+        <Button
+          title="Продолжить"
+          onPress={handleNext}
+          loading={loading}
+          style={styles.button}
+        />
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 30, justifyContent: 'center', backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
-  input: { backgroundColor: '#f5f5f5', borderRadius: 12, padding: 16, marginBottom: 15 }
+  container: { flex: 1, backgroundColor: '#fff' },
+  content: { padding: 20 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 30, color: '#333' },
+  button: { marginTop: 20 }
 });
 
 export default RegisterDetailsScreen;

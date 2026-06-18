@@ -3,37 +3,36 @@ name: Run Tests
 on: 
   push:
     branches:
-      - main  # Здесь вы можете указать любые ветки, например, 'main' или 'develop'
+      - main
   pull_request:
     branches:
-      - main  # При создании PR на 'main'
+      - main
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-      # Шаг 1: Клонируем репозиторий
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Шаг 2: Устанавливаем Node.js (версия 20.x)
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # Шаг 3: Устанавливаем зависимости
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      # Шаг 4: Запускаем Jest тесты
       - name: Run Jest tests
         run: npm test
+        continue-on-error: false
 
-      # Шаг 5: Настройка для Detox (пропускаем в CI из-за отсутствия конфигурации эмуляторов)
+      # Detox requires significant setup for CI (emulators/simulators)
+      # Disabling for now to allow CI to pass on unit tests
       # - name: Set up Detox dependencies
       #   run: |
       #     npm install -g detox-cli
       #     npm run detox:build
       #     npm run detox:test
+      #   continue-on-error: true
