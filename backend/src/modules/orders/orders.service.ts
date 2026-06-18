@@ -59,7 +59,7 @@ export class OrdersService {
   /**
    * ATOMIC CLAIM: Postgres Transaction + row-level locking
    */
-  async claim(orderId: string, workerId: string) {
+  async claim(orderId: string, executorId: string) {
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. SELECT FOR UPDATE to lock the row and prevent concurrent claims
       const orderArray = await tx.$queryRaw<any[]>`
@@ -77,7 +77,7 @@ export class OrdersService {
       }
 
       // 3. Subscription check
-      const sub = await tx.subscription.findUnique({ where: { userId: workerId } });
+      const sub = await tx.subscription.findUnique({ where: { userId: executorId } });
       if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
         throw new ForbiddenException('Active subscription required');
       }
@@ -87,12 +87,12 @@ export class OrdersService {
         where: { id: orderId },
         data: {
           status: OrderStatus.CLAIMED,
-          workerId,
+          executorId,
           claimedAt: new Date(),
         },
         include: {
           employer: { select: { id: true, name: true, rating: true, avatar: true } },
-          worker: { select: { id: true, name: true, rating: true, avatar: true } }
+          executor: { select: { id: true, name: true, avatar: true } }
         }
       });
     });
@@ -104,7 +104,7 @@ export class OrdersService {
   async startWork(orderId: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
-    if (order.workerId !== userId) throw new ForbiddenException();
+    if (order.executorId !== userId) throw new ForbiddenException();
 
     if (order.status !== OrderStatus.CLAIMED) {
       throw new ConflictException('Order must be in CLAIMED status to start work');
@@ -115,7 +115,7 @@ export class OrdersService {
       data: { status: OrderStatus.IN_PROGRESS },
       include: {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
-        worker: { select: { id: true, name: true, rating: true, avatar: true } }
+        executor: { select: { id: true, name: true, avatar: true } }
       }
     });
 
@@ -127,8 +127,8 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
 
-    // Only worker can complete
-    if (order.workerId !== userId) throw new ForbiddenException();
+    // Only executor can complete
+    if (order.executorId !== userId) throw new ForbiddenException();
 
     if (order.status !== OrderStatus.IN_PROGRESS) {
       throw new ConflictException('Order must be IN_PROGRESS to be completed');
@@ -139,7 +139,7 @@ export class OrdersService {
       data: { status: OrderStatus.COMPLETED },
       include: {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
-        worker: { select: { id: true, name: true, rating: true, avatar: true } }
+        executor: { select: { id: true, name: true, avatar: true } }
       }
     });
 
@@ -156,8 +156,8 @@ export class OrdersService {
 
     // Permissions check
     const isEmployer = order.employerId === userId;
-    const isWorker = order.workerId === userId;
-    if (!isEmployer && !isWorker) throw new ForbiddenException();
+    const isExecutor = order.executorId === userId;
+    if (!isEmployer && !isExecutor) throw new ForbiddenException();
 
     // State Machine Rules
     if (!this.canTransition(order.status, newStatus)) {
@@ -207,8 +207,8 @@ export class OrdersService {
       where: { id },
       include: {
         employer: true,
-        worker: true,
-        applications: { include: { worker: true } }
+        executor: true,
+        applications: { include: { executor: true } }
       }
     });
     if (!order) throw new NotFoundException();

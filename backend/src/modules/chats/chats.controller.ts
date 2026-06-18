@@ -13,8 +13,8 @@ export class ChatsController {
   }
 
   @Post('init')
-  async initChat(@Body() body: { orderId: string, workerId: string, employerId: string }) {
-    return this.chatsService.getOrCreateChat(body.orderId, body.workerId, body.employerId);
+  async initChat(@Body() body: { orderId: string, executorId: string, employerId: string }) {
+    return this.chatsService.getOrCreateChat(body.orderId, body.executorId, body.employerId);
   }
 
   @Post(':id/messages')

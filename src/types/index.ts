@@ -49,11 +49,11 @@ export interface Order {
   comments?: string;
   details?: string;
   candidates?: any[];
-  workerId?: string;
+  executorId?: string;
   images?: string[];
   timestamp?: any;
   isPinned?: boolean;
   distance?: number;
   employer?: UserProfile;
-  worker?: UserProfile;
+  executor?: UserProfile;
 }

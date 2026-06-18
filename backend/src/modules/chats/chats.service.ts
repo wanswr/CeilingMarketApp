@@ -9,22 +9,22 @@ export class ChatsService {
     private gateway: AppGateway,
   ) {}
 
-  async getOrCreateChat(orderId: string, workerId: string, employerId: string) {
+  async getOrCreateChat(orderId: string, executorId: string, employerId: string) {
     const chat = await this.prisma.chat.upsert({
       where: {
-        orderId_workerId: { orderId, workerId }
+        orderId_executorId: { orderId, executorId }
       },
       update: {},
       create: {
         orderId,
-        workerId,
+        executorId,
         employerId,
       },
       include: {
         messages: { orderBy: { createdAt: 'asc' }, take: 50 },
         order: true,
         employer: { select: { id: true, name: true, avatar: true } },
-        worker: { select: { id: true, name: true, avatar: true } },
+        executor: { select: { id: true, name: true, avatar: true } },
       }
     });
     return chat;
@@ -36,7 +36,7 @@ export class ChatsService {
     });
 
     if (!chat) throw new NotFoundException('Chat not found');
-    if (chat.employerId !== senderId && chat.workerId !== senderId) {
+    if (chat.employerId !== senderId && chat.executorId !== senderId) {
       throw new ForbiddenException('Not a member of this chat');
     }
 
@@ -65,13 +65,13 @@ export class ChatsService {
       where: {
         OR: [
           { employerId: userId },
-          { workerId: userId }
+          { executorId: userId }
         ]
       },
       include: {
         order: { select: { title: true, status: true } },
         employer: { select: { name: true, avatar: true } },
-        worker: { select: { name: true, avatar: true } },
+        executor: { select: { name: true, avatar: true } },
         messages: { orderBy: { createdAt: 'desc' }, take: 1 }
       },
       orderBy: { updatedAt: 'desc' }

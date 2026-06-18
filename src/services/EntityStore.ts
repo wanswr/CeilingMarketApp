@@ -79,8 +79,8 @@ class EntityStore {
       this.setUser(o.employer);
     }
 
-    if (o.worker && typeof o.worker === 'object') {
-      this.setUser(o.worker);
+    if (o.executor && typeof o.executor === 'object') {
+      this.setUser(o.executor);
     }
 
     this.ordersById.set(order.id, order);

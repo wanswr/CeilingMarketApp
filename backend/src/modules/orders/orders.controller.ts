@@ -78,16 +78,18 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post(':id/claim')
-  claim(@Param('id') id: string, @Req() req: any) {
+  @Post(':id/apply')
+  apply(@Param('id') id: string, @Req() req: any) {
     return this.ordersService.claim(id, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post(':id/start')
   async start(@Param('id') id: string, @Req() req: any) {
     return this.ordersService.startWork(id, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post(':id/complete')
   async complete(@Param('id') id: string, @Req() req: any) {
     return this.ordersService.completeWork(id, req.user.id);
