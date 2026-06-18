@@ -73,10 +73,11 @@ const OrdersListScreen = ({ navigation }: any) => {
   };
 
   const filteredOrders = useMemo(() => {
+    const myId = currentUser?.uid || currentUser?.id;
     let result = orders.filter(order => {
-      const isMyOrder = order.employerId === currentUser?.uid;
-      const amIExecutor = order.executorId === currentUser?.uid;
-      const iApplied = order.applications?.some(a => a.executorId === currentUser?.uid);
+      const isMyOrder = order.employerId === myId;
+      const amIExecutor = order.executorId === myId;
+      const iApplied = order.applications?.some(a => (a.executorId === myId));
 
       const isInTab = activeTab === 'active'
         ? order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && (isMyOrder || amIExecutor || iApplied)
@@ -199,9 +200,9 @@ const OrdersListScreen = ({ navigation }: any) => {
         renderItem={({ item }) => (
           <OrderCard
             order={item}
-            isEmployer={item.employerId === currentUser?.uid}
-            currentUserId={currentUser?.uid}
-            hasApplied={item.applications?.some(a => a.executorId === currentUser?.uid)}
+            isEmployer={item.employerId === (currentUser?.uid || currentUser?.id)}
+            currentUserId={currentUser?.uid || currentUser?.id}
+            hasApplied={item.applications?.some(a => a.executorId === (currentUser?.uid || currentUser?.id))}
             onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
             onDelete={() => handleDelete(item.id)}
             onEdit={() => navigation.navigate('Add', { orderId: item.id })}

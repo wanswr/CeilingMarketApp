@@ -352,7 +352,21 @@ class MapEngine {
 
   applyForOrder = async (orderId: string, price?: number) => {
     const res = await this.apiService.applyForOrder(orderId, price);
-    // Rely on WebSocket for real-time updates
+    // Immediately update store with the applied state to ensure instant UI feedback
+    if (res.data?.order) {
+        const order = res.data.order;
+        // If the backend didn't include applications, we inject the current user's app
+        // to ensure EntityStore classifies this as "My Order" immediately
+        const applications = order.applications || [];
+        const myId = this.entityStore.getCurrentUser()?.uid || this.entityStore.getCurrentUser()?.id;
+
+        if (res.data.application && !applications.find((a: any) => a.executorId === myId)) {
+            applications.push(res.data.application);
+        }
+
+        this.entityStore.setOrder({ ...order, applications });
+        this.notifySubscribers();
+    }
     return res.data;
   }
 

@@ -140,9 +140,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const isEmployer = currentUser?.uid === order?.employerId;
-  const isExecutor = currentUser?.uid === order?.executorId;
-  const hasApplied = order?.applications?.some(a => a.executorId === currentUser?.uid);
+  const myId = currentUser?.uid || currentUser?.id;
+  const isEmployer = myId === order?.employerId;
+  const isExecutor = myId === order?.executorId;
+  const hasApplied = order?.applications?.some(a => a.executorId === myId);
 
   if (loading || !order) {
     return (

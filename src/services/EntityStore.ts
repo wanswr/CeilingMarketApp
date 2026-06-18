@@ -98,14 +98,20 @@ class EntityStore {
     const isMeApplicant = o.applications?.some((a: any) => a.executorId === this.currentUserId);
 
     if (isMeEmployer || isMeExecutor || isMeApplicant) {
-      this.myOrders.add(o.id);
+      if (!this.myOrders.has(o.id)) {
+          this.myOrders.add(o.id);
+          if (__DEV__) console.log(`[EntityStore] Order ${o.id} added to MyOrders. Reason:`, { isMeEmployer, isMeExecutor, isMeApplicant });
+      }
     } else {
       // ONLY delete if we are SURE it's not mine anymore (i.e. all relations are checked and false)
       // If o.applications is missing in a partial update, we don't know for sure, so we keep it if it was already there.
       if (existing && (order as any).applications === undefined && this.myOrders.has(o.id)) {
-          // Keep it
+          // Keep it - partial update without apps list
       } else {
-          this.myOrders.delete(o.id);
+          if (this.myOrders.has(o.id)) {
+              this.myOrders.delete(o.id);
+              if (__DEV__) console.log(`[EntityStore] Order ${o.id} removed from MyOrders`);
+          }
       }
     }
 
@@ -137,12 +143,18 @@ class EntityStore {
     const id = (user as any).id || user.uid;
     if (!id) return;
 
-    if ((user as any).isMe) this.currentUserId = id;
+    // Normalize user object to have both id and uid
+    const normalizedUser = { ...user, id, uid: id };
+
+    if ((user as any).isMe) {
+        this.currentUserId = id;
+        if (__DEV__) console.log('[EntityStore] Current User Set:', id);
+    }
 
     const existing = this.usersById.get(id);
-    if (!this.hasChanged(existing, user)) return;
+    if (existing && !this.hasChanged(existing, normalizedUser)) return;
 
-    this.usersById.set(id, user);
+    this.usersById.set(id, normalizedUser);
     this.meta.lastUpdated.set(`user:${id}`, Date.now());
     this.meta.writes++;
   }
