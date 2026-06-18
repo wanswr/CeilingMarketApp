@@ -70,7 +70,17 @@ export class OrdersService {
         throw new ConflictException('Order is no longer available for applications');
       }
 
-      // Create application
+      // 2. Check for existing application (idempotency)
+      const existingApp = await tx.application.findUnique({
+        where: { orderId_executorId: { orderId, executorId } },
+        include: {
+          executor: { select: { id: true, name: true, rating: true, avatar: true, completedOrders: true } }
+        }
+      });
+
+      if (existingApp) return { application: existingApp, order };
+
+      // 3. Create application
       const application = await tx.application.create({
         data: {
           orderId,

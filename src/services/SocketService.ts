@@ -42,6 +42,20 @@ class SocketService {
       mapEngine.triggerNotify();
     });
 
+    this.socket.on('order.status_changed', (order: any) => {
+      mapEngine.requestRouter.metrics.websocketUpdates++;
+      console.log('[WebSocket] Order status changed:', order.id, order.status);
+      mapEngine.entityStore?.setOrder(order);
+      mapEngine.triggerNotify();
+    });
+
+    this.socket.on('order.application_created', (application: any) => {
+      mapEngine.requestRouter.metrics.websocketUpdates++;
+      console.log('[WebSocket] New application for order:', application.orderId);
+      // Refresh order to get the full application list
+      mapEngine.syncOrder(application.orderId, true);
+    });
+
     this.socket.on('order.completed', (order: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('[WebSocket] Order completed received:', order.id);

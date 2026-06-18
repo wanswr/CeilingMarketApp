@@ -47,9 +47,12 @@ class MapEngine {
     this.subscribers.add(callback);
     // V6 Hardening: Ensure initial state is pushed correctly
     const currentOrders = this.getOrdersArray();
-    if (__DEV__) console.log('[MapEngine] New Subscriber. Pushing orders:', currentOrders.length);
+    if (__DEV__) console.log('[MapEngine] New Subscriber. Total:', this.subscribers.size, 'Orders:', currentOrders.length);
     callback(currentOrders);
-    return () => { this.subscribers.delete(callback); };
+    return () => {
+        this.subscribers.delete(callback);
+        if (__DEV__) console.log('[MapEngine] Unsubscribe. Total:', this.subscribers.size);
+    };
   }
 
   private notifySubscribers = () => {
@@ -265,7 +268,7 @@ class MapEngine {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.syncMap(false, region);
-    }, 1200); // 1.2s debounce for stability
+    }, 600); // Reduced debounce for better responsiveness
   }
 
   getOrders = () => {
