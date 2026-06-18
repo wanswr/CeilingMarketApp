@@ -46,17 +46,10 @@ class SocketService {
       mapEngine.triggerNotify();
     });
 
-    this.socket.on('order.claimed', (order: any) => {
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] order.claimed received:', order.id);
-      mapEngine.entityStore?.setOrder(order);
-      mapEngine.triggerNotify();
-    });
-
-    this.socket.on('order.application_created', (application: any) => {
+    this.socket.on('application.new', (application: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('[WebSocket] New application for order:', application.orderId);
-      // We don't fetch full spatial here, just update the specific order
+      // Update order to reflect HAS_RESPONSES and include new app
       mapEngine.syncOrder(application.orderId, true);
     });
 

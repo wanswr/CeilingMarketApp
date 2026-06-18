@@ -45,7 +45,7 @@ export default function CreateOrderScreen({ navigation }: any) {
     address: '',
     price: '',
     details: '',
-    workType: 'Монтажные работы',
+    workType: 'INSTALLATION',
     date: new Date(),
   });
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
@@ -347,14 +347,20 @@ export default function CreateOrderScreen({ navigation }: any) {
 
               <Text style={styles.label}>Тип работы</Text>
               <View style={styles.workTypeGrid}>
-                {['Монтажные работы', 'Сервис', 'Ремонт', 'Другое'].map(type => (
+                {[
+                  { id: 'INSTALLATION', label: 'Монтаж' },
+                  { id: 'SERVICE', label: 'Сервис' },
+                  { id: 'FROZE', label: 'Замер' },
+                  { id: 'REPAIR', label: 'Ремонт' },
+                  { id: 'OTHER', label: 'Другое' }
+                ].map(type => (
                   <TouchableOpacity
-                    key={type}
-                    style={[styles.workTypeBtn, form.workType === type && styles.workTypeBtnActive]}
-                    onPress={() => setForm({ ...form, workType: type })}
+                    key={type.id}
+                    style={[styles.workTypeBtn, form.workType === type.id && styles.workTypeBtnActive]}
+                    onPress={() => setForm({ ...form, workType: type.id })}
                   >
-                    <Text style={[styles.workTypeBtnText, form.workType === type && styles.workTypeBtnTextActive]}>
-                      {type === 'Монтажные работы' ? 'Монтаж' : type}
+                    <Text style={[styles.workTypeBtnText, form.workType === type.id && styles.workTypeBtnTextActive]}>
+                      {type.label}
                     </Text>
                   </TouchableOpacity>
                 ))}

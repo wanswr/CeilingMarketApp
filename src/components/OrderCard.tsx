@@ -19,11 +19,11 @@ interface OrderCardProps {
 
 const getStatusDetails = (status: OrderStatus) => {
   switch (status) {
-    case 'PUBLISHED':
+    case 'WAITING_RESPONSES':
       return { label: 'Ожидает исполнителя', color: '#EF4444', icon: 'time-outline' };
     case 'HAS_RESPONSES':
       return { label: 'Есть отклики', color: '#F59E0B', icon: 'people-outline' };
-    case 'CLAIMED':
+    case 'EXECUTOR_SELECTED':
       return { label: 'Исполнитель выбран', color: '#3B82F6', icon: 'checkmark-circle-outline' };
     case 'IN_PROGRESS':
       return { label: 'В работе', color: '#8B5CF6', icon: 'hammer-outline' };
@@ -35,6 +35,17 @@ const getStatusDetails = (status: OrderStatus) => {
       return { label: status, color: COLORS.gray, icon: 'help-circle-outline' };
   }
 };
+
+const getWorkTypeLabel = (type: string) => {
+    switch (type) {
+        case 'FROZE': return 'Замер';
+        case 'INSTALLATION': return 'Монтаж';
+        case 'SERVICE': return 'Сервис';
+        case 'REPAIR': return 'Ремонт';
+        case 'OTHER': return 'Другое';
+        default: return type;
+    }
+}
 
 export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string }> = ({
   order,
@@ -84,7 +95,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
       );
     }
 
-    if (!isEmployer && order.status === 'CLAIMED' && amIExecutor) {
+    if (!isEmployer && order.status === 'EXECUTOR_SELECTED' && amIExecutor) {
       return (
         <TouchableOpacity style={styles.startAction} onPress={onStart}>
           <Ionicons name="play-outline" size={24} color="#fff" />
@@ -139,7 +150,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
             {order.workType && (
               <View style={styles.metaItem}>
                 <Ionicons name="construct-outline" size={14} color={COLORS.gray} />
-                <Text style={styles.metaText}>{order.workType}</Text>
+                <Text style={styles.metaText}>{getWorkTypeLabel(order.workType)}</Text>
               </View>
             )}
             {isEmployer && order.applications && order.applications.length > 0 && (

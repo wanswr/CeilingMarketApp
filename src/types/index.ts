@@ -1,4 +1,6 @@
-export type OrderStatus = 'PENDING' | 'PUBLISHED' | 'HAS_RESPONSES' | 'CLAIMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DISPUTE';
+export type OrderStatus = 'WAITING_RESPONSES' | 'HAS_RESPONSES' | 'EXECUTOR_SELECTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export type WorkType = 'FROZE' | 'INSTALLATION' | 'SERVICE' | 'REPAIR' | 'OTHER';
 export interface LatLng { latitude: number; longitude: number; }
 export interface UserProfile {
   uid: string;
@@ -53,7 +55,7 @@ export interface Order {
   fixturesCount: number;
   chandeliersCount: number;
   curtainRodsCount: number;
-  workType?: string;
+  workType: WorkType;
   status: OrderStatus;
   createdAt: number;
   updatedAt: number;

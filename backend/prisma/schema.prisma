@@ -13,20 +13,26 @@ enum Role {
 }
 
 enum OrderStatus {
-  PENDING
-  PUBLISHED
+  WAITING_RESPONSES
   HAS_RESPONSES
-  CLAIMED
+  EXECUTOR_SELECTED
   IN_PROGRESS
   COMPLETED
   CANCELLED
-  DISPUTE
 }
 
 enum ApplicationStatus {
   PENDING
   ACCEPTED
   REJECTED
+}
+
+enum WorkType {
+  FROZE
+  INSTALLATION
+  SERVICE
+  REPAIR
+  OTHER
 }
 
 model User {
@@ -65,7 +71,7 @@ model Order {
   latitude          Float
   longitude         Float
   date              DateTime
-  workType          String?
+  workType          WorkType       @default(INSTALLATION)
 
   @@index([status, latitude, longitude]) // V6: Composite index for optimized BBOX spatial queries
   @@index([latitude])

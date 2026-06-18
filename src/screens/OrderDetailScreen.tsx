@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [submitting, setSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [showApplications, setShowApplications] = useState(false);
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [offerPrice, setOfferPrice] = useState('');
 
   useEffect(() => {
     mapEngine.syncUser().then(setCurrentUser);
@@ -63,32 +65,27 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const handleApply = async () => {
     if (submitting || hasApplied) return;
+    setOfferPrice(order?.price.toString() || '');
+    setShowPriceModal(true);
+  };
 
-    Alert.prompt(
-      'Ваше предложение',
-      'Введите вашу цену за работу (оставьте пустым для цены заказчика)',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Откликнуться',
-          onPress: async (price) => {
-            if (submitting) return;
-            setSubmitting(true);
-            try {
-              const numericPrice = price ? parseFloat(price) : undefined;
-              await mapEngine.applyForOrder(orderId, numericPrice);
-              Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
-            } catch (error: any) {
-              Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
-            } finally {
-              setSubmitting(false);
-            }
-          }
-        }
-      ],
-      'plain-text',
-      order?.price.toString()
-    );
+  const submitOffer = async () => {
+    const numericPrice = offerPrice ? parseFloat(offerPrice.replace(/\s/g, '')) : undefined;
+    if (offerPrice !== '' && isNaN(numericPrice as number)) {
+        Alert.alert('Ошибка', 'Введите корректное число');
+        return;
+    }
+
+    setShowPriceModal(false);
+    setSubmitting(true);
+    try {
+        await mapEngine.applyForOrder(orderId, numericPrice);
+        Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
+    } catch (error: any) {
+        Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
+    } finally {
+        setSubmitting(false);
+    }
   };
 
   const handleAcceptApplication = async (applicationId: string) => {
@@ -199,23 +196,23 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             </View>
             <View style={[
                 styles.statusBadge,
-                order.status === 'PUBLISHED' && { backgroundColor: 'rgba(45, 91, 255, 0.1)' },
+                order.status === 'WAITING_RESPONSES' && { backgroundColor: 'rgba(45, 91, 255, 0.1)' },
                 order.status === 'HAS_RESPONSES' && { backgroundColor: 'rgba(245, 158, 11, 0.1)' },
-                order.status === 'CLAIMED' && { backgroundColor: 'rgba(59, 130, 246, 0.1)' },
+                order.status === 'EXECUTOR_SELECTED' && { backgroundColor: 'rgba(59, 130, 246, 0.1)' },
                 order.status === 'IN_PROGRESS' && { backgroundColor: 'rgba(139, 92, 246, 0.1)' },
                 order.status === 'COMPLETED' && { backgroundColor: 'rgba(16, 185, 129, 0.1)' }
             ]}>
                <Text style={[
                    styles.statusText,
-                   order.status === 'PUBLISHED' && { color: COLORS.primary },
+                   order.status === 'WAITING_RESPONSES' && { color: COLORS.primary },
                    order.status === 'HAS_RESPONSES' && { color: '#F59E0B' },
-                   order.status === 'CLAIMED' && { color: '#3B82F6' },
+                   order.status === 'EXECUTOR_SELECTED' && { color: '#3B82F6' },
                    order.status === 'IN_PROGRESS' && { color: '#8B5CF6' },
                    order.status === 'COMPLETED' && { color: '#10B981' }
                ]}>
-                   {order.status === 'PUBLISHED' ? 'Ожидает исполнителя' :
+                   {order.status === 'WAITING_RESPONSES' ? 'Ожидает исполнителя' :
                     order.status === 'HAS_RESPONSES' ? 'Есть отклики' :
-                    order.status === 'CLAIMED' ? 'Исполнитель выбран' :
+                    order.status === 'EXECUTOR_SELECTED' ? 'Исполнитель выбран' :
                     order.status === 'IN_PROGRESS' ? 'В работе' :
                     order.status === 'COMPLETED' ? 'Выполнено' :
                     order.status === 'CANCELLED' ? 'Отменен' : order.status}
@@ -233,7 +230,13 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                  </View>
                  <View style={styles.infoTextWrapper}>
                    <Text style={styles.infoLabel}>Тип работы</Text>
-                   <Text style={styles.infoValue}>{order.workType}</Text>
+                   <Text style={styles.infoValue}>
+                     {order.workType === 'FROZE' ? 'Замер' :
+                      order.workType === 'INSTALLATION' ? 'Монтаж' :
+                      order.workType === 'SERVICE' ? 'Сервис' :
+                      order.workType === 'REPAIR' ? 'Ремонт' :
+                      order.workType === 'OTHER' ? 'Другое' : order.workType}
+                   </Text>
                  </View>
               </View>
             )}
@@ -319,7 +322,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
               </TouchableOpacity>
 
-              {order.status === 'CLAIMED' && (
+              {order.status === 'EXECUTOR_SELECTED' && (
                 <TouchableOpacity
                   activeOpacity={0.9}
                   style={[styles.applyBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
@@ -353,22 +356,55 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               style={[
                 styles.applyBtn,
                 hasApplied && { backgroundColor: '#FF4757' },
-                order.status === 'CLAIMED' && !hasApplied && { backgroundColor: COLORS.gray }
+                order.status === 'EXECUTOR_SELECTED' && !hasApplied && { backgroundColor: COLORS.gray }
               ]}
               onPress={hasApplied ? handleCancelApplication : handleApply}
-              disabled={submitting || (order.status === 'CLAIMED' && !hasApplied)}
+              disabled={submitting || (order.status === 'EXECUTOR_SELECTED' && !hasApplied)}
             >
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.applyBtnText}>
-                  {hasApplied ? 'Отказаться' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Откликнуться'}
+                  {hasApplied ? 'Отказаться' : order.status === 'EXECUTOR_SELECTED' ? 'Заказ занят' : 'Откликнуться'}
                 </Text>
               )}
             </TouchableOpacity>
           )}
         </SafeAreaView>
       </BlurView>
+
+      <Modal
+        visible={showPriceModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPriceModal(false)}
+      >
+        <View style={styles.modalOverlayCenter}>
+            <BlurView intensity={30} style={StyleSheet.absoluteFill}>
+                <TouchableOpacity style={{flex: 1}} onPress={() => setShowPriceModal(false)} />
+            </BlurView>
+            <View style={styles.priceModalContent}>
+                <Text style={styles.modalTitleSmall}>Ваше предложение</Text>
+                <Text style={styles.modalSubtitleSmall}>Укажите цену, за которую готовы выполнить работу (₽)</Text>
+                <TextInput
+                    style={styles.priceInput}
+                    value={offerPrice}
+                    onChangeText={setOfferPrice}
+                    keyboardType="numeric"
+                    placeholder="Введите цену"
+                    autoFocus
+                />
+                <View style={styles.modalActionsRow}>
+                    <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowPriceModal(false)}>
+                        <Text style={styles.modalCancelBtnText}>Отмена</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.modalApplyBtn} onPress={submitOffer}>
+                        <Text style={styles.modalApplyBtnText}>Откликнуться</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showApplications}
@@ -542,12 +578,26 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  modalOverlayCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
   modalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     height: '80%',
     padding: 24,
+  },
+  priceModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    ...SHADOWS.heavy,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -559,6 +609,51 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '900',
     color: COLORS.dark,
+  },
+  modalTitleSmall: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.dark,
+    marginBottom: 8,
+  },
+  modalSubtitleSmall: {
+    fontSize: 14,
+    color: COLORS.gray,
+    marginBottom: 20,
+  },
+  priceInput: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.dark,
+    marginBottom: 20,
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalCancelBtnText: {
+    color: COLORS.gray,
+    fontWeight: '700',
+  },
+  modalApplyBtn: {
+    flex: 2,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    ...SHADOWS.soft,
+  },
+  modalApplyBtnText: {
+    color: '#fff',
+    fontWeight: '800',
   },
   applicationsList: {
     gap: 16,

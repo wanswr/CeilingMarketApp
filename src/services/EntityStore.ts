@@ -74,8 +74,18 @@ class EntityStore {
 
     const existing = this.ordersById.get(order.id);
 
-    // Merge new data with existing to support partial updates via WebSockets
-    const mergedOrder = existing ? { ...existing, ...order } : order;
+    // V7 Hardening: Deep merge applications to prevent loss of "My Orders" status during partial status updates
+    let mergedApplications = order.applications;
+    if (!mergedApplications && existing?.applications) {
+        mergedApplications = existing.applications;
+    } else if (mergedApplications && existing?.applications) {
+        // Simple merge by executorId
+        const appMap = new Map(existing.applications.map(a => [a.executorId, a]));
+        mergedApplications.forEach(a => appMap.set(a.executorId, a));
+        mergedApplications = Array.from(appMap.values());
+    }
+
+    const mergedOrder = existing ? { ...existing, ...order, applications: mergedApplications } : { ...order, applications: mergedApplications };
 
     if (existing && !this.hasChanged(existing, mergedOrder)) return;
 
@@ -104,20 +114,14 @@ class EntityStore {
           if (__DEV__) console.log(`[EntityStore] Order ${o.id} added to MyOrders. Reason:`, { isMeEmployer, isMeExecutor, isMeApplicant });
       }
     } else {
-      // ONLY delete if we are SURE it's not mine anymore (i.e. all relations are checked and false)
-      // If o.applications is missing in a partial update, we don't know for sure, so we keep it if it was already there.
-      if (existing && (order as any).applications === undefined && this.myOrders.has(o.id)) {
-          // Keep it - partial update without apps list
-      } else {
-          if (this.myOrders.has(o.id)) {
-              this.myOrders.delete(o.id);
-              if (__DEV__) console.log(`[EntityStore] Order ${o.id} removed from MyOrders`);
-          }
+      if (this.myOrders.has(o.id)) {
+          this.myOrders.delete(o.id);
+          if (__DEV__) console.log(`[EntityStore] Order ${o.id} removed from MyOrders`);
       }
     }
 
     // Update Spatial Index
-    this.updateOrderInGrid(order);
+    this.updateOrderInGrid(mergedOrder);
   }
 
   removeOrder = (id: string) => {

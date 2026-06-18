@@ -40,14 +40,17 @@ const MapScreen = ({ navigation }: any) => {
     const unsubscribe = mapEngine.subscribe((newOrders) => {
       setAllOrders([...newOrders]); // Force spread to ensure reactivity
       setLoading(false);
-    });
+    }, 'MapScreen');
 
     // Immediate local sync if store is empty to prevent blank screen
     if (mapEngine.getOrders().length === 0) {
       mapEngine.syncMap(false, region);
     }
 
-    return () => { unsubscribe(); };
+    return () => {
+      if (__DEV__) console.log('[MapScreen] Cleaning up subscription');
+      unsubscribe();
+    };
   }, []);
 
   // 2. Initial Data Load & Location Sync

@@ -57,22 +57,21 @@ class MapEngine {
   /**
    * Subscribe to global order updates.
    */
-  subscribe = (callback: OrderCallback) => {
+  subscribe = (callback: OrderCallback, source: string = 'unknown') => {
     this.subscribers.add(callback);
 
     // V6 Hardening: Ensure initial state is pushed correctly
-    // If not hydrated yet, hydration will trigger notifySubscribers later
     if (this.isHydrated) {
         const currentOrders = this.getOrdersArray();
-        if (__DEV__) console.log('[MapEngine] New Subscriber. Total:', this.subscribers.size, 'Orders:', currentOrders.length);
-        callback([...currentOrders]); // Return copy for safety
+        if (__DEV__) console.log(`[MapEngine] New Subscriber from [${source}]. Total:`, this.subscribers.size, 'Orders:', currentOrders.length);
+        callback([...currentOrders]);
     } else {
-        if (__DEV__) console.log('[MapEngine] New Subscriber. Waiting for hydration...');
+        if (__DEV__) console.log(`[MapEngine] New Subscriber from [${source}]. Waiting for hydration...`);
     }
 
     return () => {
         this.subscribers.delete(callback);
-        if (__DEV__) console.log('[MapEngine] Unsubscribe. Total:', this.subscribers.size);
+        if (__DEV__) console.log(`[MapEngine] Unsubscribe from [${source}]. Remaining:`, this.subscribers.size);
     };
   }
 
@@ -102,8 +101,14 @@ class MapEngine {
   syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!this.entityStore || !viewRegion) return;
 
+    if (__DEV__) {
+        console.log('[MapEngine DIAG] Active Subscribers:', this.subscribers.size);
+        console.log('[MapEngine DIAG] Orders in Store:', this.entityStore.getAllOrders().length);
+    }
+
+    // V7 Hardening: Multi-lock. Skip if locked or if we just recently synced this area
     if (this.syncLock) {
-        if (__DEV__) console.log('[MapEngine] Sync already in progress - skipping');
+        if (__DEV__) console.log('[MapEngine] Sync locked');
         return;
     }
 
@@ -125,8 +130,10 @@ class MapEngine {
 
     // 2. CHECK SPATIAL CACHE
     if (!force && this.spatialManager.isAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng)) {
-        if (__DEV__) console.log('[MapEngine] SPATIAL CACHE HIT - Skipping network');
+        if (__DEV__) console.log('[MapEngine] SPATIAL CACHE HIT');
         this.requestRouter.metrics.spatialCacheHits++;
+        // If it's a cache hit, we still want to ensure UI is up to date with what's in store
+        this.notifySubscribers();
         return;
     }
 
@@ -161,7 +168,10 @@ class MapEngine {
       );
 
       if (response) {
-        if (__DEV__) console.log(`[MapEngine] MAP BACKGROUND UPDATE: received ${response.created?.length || 0} new orders`);
+        if (__DEV__) {
+            console.log(`[MapEngine] MAP BACKGROUND UPDATE: received ${response.created?.length || 0} new orders`);
+            console.log(`[MapEngine] SPATIAL REQUESTS/MIN: ${this.requestRouter.metrics.spatialRequests}`);
+        }
         this.entityStore.applyPatch(response);
         this.spatialManager.markAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng);
         this.requestRouter.metrics.spatialChunksLoaded = this.spatialManager.getLoadedChunksCount();

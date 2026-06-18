@@ -15,14 +15,12 @@ export class OrdersService {
    * Status transitions map: defines legal state changes.
    */
   private readonly transitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.PENDING]: [OrderStatus.PUBLISHED, OrderStatus.CANCELLED],
-    [OrderStatus.PUBLISHED]: [OrderStatus.HAS_RESPONSES, OrderStatus.CLAIMED, OrderStatus.CANCELLED],
-    [OrderStatus.HAS_RESPONSES]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
-    [OrderStatus.CLAIMED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
-    [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.DISPUTE],
+    [OrderStatus.WAITING_RESPONSES]: [OrderStatus.HAS_RESPONSES, OrderStatus.CANCELLED],
+    [OrderStatus.HAS_RESPONSES]: [OrderStatus.EXECUTOR_SELECTED, OrderStatus.CANCELLED],
+    [OrderStatus.EXECUTOR_SELECTED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
+    [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
     [OrderStatus.COMPLETED]: [],
     [OrderStatus.CANCELLED]: [],
-    [OrderStatus.DISPUTE]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
   };
 
   /**
@@ -50,7 +48,7 @@ export class OrdersService {
         images: dto.images || [],
         employerId,
         idempotencyKey: dto.idempotencyKey,
-        status: OrderStatus.PUBLISHED, // Target status for new orders
+        status: OrderStatus.WAITING_RESPONSES, // Target status for new orders
       },
     });
 
@@ -66,7 +64,7 @@ export class OrdersService {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new NotFoundException('Order not found');
 
-      if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
+      if (order.status !== OrderStatus.WAITING_RESPONSES && order.status !== OrderStatus.HAS_RESPONSES) {
         throw new ConflictException('Order is no longer available for applications');
       }
 
@@ -94,7 +92,7 @@ export class OrdersService {
 
       // Update order status if first application
       let updatedOrder = order;
-      if (order.status === OrderStatus.PUBLISHED) {
+      if (order.status === OrderStatus.WAITING_RESPONSES) {
         updatedOrder = await tx.order.update({
           where: { id: orderId },
           data: { status: OrderStatus.HAS_RESPONSES }
@@ -104,7 +102,7 @@ export class OrdersService {
       return { application, order: updatedOrder };
     });
 
-    this.gateway.broadcast('order.application_created', result.application);
+    this.gateway.broadcast('application.new', result.application);
     this.gateway.broadcast('order.status.changed', result.order);
     return result;
   }
@@ -143,7 +141,7 @@ export class OrdersService {
       const updatedOrder = await tx.order.update({
         where: { id: application.orderId },
         data: {
-          status: OrderStatus.CLAIMED,
+          status: OrderStatus.EXECUTOR_SELECTED,
           executorId: application.executorId,
           claimedAt: new Date(),
         },
@@ -173,8 +171,8 @@ export class OrdersService {
     if (!order) throw new NotFoundException();
     if (order.executorId !== userId) throw new ForbiddenException();
 
-    if (order.status !== OrderStatus.CLAIMED) {
-      throw new ConflictException('Order must be in CLAIMED status to start work');
+    if (order.status !== OrderStatus.EXECUTOR_SELECTED) {
+      throw new ConflictException('Order must be in EXECUTOR_SELECTED status to start work');
     }
 
     const result = await this.prisma.order.update({
@@ -364,7 +362,7 @@ export class OrdersService {
     if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
       await this.prisma.order.update({
         where: { id: orderId },
-        data: { status: OrderStatus.PUBLISHED }
+        data: { status: OrderStatus.WAITING_RESPONSES }
       });
     }
 
@@ -404,7 +402,7 @@ export class OrdersService {
 
     const orders = await this.prisma.order.findMany({
       where: {
-        status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] },
+        status: { in: [OrderStatus.WAITING_RESPONSES, OrderStatus.HAS_RESPONSES] },
         latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
         longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
         updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,

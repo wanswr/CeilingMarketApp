@@ -6,35 +6,41 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
   ScrollView,
-  Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { mapEngine } from '../services/MapEngine';
-import { Order, OrderStatus } from '../types';
+import { Order, OrderStatus, WorkType } from '../types';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { OrderCard } from '../components/OrderCard';
 
 const FILTERS = {
   STATUS: [
     { id: 'all', label: 'Все' },
-    { id: 'PUBLISHED', label: 'Ожидает откликов' },
-    { id: 'HAS_RESPONSES', label: 'Есть отклики' },
+    { id: 'WAITING_RESPONSES', label: 'Ожидает' },
+    { id: 'HAS_RESPONSES', label: 'Отклики' },
+    { id: 'EXECUTOR_SELECTED', label: 'Выбран' },
     { id: 'IN_PROGRESS', label: 'В работе' },
-    { id: 'COMPLETED', label: 'Выполнено' },
   ],
   WORK_TYPE: [
     { id: 'all', label: 'Все типы' },
-    { id: 'Монтажные работы', label: 'Монтаж' },
-    { id: 'Сервис', label: 'Сервис' },
-    { id: 'Ремонт', label: 'Ремонт' },
-    { id: 'Другое', label: 'Другое' },
+    { id: 'INSTALLATION', label: 'Монтаж' },
+    { id: 'SERVICE', label: 'Сервис' },
+    { id: 'FROZE', label: 'Замер' },
+    { id: 'REPAIR', label: 'Ремонт' },
+    { id: 'OTHER', label: 'Другое' },
   ],
   SORT: [
     { id: 'newest', label: 'Сначала новые', icon: 'arrow-down' },
     { id: 'oldest', label: 'Сначала старые', icon: 'arrow-up' },
+  ],
+  DATE: [
+    { id: 'all', label: 'Все даты' },
+    { id: 'today', label: 'Сегодня' },
+    { id: 'tomorrow', label: 'Завтра' },
+    { id: 'week', label: 'Эта неделя' },
   ]
 };
 
@@ -47,12 +53,13 @@ const OrdersListScreen = ({ navigation }: any) => {
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
   const [workTypeFilter, setWorkTypeFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
 
   useEffect(() => {
     const unsubscribe = mapEngine.subscribe(() => {
       setOrders(mapEngine.getOrders(true));
-    });
+    }, 'OrdersListScreen');
 
     const user = mapEngine.getCurrentUser();
     if (user) setCurrentUser(user);
@@ -75,18 +82,46 @@ const OrdersListScreen = ({ navigation }: any) => {
   const filteredOrders = useMemo(() => {
     const myId = currentUser?.uid || currentUser?.id;
     let result = orders.filter(order => {
+      // In-memory filter based on visibility rules
+      if (order.status === 'CANCELLED') return false;
+
       const isMyOrder = order.employerId === myId;
       const amIExecutor = order.executorId === myId;
       const iApplied = order.applications?.some(a => (a.executorId === myId));
 
-      const isInTab = activeTab === 'active'
-        ? order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && (isMyOrder || amIExecutor || iApplied)
-        : order.status === 'COMPLETED' && (isMyOrder || amIExecutor);
+      // 1. Tab Logic: Archive = ONLY COMPLETED. Active = everything else mine.
+      if (activeTab === 'archive') {
+          if (order.status !== 'COMPLETED') return false;
+          if (!isMyOrder && !amIExecutor) return false;
+      } else {
+          if (order.status === 'COMPLETED') return false;
+          if (!isMyOrder && !amIExecutor && !iApplied) return false;
+      }
 
-      if (!isInTab) return false;
-
+      // 2. Filter logic
       if (statusFilter !== 'all' && order.status !== statusFilter) return false;
       if (workTypeFilter !== 'all' && order.workType !== workTypeFilter) return false;
+
+      // 3. Date Filter logic
+      if (dateFilter !== 'all') {
+          const orderDate = new Date(order.date);
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const tomorrow = new Date(today);
+          tomorrow.setDate(today.getDate() + 1);
+          const nextWeek = new Date(today);
+          nextWeek.setDate(today.getDate() + 7);
+
+          if (dateFilter === 'today') {
+              if (orderDate < today || orderDate >= tomorrow) return false;
+          } else if (dateFilter === 'tomorrow') {
+              const dayAfterTomorrow = new Date(tomorrow);
+              dayAfterTomorrow.setDate(tomorrow.getDate() + 1);
+              if (orderDate < tomorrow || orderDate >= dayAfterTomorrow) return false;
+          } else if (dateFilter === 'week') {
+              if (orderDate < today || orderDate > nextWeek) return false;
+          }
+      }
 
       return true;
     });
@@ -150,19 +185,25 @@ const OrdersListScreen = ({ navigation }: any) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Заказы</Text>
+        <Text style={styles.headerTitle}>Мои заказы</Text>
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'active' && styles.tabActive]}
-            onPress={() => setActiveTab('active')}
+            onPress={() => {
+                setActiveTab('active');
+                setStatusFilter('all');
+            }}
           >
             <Text style={[styles.tabText, activeTab === 'active' && styles.tabTextActive]}>Активные</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'archive' && styles.tabActive]}
-            onPress={() => setActiveTab('archive')}
+            onPress={() => {
+                setActiveTab('archive');
+                setStatusFilter('all');
+            }}
           >
             <Text style={[styles.tabText, activeTab === 'archive' && styles.tabTextActive]}>Архив</Text>
           </TouchableOpacity>
@@ -181,17 +222,21 @@ const OrdersListScreen = ({ navigation }: any) => {
               color={COLORS.primary}
             />
             <Text style={styles.sortButtonText}>
-              {FILTERS.SORT.find(s => s.id === sortOrder)?.label}
+              {sortOrder === 'newest' ? 'Новые' : 'Старые'}
             </Text>
           </TouchableOpacity>
 
           <View style={styles.divider} />
 
-          {FILTERS.STATUS.map(f => renderFilterChip(f, statusFilter, setStatusFilter))}
+          {activeTab === 'active' && FILTERS.STATUS.map(f => renderFilterChip(f, statusFilter, setStatusFilter))}
+
+          {activeTab === 'active' && <View style={styles.divider} />}
+
+          {FILTERS.WORK_TYPE.map(f => renderFilterChip(f, workTypeFilter, setWorkTypeFilter))}
 
           <View style={styles.divider} />
 
-          {FILTERS.WORK_TYPE.map(f => renderFilterChip(f, workTypeFilter, setWorkTypeFilter))}
+          {FILTERS.DATE.map(f => renderFilterChip(f, dateFilter, setDateFilter))}
         </ScrollView>
       </View>
 
@@ -205,7 +250,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             hasApplied={item.applications?.some(a => a.executorId === (currentUser?.uid || currentUser?.id))}
             onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
             onDelete={() => handleDelete(item.id)}
-            onEdit={() => navigation.navigate('Add', { orderId: item.id })}
+            onEdit={() => navigation.navigate('EditOrder', { orderId: item.id })}
             onStart={() => handleStartWork(item.id)}
             onComplete={() => handleCompleteWork(item.id)}
             onChat={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: item.id } })}
@@ -237,11 +282,11 @@ const OrdersListScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: '#fff' },
-  headerTitle: { fontSize: 32, fontWeight: '900', color: COLORS.dark, marginBottom: 15 },
+  headerTitle: { fontSize: 28, fontWeight: '900', color: COLORS.dark, marginBottom: 15, letterSpacing: -0.5 },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#F1F5F9',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 4,
     marginBottom: 15
   },
@@ -249,7 +294,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 8
+    borderRadius: 10
   },
   tabActive: {
     backgroundColor: '#fff',
@@ -257,12 +302,11 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.gray
   },
   tabTextActive: {
     color: COLORS.primary,
-    fontWeight: '700'
   },
   filtersWrapper: {
     backgroundColor: '#fff',
@@ -294,6 +338,7 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: COLORS.primary,
+    fontWeight: '700',
   },
   sortButton: {
     flexDirection: 'row',
@@ -311,11 +356,11 @@ const styles = StyleSheet.create({
   },
   divider: {
     width: 1,
-    height: 20,
+    height: 16,
     backgroundColor: '#E2E8F0',
     marginHorizontal: 4,
   },
-  list: { padding: 16 },
+  list: { padding: 16, paddingBottom: 100 },
   empty: {
     flex: 1,
     alignItems: 'center',
