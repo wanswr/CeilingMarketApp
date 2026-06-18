@@ -73,12 +73,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         {
           text: 'Откликнуться',
           onPress: async (price) => {
+            if (submitting) return;
             setSubmitting(true);
             try {
               const numericPrice = price ? parseFloat(price) : undefined;
               await mapEngine.applyForOrder(orderId, numericPrice);
               Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
-              // We rely on MapEngine.syncOrder inside applyForOrder and/or WebSocket
             } catch (error: any) {
               Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
             } finally {
@@ -213,11 +213,11 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                    order.status === 'IN_PROGRESS' && { color: '#8B5CF6' },
                    order.status === 'COMPLETED' && { color: '#10B981' }
                ]}>
-                   {order.status === 'PUBLISHED' ? 'Ожидает откликов' :
-                    order.status === 'HAS_RESPONSES' ? 'Есть отклики' :
-                    order.status === 'CLAIMED' ? 'Мастер выбран' :
-                    order.status === 'IN_PROGRESS' ? 'В работе' :
-                    order.status === 'COMPLETED' ? 'Выполнен' : order.status}
+                   {order.status === 'PUBLISHED' ? 'NEW' :
+                    order.status === 'HAS_RESPONSES' ? 'HAS_RESPONSES' :
+                    order.status === 'CLAIMED' ? 'IN_PROGRESS' :
+                    order.status === 'IN_PROGRESS' ? 'IN_PROGRESS' :
+                    order.status === 'COMPLETED' ? 'COMPLETED' : order.status}
                </Text>
             </View>
           </View>

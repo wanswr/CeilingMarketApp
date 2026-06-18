@@ -20,15 +20,15 @@ interface OrderCardProps {
 const getStatusDetails = (status: OrderStatus) => {
   switch (status) {
     case 'PUBLISHED':
-      return { label: 'Ожидает исполнителя', color: '#EF4444', icon: 'time-outline' };
+      return { label: 'NEW', color: '#EF4444', icon: 'time-outline' };
     case 'HAS_RESPONSES':
-      return { label: 'Есть отклики', color: '#F59E0B', icon: 'people-outline' };
+      return { label: 'HAS_RESPONSES', color: '#F59E0B', icon: 'people-outline' };
     case 'CLAIMED':
-      return { label: 'Исполнитель выбран', color: '#3B82F6', icon: 'checkmark-circle-outline' };
+      return { label: 'IN_PROGRESS', color: '#3B82F6', icon: 'checkmark-circle-outline' };
     case 'IN_PROGRESS':
-      return { label: 'В работе', color: '#8B5CF6', icon: 'hammer-outline' };
+      return { label: 'IN_PROGRESS', color: '#8B5CF6', icon: 'hammer-outline' };
     case 'COMPLETED':
-      return { label: 'Выполнено', color: '#10B981', icon: 'ribbon-outline' };
+      return { label: 'COMPLETED', color: '#10B981', icon: 'ribbon-outline' };
     case 'CANCELLED':
       return { label: 'Отменен', color: COLORS.gray, icon: 'close-circle-outline' };
     default:

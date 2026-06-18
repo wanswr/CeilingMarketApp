@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, Alert, SafeAreaView, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard, ImageBackground } from 'react-native';
+import { View, Text, Alert, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard, ImageBackground } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';

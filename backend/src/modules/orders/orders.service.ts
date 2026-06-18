@@ -54,7 +54,7 @@ export class OrdersService {
       },
     });
 
-    this.gateway.broadcast('order.created', order);
+    this.gateway.broadcast('order.created', { order, orderId: order.id, employerId: order.employerId });
     return order;
   }
 
@@ -105,7 +105,7 @@ export class OrdersService {
     });
 
     this.gateway.broadcast('order.application_created', result.application);
-    this.gateway.broadcast('orderStatusChanged', result.order);
+    this.gateway.broadcast('order.status.changed', result.order);
     return result;
   }
 
@@ -160,7 +160,7 @@ export class OrdersService {
       };
     });
 
-    this.gateway.broadcast('orderStatusChanged', result.order);
+    this.gateway.broadcast('order.status.changed', result.order);
     this.gateway.broadcast('application.accepted', { id: result.acceptedApplicationId });
     result.rejectedApplicationIds.forEach(id => {
       this.gateway.broadcast('application.rejected', { id });
@@ -186,7 +186,7 @@ export class OrdersService {
       }
     });
 
-    this.gateway.broadcast('orderStatusChanged', result);
+    this.gateway.broadcast('order.status.changed', result);
     return result;
   }
 
@@ -210,7 +210,9 @@ export class OrdersService {
       }
     });
 
-    this.gateway.broadcast('orderStatusChanged', result);
+    this.gateway.broadcast('order.status.changed', result);
+    this.gateway.broadcast('order.status.changed', result);
+    this.gateway.broadcast('order.status.changed', result);
     return result;
   }
 

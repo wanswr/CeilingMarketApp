@@ -13,20 +13,19 @@ class SocketService {
       console.log('[WebSocket] Connected to backend');
     });
 
-    this.socket.on('order.created', (order: any) => {
+    this.socket.on('order.created', (payload: any) => {
+      const { order } = payload;
       mapEngine.requestRouter.metrics.websocketUpdates++;
       if (__DEV__) {
           console.log('[WebSocket] New order received:', order.id);
-          const meta = mapEngine.entityStore?.meta;
-          if (meta) meta.wsUpdates = (meta.wsUpdates || 0) + 1;
       }
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
     });
 
-    this.socket.on('orderStatusChanged', (order: any) => {
+    this.socket.on('order.status.changed', (order: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] orderStatusChanged received:', order.id, order.status);
+      console.log('[WebSocket] order.status.changed received:', order.id, order.status);
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
     });

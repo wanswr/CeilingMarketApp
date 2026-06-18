@@ -25,7 +25,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { z } from 'zod';
 import { AppInput } from '../components/Input';
-import { AppButton } from '../components/Button';
+import { Button } from '../components/Button';
 import { mapEngine } from '../services/MapEngine';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
@@ -254,7 +254,7 @@ export default function CreateOrderScreen({ navigation }: any) {
       await mapEngine.createOrder(orderData);
 
       Alert.alert("Успех", "Заказ опубликован!");
-      navigation.goBack();
+      navigation.navigate('Orders');
     } catch (e: any) {
       console.error(e);
       Alert.alert("Ошибка сохранения", e.message || "Произошла неизвестная ошибка");
@@ -301,6 +301,7 @@ export default function CreateOrderScreen({ navigation }: any) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     setForm({
+      ...form,
       title: parsedData.title || form.title,
       address: parsedData.address || form.address,
       price: parsedData.price ? String(parsedData.price) : form.price,
