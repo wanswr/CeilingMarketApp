@@ -5,12 +5,21 @@ class SocketService {
   private socket: Socket | null = null;
 
   connect(url: string) {
-    if (this.socket) return;
+    if (this.socket?.connected) return;
+    if (this.socket) {
+        this.socket.connect();
+        return;
+    }
 
-    this.socket = io(url.replace('/api/', ''));
+    console.log('[WebSocket] Initializing connection to:', url);
+    this.socket = io(url.replace('/api/', ''), {
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+    });
 
     this.socket.on('connect', () => {
-      console.log('[WebSocket] Connected to backend');
+      console.log('[WebSocket] Connected to backend - ID:', this.socket?.id);
     });
 
     this.socket.on('order.created', (payload: any) => {

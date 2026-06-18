@@ -1,7 +1,8 @@
 import { Order, UserProfile } from '../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
- * EntityStore V2.1: Normalized Single Source of Truth.
+ * EntityStore V4: Normalized Single Source of Truth with Persistence.
  */
 
 interface StoreMeta {
@@ -278,8 +279,50 @@ class EntityStore {
           cacheHits: network.spatialCacheHits || 0,
           cacheMisses: network.spatialCacheMisses || 0,
           ordersInMemory: store.ordersCount,
+          myOrders: this.myOrders.size,
           cacheSizeMb: `${cacheSizeMb} MB`
       });
+    }
+  }
+
+  /**
+   * Persistence Layer: Hydrate store from disk.
+   */
+  hydrate = async () => {
+    const start = Date.now();
+    try {
+      const data = await AsyncStorage.getItem('entity_store_v4');
+      if (!data) return false;
+
+      const parsed = JSON.parse(data);
+      if (parsed.orders) {
+          parsed.orders.forEach((o: Order) => {
+              // Stale check: skip orders older than 24h if they aren't 'mine'
+              const age = Date.now() - new Date(o.createdAt).getTime();
+              const isMine = o.employerId === this.currentUserId || o.executorId === this.currentUserId;
+              if (age < 86400000 || isMine) {
+                  this.setOrder(o);
+              }
+          });
+      }
+
+      if (__DEV__) console.log(`[EntityStore] MAP CACHE RESTORE: ${this.ordersById.size} orders in ${Date.now() - start}ms`);
+      return true;
+    } catch (e) {
+      console.error('[EntityStore] Hydration failed', e);
+      return false;
+    }
+  }
+
+  persist = async () => {
+    try {
+      const data = {
+        orders: Array.from(this.ordersById.values()),
+        updatedAt: Date.now()
+      };
+      await AsyncStorage.setItem('entity_store_v4', JSON.stringify(data));
+    } catch (e) {
+      console.error('[EntityStore] Persistence failed', e);
     }
   }
 

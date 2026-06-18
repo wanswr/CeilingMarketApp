@@ -208,7 +208,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             onEdit={() => navigation.navigate('Add', { orderId: item.id })}
             onStart={() => handleStartWork(item.id)}
             onComplete={() => handleCompleteWork(item.id)}
-            onChat={() => navigation.navigate('Chats', { orderId: item.id })}
+            onChat={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: item.id } })}
             onCancelApplication={() => {
               Alert.alert('Отмена отклика', 'Вы уверены?', [
                 { text: 'Нет' },

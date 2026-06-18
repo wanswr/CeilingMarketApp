@@ -299,7 +299,7 @@ const MapScreen = ({ navigation }: any) => {
                         style={styles.iconButton}
                         onPress={(e) => {
                           e.stopPropagation();
-                          navigation.navigate('Chats', { orderId: selectedOrder.id });
+                          navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: selectedOrder.id } });
                         }}
                       >
                         <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />

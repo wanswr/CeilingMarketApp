@@ -27,6 +27,7 @@ class MapEngine {
   private syncLock: boolean = false;
   private currentAbortController: AbortController | null = null;
   public spatialManager = spatialManager;
+  private isHydrated = false;
 
   constructor(
       public apiService: any,
@@ -34,10 +35,23 @@ class MapEngine {
       public requestRouter: any,
       public geoClusterService: any
   ) {
+      this.initPersistence();
       if (__DEV__) {
           console.log('[MapEngine] EntityStore injected:', !!this.entityStore);
           console.log('[MapEngine] GeoClusterService injected:', !!this.geoClusterService);
       }
+  }
+
+  private initPersistence = async () => {
+    if (this.isHydrated) return;
+    const start = Date.now();
+    await Promise.all([
+      this.entityStore.hydrate(),
+      this.spatialManager.hydrate()
+    ]);
+    this.isHydrated = true;
+    if (__DEV__) console.log(`[MapEngine] MAP INIT COMPLETE: ${this.entityStore.getAllOrders().length} orders in ${Date.now() - start}ms`);
+    this.notifySubscribers();
   }
 
   /**
@@ -45,10 +59,17 @@ class MapEngine {
    */
   subscribe = (callback: OrderCallback) => {
     this.subscribers.add(callback);
+
     // V6 Hardening: Ensure initial state is pushed correctly
-    const currentOrders = this.getOrdersArray();
-    if (__DEV__) console.log('[MapEngine] New Subscriber. Total:', this.subscribers.size, 'Orders:', currentOrders.length);
-    callback(currentOrders);
+    // If not hydrated yet, hydration will trigger notifySubscribers later
+    if (this.isHydrated) {
+        const currentOrders = this.getOrdersArray();
+        if (__DEV__) console.log('[MapEngine] New Subscriber. Total:', this.subscribers.size, 'Orders:', currentOrders.length);
+        callback([...currentOrders]); // Return copy for safety
+    } else {
+        if (__DEV__) console.log('[MapEngine] New Subscriber. Waiting for hydration...');
+    }
+
     return () => {
         this.subscribers.delete(callback);
         if (__DEV__) console.log('[MapEngine] Unsubscribe. Total:', this.subscribers.size);
@@ -140,10 +161,16 @@ class MapEngine {
       );
 
       if (response) {
+        if (__DEV__) console.log(`[MapEngine] MAP BACKGROUND UPDATE: received ${response.created?.length || 0} new orders`);
         this.entityStore.applyPatch(response);
         this.spatialManager.markAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng);
         this.requestRouter.metrics.spatialChunksLoaded = this.spatialManager.getLoadedChunksCount();
         this.notifySubscribers();
+
+        // Persist after merge
+        this.entityStore.persist();
+        this.spatialManager.persist();
+        if (__DEV__) console.log('[MapEngine] MAP MERGE COMPLETE & PERSISTED');
       }
 
       this.entityStore.meta.spatialSyncs++;

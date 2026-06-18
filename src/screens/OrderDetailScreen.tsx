@@ -305,7 +305,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           {isEmployer ? (
             <TouchableOpacity
               style={styles.chatButtonFooter}
-              onPress={() => navigation.navigate('Chats', { orderId: order.id })}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: order.id } })}
             >
               <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
               <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
@@ -314,7 +314,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             <>
               <TouchableOpacity
                 style={styles.iconChatBtn}
-                onPress={() => navigation.navigate('Chats', { orderId: order.id })}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: order.id } })}
               >
                 <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
               </TouchableOpacity>
@@ -408,7 +408,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                       style={styles.appChatBtn}
                       onPress={() => {
                         setShowApplications(false);
-                        navigation.navigate('Chats', { orderId: order.id, executorId: app.executorId });
+                        navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: order.id, executorId: app.executorId } });
                       }}
                      >
                        <Ionicons name="chatbubble-outline" size={20} color={COLORS.primary} />

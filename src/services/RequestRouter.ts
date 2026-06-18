@@ -67,7 +67,11 @@ class RequestRouter {
         const data = await fetchFn();
         this.cache.set(key, { data, timestamp: Date.now() });
         return data;
-      } catch (error) {
+      } catch (error: any) {
+        if (error.name === 'AbortError' || error.message === 'canceled') {
+           // Don't log or throw for cancellations
+           return null as any;
+        }
         console.error(`[RequestRouter] FETCH FAILED: ${key}`, error);
         throw error;
       } finally {
