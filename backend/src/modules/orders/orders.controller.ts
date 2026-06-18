@@ -83,6 +83,16 @@ export class OrdersController {
     return this.ordersService.claim(id, req.user.id);
   }
 
+  @Post(':id/start')
+  async start(@Param('id') id: string, @Req() req: any) {
+    return this.ordersService.startWork(id, req.user.id);
+  }
+
+  @Post(':id/complete')
+  async complete(@Param('id') id: string, @Req() req: any) {
+    return this.ordersService.completeWork(id, req.user.id);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch(':id/status')
   updateStatus(

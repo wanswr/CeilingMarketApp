@@ -341,6 +341,18 @@ class MapEngine {
     return res.data;
   }
 
+  startOrder = async (orderId: string) => {
+    const res = await this.apiService.startOrder(orderId);
+    await this.syncOrder(orderId, true);
+    return res.data;
+  }
+
+  completeOrder = async (orderId: string) => {
+    const res = await this.apiService.completeOrder(orderId);
+    await this.syncOrder(orderId, true);
+    return res.data;
+  }
+
   activateSubscription = async (days: number) => {
     const res = await this.apiService.activateSubscription(days);
     await this.syncUser(true);

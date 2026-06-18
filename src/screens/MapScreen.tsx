@@ -74,6 +74,7 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     if (!newRegion || !newRegion.latitude || !newRegion.longitude) return;
+    if (newRegion.latitude === region.latitude && newRegion.longitude === region.longitude) return;
 
     setRegion(newRegion);
     // V6 Normalization

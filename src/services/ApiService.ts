@@ -56,7 +56,9 @@ class ApiService {
   parseOrderText = (text: string) => this.api.post('orders/parse', { text });
   createOrder = (data: any) => this.api.post('orders', data);
   getOrderDetails = (id: string) => this.api.get(`orders/${id}`);
-  applyForOrder = (id: string) => this.api.post(`orders/${id}/claim`);
+  applyForOrder = (id: string) => this.api.post(`orders/${id}/apply`);
+  startOrder = (id: string) => this.api.post(`orders/${id}/start`);
+  completeOrder = (id: string) => this.api.post(`orders/${id}/complete`);
   updateOrder = (id: string, data: any) => this.api.patch(`orders/${id}`, data);
   deleteOrder = (id: string) => this.api.delete(`orders/${id}`);
 

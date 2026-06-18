@@ -38,9 +38,33 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     setSubmitting(true);
     try {
       await mapEngine.applyForOrder(orderId);
-      Alert.alert('Успех', 'Ваша заявка отправлена');
+      Alert.alert('Успех', 'Вы взяли заказ в работу!');
     } catch (error: any) {
-      Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить заявку');
+      Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось взять заказ');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleStartWork = async () => {
+    setSubmitting(true);
+    try {
+      await mapEngine.startOrder(orderId);
+      Alert.alert('Успех', 'Статус заказа изменен на "В работе"');
+    } catch (error: any) {
+      Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось начать работу');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCompleteWork = async () => {
+    setSubmitting(true);
+    try {
+      await mapEngine.completeOrder(orderId);
+      Alert.alert('Успех', 'Заказ выполнен!');
+    } catch (error: any) {
+      Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось завершить работу');
     } finally {
       setSubmitting(false);
     }
@@ -98,8 +122,23 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             <View style={styles.priceBadge}>
                <Text style={styles.priceText}>{order.price} ₽</Text>
             </View>
-            <View style={styles.statusBadge}>
-               <Text style={styles.statusText}>Срочно</Text>
+            <View style={[
+                styles.statusBadge,
+                order.status === 'PUBLISHED' && { backgroundColor: 'rgba(45, 91, 255, 0.1)' },
+                order.status === 'IN_PROGRESS' && { backgroundColor: 'rgba(255, 165, 0, 0.1)' },
+                order.status === 'COMPLETED' && { backgroundColor: 'rgba(76, 175, 80, 0.1)' }
+            ]}>
+               <Text style={[
+                   styles.statusText,
+                   order.status === 'PUBLISHED' && { color: COLORS.primary },
+                   order.status === 'IN_PROGRESS' && { color: '#FFA500' },
+                   order.status === 'COMPLETED' && { color: '#4CAF50' }
+               ]}>
+                   {order.status === 'PUBLISHED' ? 'Активен' :
+                    order.status === 'CLAIMED' ? 'Забронирован' :
+                    order.status === 'IN_PROGRESS' ? 'В работе' :
+                    order.status === 'COMPLETED' ? 'Выполнен' : order.status}
+               </Text>
             </View>
           </View>
 
@@ -154,22 +193,42 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
       <BlurView intensity={90} tint="light" style={styles.footer}>
         <SafeAreaView edges={['bottom']}>
-          {order.status === 'PUBLISHED' ? (
+          {order.status === 'PUBLISHED' && (
             <TouchableOpacity
               activeOpacity={0.9}
               style={styles.applyBtn}
               onPress={handleApply}
               disabled={submitting}
             >
-              {submitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.applyBtnText}>Откликнуться на заказ</Text>
-              )}
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Взять заказ</Text>}
             </TouchableOpacity>
-          ) : (
-            <View style={[styles.applyBtn, { backgroundColor: COLORS.gray, opacity: 0.5 }]}>
-              <Text style={styles.applyBtnText}>Заказ не активен</Text>
+          )}
+
+          {order.status === 'CLAIMED' && (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[styles.applyBtn, { backgroundColor: COLORS.secondary }]}
+              onPress={handleStartWork}
+              disabled={submitting}
+            >
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Начать работу</Text>}
+            </TouchableOpacity>
+          )}
+
+          {order.status === 'IN_PROGRESS' && (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[styles.applyBtn, { backgroundColor: '#4CAF50' }]}
+              onPress={handleCompleteWork}
+              disabled={submitting}
+            >
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Завершить работу</Text>}
+            </TouchableOpacity>
+          )}
+
+          {order.status === 'COMPLETED' && (
+            <View style={[styles.applyBtn, { backgroundColor: COLORS.gray, opacity: 0.7 }]}>
+              <Text style={styles.applyBtnText}>Заказ выполнен</Text>
             </View>
           )}
         </SafeAreaView>

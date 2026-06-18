@@ -52,7 +52,7 @@ export class OrdersService {
       },
     });
 
-    this.gateway.broadcast('order_created', order);
+    this.gateway.broadcast('order.created', order);
     return order;
   }
 
@@ -90,10 +90,60 @@ export class OrdersService {
           workerId,
           claimedAt: new Date(),
         },
+        include: {
+          employer: { select: { id: true, name: true, rating: true, avatar: true } },
+          worker: { select: { id: true, name: true, rating: true, avatar: true } }
+        }
       });
     });
 
-    this.gateway.broadcast('order_claimed', result);
+    this.gateway.broadcast('order.claimed', result);
+    return result;
+  }
+
+  async startWork(orderId: string, userId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException();
+    if (order.workerId !== userId) throw new ForbiddenException();
+
+    if (order.status !== OrderStatus.CLAIMED) {
+      throw new ConflictException('Order must be in CLAIMED status to start work');
+    }
+
+    const result = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.IN_PROGRESS },
+      include: {
+        employer: { select: { id: true, name: true, rating: true, avatar: true } },
+        worker: { select: { id: true, name: true, rating: true, avatar: true } }
+      }
+    });
+
+    this.gateway.broadcast('order.updated', result);
+    return result;
+  }
+
+  async completeWork(orderId: string, userId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException();
+
+    // Only worker can complete
+    if (order.workerId !== userId) throw new ForbiddenException();
+
+    if (order.status !== OrderStatus.IN_PROGRESS) {
+      throw new ConflictException('Order must be IN_PROGRESS to be completed');
+    }
+
+    const result = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.COMPLETED },
+      include: {
+        employer: { select: { id: true, name: true, rating: true, avatar: true } },
+        worker: { select: { id: true, name: true, rating: true, avatar: true } }
+      }
+    });
+
+    this.gateway.broadcast('order.completed', result);
     return result;
   }
 

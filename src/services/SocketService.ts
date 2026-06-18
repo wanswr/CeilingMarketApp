@@ -13,7 +13,7 @@ class SocketService {
       console.log('[WebSocket] Connected to backend');
     });
 
-    this.socket.on('order_created', (order: any) => {
+    this.socket.on('order.created', (order: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       if (__DEV__) {
           console.log('[WebSocket] New order received:', order.id);
@@ -24,7 +24,7 @@ class SocketService {
       mapEngine.triggerNotify();
     });
 
-    this.socket.on('order_updated', (order: any) => {
+    this.socket.on('order.updated', (order: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       if (__DEV__) {
           console.log('[WebSocket] Order update received:', order.id);
@@ -35,10 +35,18 @@ class SocketService {
       mapEngine.triggerNotify();
     });
 
-    this.socket.on('order_claimed', (order: any) => {
+    this.socket.on('order.claimed', (order: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('[WebSocket] Order claimed received:', order.id);
       mapEngine.entityStore?.setOrder(order);
+      mapEngine.triggerNotify();
+    });
+
+    this.socket.on('order.completed', (order: any) => {
+      mapEngine.requestRouter.metrics.websocketUpdates++;
+      console.log('[WebSocket] Order completed received:', order.id);
+      mapEngine.entityStore?.setOrder(order);
+      mapEngine.triggerNotify();
     });
 
     this.socket.on('disconnect', () => {
