@@ -309,6 +309,43 @@ export class OrdersService {
     return this.prisma.order.delete({ where: { id } });
   }
 
+  async cancelApplication(orderId: string, executorId: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const app = await this.prisma.application.findUnique({
+      where: { orderId_executorId: { orderId, executorId } }
+    });
+    if (!app) throw new NotFoundException('Application not found');
+
+    // Rule: Cannot cancel if less than 24h before монтаж
+    const now = new Date();
+    const orderDate = new Date(order.date);
+    const diffHours = (orderDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    if (diffHours < 24) {
+      throw new ForbiddenException('Cannot cancel application less than 24 hours before order date');
+    }
+
+    await this.prisma.application.delete({
+      where: { id: app.id }
+    });
+
+    // Check if HAS_RESPONSES status should be reverted
+    const remainingApps = await this.prisma.application.count({
+      where: { orderId }
+    });
+
+    if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.PUBLISHED }
+      });
+    }
+
+    return { success: true };
+  }
+
   /**
    * SPATIAL ENGINE V6: Universal spatial search supporting Radius and BBOX modes.
    */

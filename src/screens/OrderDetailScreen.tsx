@@ -37,6 +37,31 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     return unsubscribe;
   }, [orderId]);
 
+  const handleCancelApplication = async () => {
+    Alert.alert(
+      'Отмена отклика',
+      'Вы уверены, что хотите отозвать свой отклик?',
+      [
+        { text: 'Нет', style: 'cancel' },
+        {
+          text: 'Да, отозвать',
+          onPress: async () => {
+            setSubmitting(true);
+            try {
+              await mapEngine.cancelApplication(orderId);
+              Alert.alert('Успех', 'Отклик отозван');
+              await mapEngine.syncOrder(orderId, true);
+            } catch (error: any) {
+              Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отозвать отклик');
+            } finally {
+              setSubmitting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleApply = async () => {
     Alert.prompt(
       'Ваше предложение',
@@ -322,15 +347,19 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           ) : (
             <TouchableOpacity
               activeOpacity={0.9}
-              style={[styles.applyBtn, (hasApplied || order.status === 'CLAIMED') && { backgroundColor: COLORS.gray }]}
-              onPress={handleApply}
-              disabled={submitting || hasApplied || order.status === 'CLAIMED'}
+              style={[
+                styles.applyBtn,
+                hasApplied && { backgroundColor: '#FF4757' },
+                order.status === 'CLAIMED' && !hasApplied && { backgroundColor: COLORS.gray }
+              ]}
+              onPress={hasApplied ? handleCancelApplication : handleApply}
+              disabled={submitting || (order.status === 'CLAIMED' && !hasApplied)}
             >
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.applyBtnText}>
-                  {hasApplied ? 'Отклик отправлен' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Откликнуться'}
+                  {hasApplied ? 'Отказаться' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Откликнуться'}
                 </Text>
               )}
             </TouchableOpacity>

@@ -57,6 +57,7 @@ class ApiService {
   createOrder = (data: any) => this.api.post('orders', data);
   getOrderDetails = (id: string) => this.api.get(`orders/${id}`);
   applyForOrder = (id: string, price?: number) => this.api.post(`orders/${id}/apply`, { price });
+  cancelApplication = (id: string) => this.api.delete(`orders/${id}/apply`);
   acceptApplication = (applicationId: string) => this.api.post(`orders/applications/${applicationId}/accept`);
   startOrder = (id: string) => this.api.post(`orders/${id}/start`);
   completeOrder = (id: string) => this.api.post(`orders/${id}/complete`);

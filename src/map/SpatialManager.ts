@@ -10,7 +10,7 @@ interface ChunkMetadata {
 
 class SpatialManager {
   private cache: Map<string, ChunkMetadata> = new Map();
-  private cellSize = 0.5; // Approx 50km cells
+  private cellSize = 0.25; // Approx 25km cells for more granular loading
   private maxChunks = 500; // LRU Limit
 
   /**

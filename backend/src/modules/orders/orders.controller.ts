@@ -49,6 +49,12 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Delete(':id/apply')
+  cancelApplication(@Param('id') id: string, @Req() req: any) {
+    return this.ordersService.cancelApplication(id, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('parse')
   parseOrderText(@Body('text') text: string) {
     return this.ordersService.parseOrderText(text);

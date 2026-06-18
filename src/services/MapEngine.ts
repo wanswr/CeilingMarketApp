@@ -268,7 +268,7 @@ class MapEngine {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.syncMap(false, region);
-    }, 600); // Reduced debounce for better responsiveness
+      }, 300); // Further reduced debounce for maximum responsiveness
   }
 
   getOrders = () => {
@@ -340,6 +340,12 @@ class MapEngine {
   applyForOrder = async (orderId: string, price?: number) => {
     const res = await this.apiService.applyForOrder(orderId, price);
     // Refresh order details to show updated candidates/status
+    await this.syncOrder(orderId, true);
+    return res.data;
+  }
+
+  cancelApplication = async (orderId: string) => {
+    const res = await this.apiService.cancelApplication(orderId);
     await this.syncOrder(orderId, true);
     return res.data;
   }
