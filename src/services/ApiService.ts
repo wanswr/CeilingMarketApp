@@ -51,6 +51,7 @@ class ApiService {
 
   // Orders
   getOrders = (params: any) => this.api.get('orders', { params });
+  getMyOrders = () => this.api.get('orders/my');
   getSpatialOrders = (params: any, config?: any) => this.api.get('orders/spatial', { params, ...config });
 
   parseOrderText = (text: string) => this.api.post('orders/parse', { text });

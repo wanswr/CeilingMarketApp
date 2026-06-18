@@ -275,6 +275,19 @@ class MapEngine {
     return this.getOrdersArray();
   }
 
+  syncMyOrders = async () => {
+    if (!this.entityStore) return [];
+    try {
+      const res = await this.apiService.getMyOrders();
+      this.entityStore.setOrders(res.data);
+      this.notifySubscribers();
+      return res.data;
+    } catch (e) {
+      console.error('[MapEngine] syncMyOrders failed', e);
+      return [];
+    }
+  }
+
   getOrdersInBounds = (minLat: number, maxLat: number, minLng: number, maxLng: number) => {
       return this.entityStore?.getOrdersInBounds(minLat, maxLat, minLng, maxLng) || [];
   }

@@ -275,11 +275,36 @@ export class OrdersService {
       include: {
         employer: true,
         executor: true,
-        applications: { include: { executor: true } }
+        applications: {
+          include: {
+            executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+          }
+        }
       }
     });
     if (!order) throw new NotFoundException();
     return order;
+  }
+
+  async findMyOrders(userId: string) {
+    return this.prisma.order.findMany({
+      where: {
+        OR: [
+          { employerId: userId },
+          { executorId: userId },
+          { applications: { some: { executorId: userId } } }
+        ]
+      },
+      include: {
+        employer: { select: { id: true, name: true, rating: true, avatar: true } },
+        executor: { select: { id: true, name: true, avatar: true } },
+        applications: {
+          where: { executorId: userId },
+          select: { id: true, status: true, price: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
   }
 
   async update(id: string, dto: any, userId: string) {

@@ -58,13 +58,15 @@ const OrdersListScreen = ({ navigation }: any) => {
     if (user) setCurrentUser(user);
     else mapEngine.syncUser().then(setCurrentUser);
 
+    mapEngine.syncMyOrders();
+
     return () => unsubscribe();
   }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([
-      mapEngine.forceRefresh(),
+      mapEngine.syncMyOrders(),
       mapEngine.syncUser(true)
     ]);
     setRefreshing(false);

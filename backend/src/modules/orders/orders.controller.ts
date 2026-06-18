@@ -7,6 +7,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  @UseGuards(JwtAuthGuard)
+  @Get('my')
+  findMyOrders(@Req() req: any) {
+    return this.ordersService.findMyOrders(req.user.id);
+  }
+
   @Get()
   findAll(
     @Query('lat') lat?: number,

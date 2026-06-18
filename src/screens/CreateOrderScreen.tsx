@@ -25,6 +25,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { z } from 'zod';
 import { AppInput } from '../components/Input';
+import { AppButton } from '../components/Button';
 import { mapEngine } from '../services/MapEngine';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
@@ -35,6 +36,7 @@ const orderSchema = z.object({
   address: z.string().min(5, "Укажите полный адрес"),
   price: z.string().refine(v => !isNaN(Number(v)) && Number(v) > 0, "Укажите корректную сумму"),
   details: z.string().min(10, "Добавьте больше деталей"),
+  workType: z.string().min(1, "Выберите тип работы"),
 });
 
 export default function CreateOrderScreen({ navigation }: any) {
@@ -43,6 +45,7 @@ export default function CreateOrderScreen({ navigation }: any) {
     address: '',
     price: '',
     details: '',
+    workType: 'Монтажные работы',
     date: new Date(),
   });
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
@@ -340,6 +343,22 @@ export default function CreateOrderScreen({ navigation }: any) {
 
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Основная информация</Text>
+
+              <Text style={styles.label}>Тип работы</Text>
+              <View style={styles.workTypeGrid}>
+                {['Монтажные работы', 'Сервис', 'Ремонт', 'Другое'].map(type => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.workTypeBtn, form.workType === type && styles.workTypeBtnActive]}
+                    onPress={() => setForm({ ...form, workType: type })}
+                  >
+                    <Text style={[styles.workTypeBtnText, form.workType === type && styles.workTypeBtnTextActive]}>
+                      {type === 'Монтажные работы' ? 'Монтаж' : type}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <AppInput
                 label={i18n.t('orders.title')}
                 placeholder={i18n.t('orders.titlePlaceholder')}
@@ -646,6 +665,32 @@ const styles = StyleSheet.create({
   },
   mapPreview: { width: '100%', height: '100%' },
   label: { fontSize: 14, fontWeight: '800', color: COLORS.dark, marginBottom: 10, marginLeft: 4 },
+  workTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  workTypeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  workTypeBtnActive: {
+    backgroundColor: COLORS.primary + '10',
+    borderColor: COLORS.primary,
+  },
+  workTypeBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.gray,
+  },
+  workTypeBtnTextActive: {
+    color: COLORS.primary,
+  },
   row: { flexDirection: 'row', alignItems: 'flex-end' },
   dateButton: {
     flexDirection: 'row',
