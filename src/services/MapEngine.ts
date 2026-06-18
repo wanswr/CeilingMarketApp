@@ -64,13 +64,13 @@ class MapEngine {
     this.notifySubscribers();
   }
 
-  private getOrdersArray = (): Order[] => {
+  getOrdersArray = (myOnly: boolean = false): Order[] => {
     if (!this.entityStore) {
         if (__DEV__) console.warn('[MapEngine] Accessing entityStore before injection');
         return [];
     }
-    return this.entityStore.getAllOrders()
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const orders = myOnly ? this.entityStore.getMyOrders() : this.entityStore.getAllOrders();
+    return orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   /**
@@ -271,8 +271,8 @@ class MapEngine {
       }, 300); // Further reduced debounce for maximum responsiveness
   }
 
-  getOrders = () => {
-    return this.getOrdersArray();
+  getOrders = (myOnly: boolean = false) => {
+    return this.getOrdersArray(myOnly);
   }
 
   syncMyOrders = async () => {

@@ -24,27 +24,23 @@ class SocketService {
       mapEngine.triggerNotify();
     });
 
+    this.socket.on('orderStatusChanged', (order: any) => {
+      mapEngine.requestRouter.metrics.websocketUpdates++;
+      console.log('[WebSocket] orderStatusChanged received:', order.id, order.status);
+      mapEngine.entityStore?.setOrder(order);
+      mapEngine.triggerNotify();
+    });
+
     this.socket.on('order.updated', (order: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      if (__DEV__) {
-          console.log('[WebSocket] Order update received:', order.id);
-          const meta = mapEngine.entityStore?.meta;
-          if (meta) meta.wsUpdates = (meta.wsUpdates || 0) + 1;
-      }
+      console.log('[WebSocket] order.updated received:', order.id);
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
     });
 
     this.socket.on('order.claimed', (order: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] Order claimed received:', order.id);
-      mapEngine.entityStore?.setOrder(order);
-      mapEngine.triggerNotify();
-    });
-
-    this.socket.on('order.status_changed', (order: any) => {
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] Order status changed:', order.id, order.status);
+      console.log('[WebSocket] order.claimed received:', order.id);
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
     });
@@ -52,13 +48,13 @@ class SocketService {
     this.socket.on('order.application_created', (application: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('[WebSocket] New application for order:', application.orderId);
-      // Refresh order to get the full application list
+      // We don't fetch full spatial here, just update the specific order
       mapEngine.syncOrder(application.orderId, true);
     });
 
     this.socket.on('order.completed', (order: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] Order completed received:', order.id);
+      console.log('[WebSocket] order.completed received:', order.id);
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
     });

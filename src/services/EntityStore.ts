@@ -17,6 +17,7 @@ interface StoreMeta {
 class EntityStore {
   // Stage 2: Normalized storage by ID
   public ordersById: Map<string, Order> = new Map();
+  public myOrders: Set<string> = new Set();
   public usersById: Map<string, UserProfile> = new Map();
   public subscriptionsById: Map<string, any> = new Map();
   public reviewsById: Map<string, any> = new Map();
@@ -71,9 +72,13 @@ class EntityStore {
     }
 
     const existing = this.ordersById.get(order.id);
-    if (!this.hasChanged(existing, order)) return;
 
-    const o = { ...order } as any;
+    // Merge new data with existing to support partial updates via WebSockets
+    const mergedOrder = existing ? { ...existing, ...order } : order;
+
+    if (existing && !this.hasChanged(existing, mergedOrder)) return;
+
+    const o = mergedOrder as any;
 
     if (o.employer && typeof o.employer === 'object') {
       this.setUser(o.employer);
@@ -83,9 +88,26 @@ class EntityStore {
       this.setUser(o.executor);
     }
 
-    this.ordersById.set(order.id, order);
-    this.meta.lastUpdated.set(`order:${order.id}`, Date.now());
+    this.ordersById.set(o.id, mergedOrder);
+    this.meta.lastUpdated.set(`order:${o.id}`, Date.now());
     this.meta.writes++;
+
+    // My Orders Logic: persist "my orders" membership based on relations
+    const isMeEmployer = o.employerId === this.currentUserId;
+    const isMeExecutor = o.executorId === this.currentUserId;
+    const isMeApplicant = o.applications?.some((a: any) => a.executorId === this.currentUserId);
+
+    if (isMeEmployer || isMeExecutor || isMeApplicant) {
+      this.myOrders.add(o.id);
+    } else {
+      // ONLY delete if we are SURE it's not mine anymore (i.e. all relations are checked and false)
+      // If o.applications is missing in a partial update, we don't know for sure, so we keep it if it was already there.
+      if (existing && (order as any).applications === undefined && this.myOrders.has(o.id)) {
+          // Keep it
+      } else {
+          this.myOrders.delete(o.id);
+      }
+    }
 
     // Update Spatial Index
     this.updateOrderInGrid(order);
@@ -96,6 +118,7 @@ class EntityStore {
     if (order) {
         this.removeFromGrid(order);
         this.ordersById.delete(id);
+        this.myOrders.delete(id);
         this.meta.writes++;
     }
   }
@@ -133,6 +156,13 @@ class EntityStore {
   getAllOrders = (): Order[] => {
     this.meta.reads++;
     return Array.from(this.ordersById.values());
+  }
+
+  getMyOrders = (): Order[] => {
+    this.meta.reads++;
+    return Array.from(this.myOrders)
+      .map(id => this.ordersById.get(id))
+      .filter(Boolean) as Order[];
   }
 
   /**
@@ -243,6 +273,7 @@ class EntityStore {
 
   clear = () => {
     this.ordersById.clear();
+    this.myOrders.clear();
     this.usersById.clear();
     this.spatialGrid.clear();
     this.meta.lastUpdated.clear();

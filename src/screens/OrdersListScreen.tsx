@@ -40,7 +40,7 @@ const FILTERS = {
 
 const OrdersListScreen = ({ navigation }: any) => {
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
-  const [orders, setOrders] = useState<Order[]>(mapEngine.getOrders());
+  const [orders, setOrders] = useState<Order[]>(mapEngine.getOrders(true));
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -50,8 +50,8 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [sortOrder, setSortOrder] = useState('newest');
 
   useEffect(() => {
-    const unsubscribe = mapEngine.subscribe((newOrders) => {
-      setOrders(newOrders);
+    const unsubscribe = mapEngine.subscribe(() => {
+      setOrders(mapEngine.getOrders(true));
     });
 
     const user = mapEngine.getCurrentUser();

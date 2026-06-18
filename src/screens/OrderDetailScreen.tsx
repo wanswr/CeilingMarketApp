@@ -63,6 +63,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleApply = async () => {
+    if (submitting || hasApplied) return;
+
     Alert.prompt(
       'Ваше предложение',
       'Введите вашу цену за работу (оставьте пустым для цены заказчика)',
@@ -76,7 +78,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               const numericPrice = price ? parseFloat(price) : undefined;
               await mapEngine.applyForOrder(orderId, numericPrice);
               Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
-              await mapEngine.syncOrder(orderId, true);
+              // We rely on MapEngine.syncOrder inside applyForOrder and/or WebSocket
             } catch (error: any) {
               Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
             } finally {
