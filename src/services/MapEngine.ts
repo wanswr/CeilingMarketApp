@@ -352,32 +352,31 @@ class MapEngine {
 
   applyForOrder = async (orderId: string, price?: number) => {
     const res = await this.apiService.applyForOrder(orderId, price);
-    // Refresh order details to show updated candidates/status
-    await this.syncOrder(orderId, true);
+    // Rely on WebSocket for real-time updates
     return res.data;
   }
 
   cancelApplication = async (orderId: string) => {
     const res = await this.apiService.cancelApplication(orderId);
-    await this.syncOrder(orderId, true);
+    // Rely on WebSocket for real-time updates
     return res.data;
   }
 
   acceptApplication = async (applicationId: string, orderId: string) => {
     const res = await this.apiService.acceptApplication(applicationId);
-    await this.syncOrder(orderId, true);
+    // Rely on WebSocket for real-time updates
     return res.data;
   }
 
   startOrder = async (orderId: string) => {
     const res = await this.apiService.startOrder(orderId);
-    await this.syncOrder(orderId, true);
+    // Rely on WebSocket for real-time updates
     return res.data;
   }
 
   completeOrder = async (orderId: string) => {
     const res = await this.apiService.completeOrder(orderId);
-    await this.syncOrder(orderId, true);
+    // Rely on WebSocket for real-time updates
     return res.data;
   }
 

@@ -14,7 +14,7 @@ class SocketService {
     });
 
     this.socket.on('order.created', (payload: any) => {
-      const { order } = payload;
+      const order = payload.order || payload;
       mapEngine.requestRouter.metrics.websocketUpdates++;
       if (__DEV__) {
           console.log('[WebSocket] New order received:', order.id);

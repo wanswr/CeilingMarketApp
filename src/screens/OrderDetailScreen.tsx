@@ -50,7 +50,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             try {
               await mapEngine.cancelApplication(orderId);
               Alert.alert('Успех', 'Отклик отозван');
-              await mapEngine.syncOrder(orderId, true);
             } catch (error: any) {
               Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отозвать отклик');
             } finally {
@@ -217,7 +216,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     order.status === 'HAS_RESPONSES' ? 'HAS_RESPONSES' :
                     order.status === 'CLAIMED' ? 'IN_PROGRESS' :
                     order.status === 'IN_PROGRESS' ? 'IN_PROGRESS' :
-                    order.status === 'COMPLETED' ? 'COMPLETED' : order.status}
+                    order.status === 'COMPLETED' ? 'COMPLETED' :
+                    order.status === 'CANCELLED' ? 'CANCELLED' : order.status}
                </Text>
             </View>
           </View>

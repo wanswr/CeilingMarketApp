@@ -30,7 +30,7 @@ const getStatusDetails = (status: OrderStatus) => {
     case 'COMPLETED':
       return { label: 'COMPLETED', color: '#10B981', icon: 'ribbon-outline' };
     case 'CANCELLED':
-      return { label: 'Отменен', color: COLORS.gray, icon: 'close-circle-outline' };
+      return { label: 'CANCELLED', color: COLORS.gray, icon: 'close-circle-outline' };
     default:
       return { label: status, color: COLORS.gray, icon: 'help-circle-outline' };
   }
