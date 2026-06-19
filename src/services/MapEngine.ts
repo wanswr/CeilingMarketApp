@@ -4,6 +4,7 @@ import { requestRouter } from './RequestRouter';
 import { entityStore } from './EntityStore';
 import { GeoClusterService } from './GeoClusterService';
 import { spatialManager } from '../map/SpatialManager';
+import { getDistance } from '../utils/geo';
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -107,44 +108,29 @@ class MapEngine {
         loadedChunks: this.spatialManager.getLoadedChunksCount()
     });
 
-    // V7 Hardening: Multi-lock. Skip if locked or if we just recently synced this area
-    if (this.syncLock) {
-        if (__DEV__) console.log('[MapEngine] Sync locked');
-        return;
-    }
+    // 1. DISTANCE-BASED SYNC (V8)
+    // Only fetch from API if we moved > 70km from the last loaded center or if store is empty
+    const loadedArea = this.entityStore.loadedArea;
+    const distance = loadedArea
+        ? getDistance(viewRegion.latitude, viewRegion.longitude, loadedArea.lat, loadedArea.lng)
+        : 999;
 
-    // 0. Area Limit: Don't load spatial data if zoomed out too far (country level)
-    if (viewRegion.latitudeDelta > 10) {
-        if (__DEV__) console.log('[MapEngine] Viewport too large - skipping spatial sync');
-        return;
-    }
+    const shouldFetch = force || distance > 70 || this.entityStore.getAllOrders().length === 0;
 
-    // 1. Calculate Aligned Spatial Bounds (3-decimal normalized geocells)
-    const rawBounds = {
-      minLat: viewRegion.latitude - viewRegion.latitudeDelta,
-      maxLat: viewRegion.latitude + viewRegion.latitudeDelta,
-      minLng: viewRegion.longitude - viewRegion.longitudeDelta,
-      maxLng: viewRegion.longitude + viewRegion.longitudeDelta
-    };
-
-    const aligned = this.spatialManager.getAlignedBounds(rawBounds.minLat, rawBounds.maxLat, rawBounds.minLng, rawBounds.maxLng);
-
-    // 2. CHECK SPATIAL CACHE
-    if (!force && this.spatialManager.isAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng)) {
+    if (!shouldFetch) {
         console.log('MAP_DATA_SOURCE: CACHE', {
-            count: this.entityStore.getAllOrders().length
+            count: this.entityStore.getAllOrders().length,
+            distance: distance.toFixed(1) + 'km',
+            loadedArea: this.entityStore.loadedArea
         });
-        this.requestRouter.metrics.spatialCacheHits++;
-        // If it's a cache hit, we still want to ensure UI is up to date with what's in store
         this.notifySubscribers();
         return;
     }
 
-    this.requestRouter.metrics.spatialCacheMisses++;
-
-    // 3. UNIVERSAL SPATIAL FETCH (V6)
-    const spatialKey = `spatial:${aligned.minLat}:${aligned.maxLat}:${aligned.minLng}:${aligned.maxLng}`;
-    if (force) this.requestRouter.invalidate(spatialKey);
+    if (this.syncLock) {
+        console.log('[MapEngine] Sync locked');
+        return;
+    }
 
     // ABORT PREVIOUS: Cancel any existing fetch
     if (this.currentAbortController) this.currentAbortController.abort();
@@ -153,56 +139,44 @@ class MapEngine {
 
     try {
       this.requestRouter.metrics.spatialRequests++;
-      const lastSyncTime = this.entityStore.getMeta('map_last_sync') || '0';
 
       console.log('[SPATIAL_FETCH_START]', {
-          minLat: aligned.minLat,
-          maxLat: aligned.maxLat,
-          minLng: aligned.minLng,
-          maxLng: aligned.maxLng,
-          mode: 'bbox'
+          lat: viewRegion.latitude,
+          lng: viewRegion.longitude,
+          radius: 100,
+          mode: 'radius'
       });
       const startTime = Date.now();
 
-      const response = await this.requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
-        spatialKey,
-        async () => {
-          const res = await this.apiService.getSpatialOrders({
-              minLat: aligned.minLat,
-              maxLat: aligned.maxLat,
-              minLng: aligned.minLng,
-              maxLng: aligned.maxLng,
-              updatedAfter: force ? '0' : lastSyncTime
-          }, { signal: this.currentAbortController?.signal });
-          return res.data;
-        },
-        300000
-      );
+      const response = await this.apiService.getSpatialOrders({
+          lat: viewRegion.latitude,
+          lng: viewRegion.longitude,
+          radius: 100
+      }, { signal: this.currentAbortController?.signal });
 
-      if (response) {
+      if (response.data) {
         console.log('[SPATIAL_FETCH_END]', {
-            returnedOrders: response.created?.length || 0,
+            returnedOrders: response.data.created?.length || 0,
             durationMs: Date.now() - startTime
         });
 
-        this.entityStore.applyPatch(response);
+        this.entityStore.applyPatch(response.data);
+        this.entityStore.loadedArea = { lat: viewRegion.latitude, lng: viewRegion.longitude, radius: 100 };
+        this.entityStore.isInitialLoaded = true;
+
         console.log('MAP_DATA_SOURCE: API', {
             count: this.entityStore.getAllOrders().length
         });
-        this.spatialManager.markAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng);
-        this.requestRouter.metrics.spatialChunksLoaded = this.spatialManager.getLoadedChunksCount();
+
         this.notifySubscribers();
 
         // Persist after merge
         this.entityStore.persist();
-        this.spatialManager.persist();
         if (__DEV__) console.log('[MapEngine] MAP MERGE COMPLETE & PERSISTED');
       }
 
       this.entityStore.meta.spatialSyncs++;
-      this.entityStore.setMeta('map_last_sync', Date.now().toString());
       this.logMemoryUsage();
-      this.entityStore.logDiagnostics();
     } catch (error: any) {
         if (error.name === 'AbortError' || error.message === 'canceled') {
             if (__DEV__) console.log('[MapEngine] Sync aborted');
@@ -217,23 +191,11 @@ class MapEngine {
   }
 
   /**
-   * Initial Load V6: Load 100km radius around user.
+   * Initial Load V8: Load 100km radius around user.
    */
   initialLoad = async (lat: number, lng: number) => {
-      console.log('[SPATIAL_FETCH_START]', { lat, lng, radius: 100, mode: 'initial' });
-      const startTime = Date.now();
-      try {
-          const response = await this.apiService.getSpatialOrders({ lat, lng, radius: 100 });
-          console.log('[SPATIAL_FETCH_END]', {
-              returnedOrders: response.data?.created?.length || 0,
-              durationMs: Date.now() - startTime
-          });
-          this.entityStore?.applyPatch(response.data);
-          this.spatialManager.markAreaLoaded(lat - 1, lat + 1, lng - 1, lng + 1); // Approx 100km area
-          this.notifySubscribers();
-      } catch (e) {
-          console.error('[MapEngine] Initial spatial load failed', e);
-      }
+      if (this.entityStore.isInitialLoaded) return;
+      return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.1, longitudeDelta: 0.1 });
   }
 
 
@@ -326,8 +288,10 @@ class MapEngine {
   triggerMapUpdate = (region?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
+      // V8: syncMap now checks distance internally.
+      // If within 70km, it just calls notifySubscribers() for local cluster refresh.
       this.syncMap(false, region);
-      }, 300); // Further reduced debounce for maximum responsiveness
+      }, 300);
   }
 
   getOrders = (myOnly: boolean = false) => {

@@ -37,7 +37,15 @@ export const GeoClusterService = {
     }
 
     const grid: Record<string, Cluster> = {};
-    const validOrders = orders.filter(o => this.getOrderCoords(o) !== null);
+    const ordersMap = new Map<string, Order>();
+    const validOrders: Order[] = [];
+
+    orders.forEach(o => {
+        if (this.getOrderCoords(o)) {
+            validOrders.push(o);
+            ordersMap.set(o.id, o);
+        }
+    });
 
     validOrders.forEach(order => {
       const coords = this.getOrderCoords(order)!;
@@ -66,7 +74,7 @@ export const GeoClusterService = {
       if (cluster.count <= 3) {
         // Rule: 1-3 -> single markers
         cluster.orderIds.forEach(id => {
-          const order = validOrders.find(o => o.id === id);
+          const order = ordersMap.get(id);
           if (order) result.push(order);
         });
       } else {

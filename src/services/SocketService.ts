@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { mapEngine } from './MapEngine';
+import { getDistance } from '../utils/geo';
 
 class SocketService {
   private socket: Socket | null = null;
@@ -24,6 +25,21 @@ class SocketService {
 
     this.socket.on('order.created', (payload: any) => {
       const order = payload.order || payload;
+
+      // V8 Optimization: Only add order if it's within 100km of our currently loaded area center
+      const loadedArea = mapEngine.entityStore?.loadedArea;
+      if (loadedArea) {
+          const lat = order.latitude ?? order.location?.latitude;
+          const lng = order.longitude ?? order.location?.longitude;
+          if (lat && lng) {
+              const distance = getDistance(lat, lng, loadedArea.lat, loadedArea.lng);
+              if (distance > 100) {
+                  console.log('[WebSocket] Order skipped (too far):', order.id, distance.toFixed(1) + 'km');
+                  return;
+              }
+          }
+      }
+
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.setOrder(order);

@@ -28,6 +28,8 @@ class EntityStore {
   private spatialGrid: Map<string, Set<string>> = new Map();
 
   private currentUserId: string | null = null;
+  public loadedArea: { lat: number; lng: number; radius: number } | null = null;
+  public isInitialLoaded = false;
 
   public meta: StoreMeta = {
     lastUpdated: new Map(),
@@ -321,6 +323,10 @@ class EntityStore {
       if (!data) return false;
 
       const parsed = JSON.parse(data);
+      if (parsed.loadedArea) {
+          this.loadedArea = parsed.loadedArea;
+          this.isInitialLoaded = true;
+      }
       if (parsed.orders) {
           parsed.orders.forEach((o: Order) => {
               // Stale check: skip orders older than 24h if they aren't 'mine'
@@ -344,6 +350,7 @@ class EntityStore {
     try {
       const data = {
         orders: Array.from(this.ordersById.values()),
+        loadedArea: this.loadedArea,
         updatedAt: Date.now()
       };
       await AsyncStorage.setItem('entity_store_v4', JSON.stringify(data));

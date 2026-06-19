@@ -127,24 +127,20 @@ const MapScreen = ({ navigation }: any) => {
     });
   };
 
-  // 3. UI Clustering & Spatial Filtering
-  const candidates = useMemo(() => {
-    return mapEngine.getOrdersInBounds(
-        region.latitude - region.latitudeDelta,
-        region.latitude + region.latitudeDelta,
-        region.longitude - region.longitudeDelta,
-        region.longitude + region.longitudeDelta
-    );
-  }, [allOrders, region]);
-
+  // 3. UI Clustering & Spatial Filtering (V8: Local processing only)
   const displayedItems = useMemo(() => {
+    // 1. Efficient candidate selection using Spatial Grid Index (O(1) bucket lookup)
+    const padding = region.latitudeDelta * 0.2;
+    const candidates = mapEngine.getOrdersInBounds(
+        region.latitude - region.latitudeDelta - padding,
+        region.latitude + region.latitudeDelta + padding,
+        region.longitude - region.longitudeDelta - padding,
+        region.longitude + region.longitudeDelta + padding
+    );
+
+    // 2. Run clustering on viewport candidates
     const start = Date.now();
     let result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
-
-    // Fallback: If clustering logic failed but candidates exist, show them as raw markers
-    if (result.length === 0 && candidates.length > 0) {
-        result = candidates;
-    }
 
     // Performance: Filter out individual markers if zoomed out too far
     if (region.latitudeDelta > 2) {
@@ -153,12 +149,12 @@ const MapScreen = ({ navigation }: any) => {
 
     if (__DEV__) {
         const time = Date.now() - start;
-        const meta = mapEngine.entityStore?.meta;
+        const meta = (mapEngine as any).entityStore?.meta;
         if (meta) meta.lastClusterTime = time;
     }
 
     return result;
-  }, [candidates, region.latitudeDelta]);
+  }, [allOrders, region]);
 
   const safeItems = useMemo(() => {
       return displayedItems.filter(item => {

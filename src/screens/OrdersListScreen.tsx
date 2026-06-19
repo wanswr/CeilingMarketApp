@@ -87,7 +87,10 @@ const OrdersListScreen = ({ navigation }: any) => {
 
       const isMyOrder = order.employerId === myId;
       const amIExecutor = order.executorId === myId;
-      const iApplied = order.applications?.some(a => (a.executorId === myId));
+
+      // Applicant logic: hide if someone else was selected
+      const someoneElseSelected = (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS' || order.status === 'COMPLETED') && !amIExecutor;
+      const iApplied = order.applications?.some(a => (a.executorId === myId)) && !someoneElseSelected;
 
       // 1. Tab Logic: Archive = ONLY COMPLETED. Active = everything else mine.
       if (activeTab === 'archive') {
