@@ -23,6 +23,7 @@ class EntityStore {
 
   public loadedBounds: { north: number; south: number; east: number; west: number } | null = null;
   public isInitialLoaded = false;
+  public isMyOrdersLoaded = false;
 
   public meta: StoreMeta = {
     lastUpdated: new Map(),
@@ -128,6 +129,11 @@ class EntityStore {
       if (patch.created) patch.created.forEach(o => this.setOrder(o));
       if (patch.updated) patch.updated.forEach(o => this.setOrder(o));
       if (patch.deleted) patch.deleted.forEach(id => this.removeOrder(id));
+  }
+
+  setOrders = (orders: Order[]) => {
+      orders.forEach(o => this.setOrder(o));
+      this.isMyOrdersLoaded = true;
   }
 
   setUser = (user: UserProfile) => {

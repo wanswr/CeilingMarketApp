@@ -222,8 +222,8 @@ const MapScreen = ({ navigation }: any) => {
           onPanDrag={() => {
             if (!isMoving) setIsMoving(true);
             const now = Date.now();
-            if (now - lastPanDragRef.current > 500) {
-                console.log('[MAP] PAN_DRAG');
+            if (now - lastPanDragRef.current > 1000) {
+                if (__DEV__) console.log('[MAP] PAN_DRAG');
                 lastPanDragRef.current = now;
             }
           }}

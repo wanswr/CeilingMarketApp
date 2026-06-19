@@ -67,7 +67,10 @@ const OrdersListScreen = ({ navigation }: any) => {
       if (user) setCurrentUser(user);
       else mapEngine.syncUser().then(setCurrentUser);
 
-      mapEngine.syncMyOrders();
+      // Only sync if we have no orders or if it's the first load in this focus cycle
+      if (!mapEngine.entityStore.isMyOrdersLoaded) {
+        mapEngine.syncMyOrders();
+      }
 
       return () => unsubscribe();
     }, [])
