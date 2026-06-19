@@ -22,6 +22,13 @@ import { formatDate } from '../utils/date';
 import { Order } from '../types';
 import ErrorBoundary from '../components/common/ErrorBoundary';
 
+const MOSCOW_REGION = {
+  latitude: 55.751244,
+  longitude: 37.618423,
+  latitudeDelta: 0.5,
+  longitudeDelta: 0.5,
+};
+
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
 
@@ -46,12 +53,7 @@ const MapScreen = ({ navigation }: any) => {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [region, setRegion] = useState<Region>({
-    latitude: 55.751244,
-    longitude: 37.618423,
-    latitudeDelta: 0.1,
-    longitudeDelta: 0.1,
-  });
+  const [region, setRegion] = useState<Region>(MOSCOW_REGION);
 
   // 1. Subscribe to MapEngine
   useEffect(() => {
@@ -80,30 +82,73 @@ const MapScreen = ({ navigation }: any) => {
     };
   }, []);
 
-  // 2. Initial Data Load & Location Sync
+  const fitToOrders = (orders: Order[]) => {
+    if (!orders || orders.length === 0 || !mapRef.current) return;
+
+    const coords = orders
+      .map(o => mapEngine.getOrderCoords(o))
+      .filter(Boolean) as { latitude: number, longitude: number }[];
+
+    if (coords.length > 0) {
+      mapRef.current.fitToCoordinates(coords, {
+        edgePadding: {
+            top: 80,
+            right: 80,
+            bottom: selectedOrder ? 300 : 250,
+            left: 80
+        },
+        animated: true,
+      });
+    }
+  };
+
+  // 2. Initial Data Load & Location Sync (V8: Strategic Initialization)
   useFocusEffect(
     useCallback(() => {
       console.log('MAP_FOCUS');
       (async () => {
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
+
             if (status === 'granted') {
               const loc = await Location.getCurrentPositionAsync({});
               setLocation(loc);
-              const initialRegion = {
-                ...region,
+
+              const userRegion = {
                 latitude: loc.coords.latitude,
-                longitude: loc.coords.longitude
+                longitude: loc.coords.longitude,
+                latitudeDelta: 0.25,
+                longitudeDelta: 0.25
               };
-              setRegion(initialRegion);
-              // V6: Initial Spatial Load (100km radius)
-              mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
+
+              setRegion(userRegion);
+
+              // Load 100km around user
+              await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
+
+              // Animate camera to user
+              mapRef.current?.animateToRegion(userRegion, 500);
+
+              // Auto-fit after a delay to ensure data is in store
+              const orders = mapEngine.getOrders();
+              if (orders.length > 0) {
+                  setTimeout(() => fitToOrders(orders), 1500);
+              }
             } else {
-              mapEngine.syncMap(false, region);
+              // Denied: fallback to Moscow area
+              setRegion(MOSCOW_REGION);
+              await mapEngine.initialLoad(MOSCOW_REGION.latitude, MOSCOW_REGION.longitude);
+
+              // Try to fit to available orders if any
+              const currentOrders = mapEngine.getOrders();
+              if (currentOrders.length > 0) {
+                  setTimeout(() => fitToOrders(currentOrders), 1000);
+              }
             }
         } catch (e) {
             console.error('[MapScreen] Location error:', e);
-            mapEngine.syncMap(false, region);
+            // Fallback load
+            mapEngine.syncMap(false, MOSCOW_REGION);
         }
       })();
 
