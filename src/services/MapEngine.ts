@@ -12,6 +12,8 @@ class MapEngine {
   private debounceTimer: NodeJS.Timeout | null = null;
   private syncLock: boolean = false;
   private currentAbortController: AbortController | null = null;
+  private requestCounter: number = 0;
+  private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
   public spatialManager = spatialManager;
   private isHydrated = false;
 
@@ -65,6 +67,18 @@ class MapEngine {
     return orders.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a =
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+  }
+
   syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!this.entityStore || !viewRegion) return;
 
@@ -92,16 +106,31 @@ class MapEngine {
         return;
     }
 
-    if (this.syncLock) return;
+    if (this.syncLock) {
+        console.log('MAP_FETCH_SKIPPED_ACTIVE_REQUEST');
+        return;
+    }
+
+    // 1.5. MOVEMENT THRESHOLD CHECK
+    if (!force && this.lastSyncRegion) {
+        const dist = this.calculateDistance(viewRegion.latitude, viewRegion.longitude, this.lastSyncRegion.latitude, this.lastSyncRegion.longitude);
+        const scaleChange = Math.abs(viewRegion.latitudeDelta - this.lastSyncRegion.latitudeDelta) / this.lastSyncRegion.latitudeDelta;
+
+        if (dist < 10 && scaleChange < 0.2) {
+            console.log('MAP_FETCH_SKIPPED_SMALL_MOVEMENT', { dist: dist.toFixed(2), scaleChange: scaleChange.toFixed(2) });
+            return;
+        }
+    }
 
     console.log('MAP_CACHE_MISS', { reason: force ? 'force' : !isInside ? 'out_of_bounds' : 'empty' });
 
     if (this.currentAbortController) this.currentAbortController.abort();
     this.currentAbortController = new AbortController();
     this.syncLock = true;
+    const requestId = ++this.requestCounter;
 
     try {
-      console.log('MAP_FETCH_START', { lat: viewRegion.latitude, lng: viewRegion.longitude });
+      console.log('MAP_FETCH_START', { lat: viewRegion.latitude, lng: viewRegion.longitude, requestId });
       const startTime = Date.now();
 
       const response = await this.apiService.getSpatialOrders({
@@ -109,6 +138,11 @@ class MapEngine {
           lng: viewRegion.longitude,
           radius: 100
       }, { signal: this.currentAbortController?.signal });
+
+      if (requestId !== this.requestCounter) {
+          console.log('MAP_FETCH_IGNORED_STALE_RESPONSE', { requestId, latest: this.requestCounter });
+          return;
+      }
 
       if (response.data) {
         console.log('MAP_FETCH_END', { returnedOrders: response.data.created?.length || 0, durationMs: Date.now() - startTime });
@@ -122,6 +156,11 @@ class MapEngine {
             west: viewRegion.longitude - 1.3,
         };
         this.entityStore.isInitialLoaded = true;
+        this.lastSyncRegion = {
+            latitude: viewRegion.latitude,
+            longitude: viewRegion.longitude,
+            latitudeDelta: viewRegion.latitudeDelta
+        };
         console.log('MAP_DATA_SOURCE: API', { count: this.entityStore.getAllOrders().length });
         this.notifySubscribers();
         this.entityStore.persist();
@@ -140,8 +179,11 @@ class MapEngine {
   }
 
   triggerMapUpdate = (region: any) => {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => this.syncMap(false, region), 300);
+    if (this.debounceTimer) {
+        console.log('MAP_FETCH_SKIPPED_DEBOUNCE');
+        clearTimeout(this.debounceTimer);
+    }
+    this.debounceTimer = setTimeout(() => this.syncMap(false, region), 500);
   }
 
   // --- Selectors ---

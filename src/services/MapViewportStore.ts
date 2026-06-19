@@ -10,6 +10,7 @@ class MapViewportStore {
     };
 
     private subscribers: Map<string, (region: Region) => void> = new Map();
+    private debounceTimer: NodeJS.Timeout | null = null;
 
     setRegion(region: Region) {
         if (this.currentRegion.latitude === region.latitude &&
@@ -20,12 +21,16 @@ class MapViewportStore {
         }
 
         this.currentRegion = region;
-        console.log('MAP_VIEWPORT_CHANGED', {
-            lat: region.latitude.toFixed(3),
-            lng: region.longitude.toFixed(3),
-            delta: region.latitudeDelta.toFixed(3)
-        });
-        this.notify();
+
+        if (this.debounceTimer) clearTimeout(this.debounceTimer);
+        this.debounceTimer = setTimeout(() => {
+            console.log('MAP_VIEWPORT_CHANGED', {
+                lat: region.latitude.toFixed(3),
+                lng: region.longitude.toFixed(3),
+                delta: region.latitudeDelta.toFixed(3)
+            });
+            this.notify();
+        }, 400);
     }
 
     getRegion(): Region {
