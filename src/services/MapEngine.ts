@@ -143,7 +143,13 @@ class MapEngine {
   getOrders = (myOnly: boolean = false) => this.getOrdersArray(myOnly);
   getOrder = (id: string) => this.entityStore?.getOrder(id);
   getUser = (id: string) => this.entityStore?.getUser(id);
-  getCurrentUser = () => this.entityStore?.getCurrentUser();
+  getCurrentUser = () => {
+      const user = this.entityStore?.getCurrentUser();
+      if (!user) {
+          console.warn("[MapEngine] currentUser unavailable");
+      }
+      return user;
+  };
   getOrdersInBounds = (minLat: number, maxLat: number, minLng: number, maxLng: number) => this.entityStore?.getOrdersInBounds(minLat, maxLat, minLng, maxLng) || [];
   clusterOrders = (orders: Order[], latDelta: number) => this.geoClusterService?.clusterOrders(orders, latDelta) || [];
   getOrderCoords = (order: Order) => this.geoClusterService?.getOrderCoords(order);

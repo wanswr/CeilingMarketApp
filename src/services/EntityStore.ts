@@ -19,7 +19,7 @@ class EntityStore {
   public usersById: Map<string, UserProfile> = new Map();
 
   private spatialGrid: Map<string, Set<string>> = new Map();
-  private currentUserId: string | null = null;
+  public currentUserId: string | null = null;
 
   public loadedBounds: { north: number; south: number; east: number; west: number } | null = null;
   public isInitialLoaded = false;
@@ -140,6 +140,13 @@ class EntityStore {
     }
 
     this.usersById.set(id, normalizedUser);
+  }
+
+  getUser = (id: string): UserProfile | undefined => this.usersById.get(id);
+
+  getCurrentUser = (): UserProfile | undefined => {
+      if (!this.currentUserId) return undefined;
+      return this.getUser(this.currentUserId);
   }
 
   getOrder = (id: string): Order | undefined => this.ordersById.get(id);
