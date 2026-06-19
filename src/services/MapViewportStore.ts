@@ -26,11 +26,13 @@ class MapViewportStore {
         // 2. Debounce notification to prevent heavy subscriber logic during rapid movement
         if (this.debounceTimer) clearTimeout(this.debounceTimer);
         this.debounceTimer = setTimeout(() => {
-            console.log('MAP_VIEWPORT_CHANGED', {
-                lat: region.latitude.toFixed(3),
-                lng: region.longitude.toFixed(3),
-                delta: region.latitudeDelta.toFixed(3)
-            });
+            if (__DEV__) {
+                console.log('MAP_VIEWPORT_CHANGED', {
+                    lat: region.latitude.toFixed(3),
+                    lng: region.longitude.toFixed(3),
+                    delta: region.latitudeDelta.toFixed(3)
+                });
+            }
             this.notify();
         }, 400);
     }

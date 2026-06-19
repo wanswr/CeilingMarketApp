@@ -56,7 +56,7 @@ class MapEngine {
 
   private notifySubscribers = (clusteredOrders?: any[]) => {
     const orders = this.getOrdersArray();
-    console.log('[MapEngine] notifySubscribers, count:', this.subscribers.size);
+    if (__DEV__) console.log('[MapEngine] notifySubscribers, count:', this.subscribers.size);
     this.subscribers.forEach((cb, source) => {
         if (source === 'MapScreen' && clusteredOrders) {
             cb(clusteredOrders);
@@ -105,7 +105,7 @@ class MapEngine {
         west: viewRegion.longitude - viewRegion.longitudeDelta / 2,
     };
 
-    console.log('MAP_CACHE_CHECK', { viewport, loaded: this.entityStore.loadedBounds });
+    if (__DEV__) console.log('MAP_CACHE_CHECK', { viewport, loaded: this.entityStore.loadedBounds });
 
     const isInside = this.entityStore.loadedBounds &&
         viewport.north <= this.entityStore.loadedBounds.north &&
@@ -116,13 +116,13 @@ class MapEngine {
     const shouldFetch = force || !isInside || this.entityStore.getAllOrders().length === 0;
 
     if (!shouldFetch) {
-        console.log('MAP_CACHE_HIT', { count: this.entityStore.getAllOrders().length });
+        if (__DEV__) console.log('MAP_CACHE_HIT', { count: this.entityStore.getAllOrders().length });
         this.notifySubscribers();
         return;
     }
 
     if (this.syncLock) {
-        console.log('MAP_FETCH_SKIPPED_ACTIVE_REQUEST');
+        if (__DEV__) console.log('MAP_FETCH_SKIPPED_ACTIVE_REQUEST');
         return;
     }
 
@@ -132,12 +132,12 @@ class MapEngine {
         const scaleChange = Math.abs(viewRegion.latitudeDelta - this.lastSyncRegion.latitudeDelta) / this.lastSyncRegion.latitudeDelta;
 
         if (dist < 10 && scaleChange < 0.2) {
-            console.log('MAP_FETCH_SKIPPED_SMALL_MOVEMENT', { dist: dist.toFixed(2), scaleChange: scaleChange.toFixed(2) });
+            if (__DEV__) console.log('MAP_FETCH_SKIPPED_SMALL_MOVEMENT', { dist: dist.toFixed(2), scaleChange: scaleChange.toFixed(2) });
             return;
         }
     }
 
-    console.log('MAP_CACHE_MISS', { reason: force ? 'force' : !isInside ? 'out_of_bounds' : 'empty' });
+    if (__DEV__) console.log('MAP_CACHE_MISS', { reason: force ? 'force' : !isInside ? 'out_of_bounds' : 'empty' });
 
     if (this.currentAbortController) this.currentAbortController.abort();
     this.currentAbortController = new AbortController();
@@ -145,7 +145,7 @@ class MapEngine {
     const requestId = ++this.requestCounter;
 
     try {
-      console.log('MAP_FETCH_START', { lat: viewRegion.latitude, lng: viewRegion.longitude, requestId });
+      if (__DEV__) console.log('MAP_FETCH_START', { lat: viewRegion.latitude, lng: viewRegion.longitude, requestId });
       const startTime = Date.now();
 
       const response = await this.apiService.getSpatialOrders({
@@ -155,12 +155,12 @@ class MapEngine {
       }, { signal: this.currentAbortController?.signal });
 
       if (requestId !== this.requestCounter) {
-          console.log('MAP_FETCH_IGNORED_STALE_RESPONSE', { requestId, latest: this.requestCounter });
+          if (__DEV__) console.log('MAP_FETCH_IGNORED_STALE_RESPONSE', { requestId, latest: this.requestCounter });
           return;
       }
 
       if (response.data) {
-        console.log('MAP_FETCH_END', { returnedOrders: response.data.created?.length || 0, durationMs: Date.now() - startTime });
+        if (__DEV__) console.log('MAP_FETCH_END', { returnedOrders: response.data.created?.length || 0, durationMs: Date.now() - startTime });
         this.entityStore.applyPatch(response.data);
 
         // V9: Expanded Bounds (approx 120km to ensure buffer)
@@ -195,12 +195,12 @@ class MapEngine {
 
   triggerMapUpdate = (region: any) => {
     if (this.debounceTimer) {
-        console.log('MAP_FETCH_SKIPPED_DEBOUNCE');
+        if (__DEV__) console.log('MAP_FETCH_SKIPPED_DEBOUNCE');
         clearTimeout(this.debounceTimer);
     }
     this.debounceTimer = setTimeout(() => {
         // 1. RECALC VISIBLE & CLUSTERING (Heavy logic moved here)
-        console.log('MAP_VISIBLE_RECALC_START');
+        if (__DEV__) console.log('MAP_VISIBLE_RECALC_START');
         const startTime = Date.now();
         const padding = region.latitudeDelta * 0.2;
         const candidates = this.getOrdersInBounds(
@@ -221,11 +221,13 @@ class MapEngine {
         });
 
         this.lastClusteredOrders = safeItems;
-        console.log('MAP_VISIBLE_RECALC_END', {
-            candidates: candidates.length,
-            visible: safeItems.length,
-            duration: Date.now() - startTime
-        });
+        if (__DEV__) {
+            console.log('MAP_VISIBLE_RECALC_END', {
+                candidates: candidates.length,
+                visible: safeItems.length,
+                duration: Date.now() - startTime
+            });
+        }
 
         // 2. Notify Map Screen with optimized data
         this.notifySubscribers(safeItems);
