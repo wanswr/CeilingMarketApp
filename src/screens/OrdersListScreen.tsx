@@ -19,9 +19,9 @@ import { OrderCard } from '../components/OrderCard';
 const FILTERS = {
   STATUS: [
     { id: 'all', label: 'Все' },
-    { id: 'WAITING_RESPONSES', label: 'Ожидает' },
+    { id: 'PUBLISHED', label: 'Ожидает' },
     { id: 'HAS_RESPONSES', label: 'Отклики' },
-    { id: 'EXECUTOR_SELECTED', label: 'Выбран' },
+    { id: 'CLAIMED', label: 'Выбран' },
     { id: 'IN_PROGRESS', label: 'В работе' },
   ],
   WORK_TYPE: [

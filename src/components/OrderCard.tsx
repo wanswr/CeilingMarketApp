@@ -19,11 +19,11 @@ interface OrderCardProps {
 
 const getStatusDetails = (status: OrderStatus) => {
   switch (status) {
-    case 'WAITING_RESPONSES':
+    case 'PUBLISHED':
       return { label: 'Ожидает исполнителя', color: '#EF4444', icon: 'time-outline' };
     case 'HAS_RESPONSES':
       return { label: 'Есть отклики', color: '#F59E0B', icon: 'people-outline' };
-    case 'EXECUTOR_SELECTED':
+    case 'CLAIMED':
       return { label: 'Исполнитель выбран', color: '#3B82F6', icon: 'checkmark-circle-outline' };
     case 'IN_PROGRESS':
       return { label: 'В работе', color: '#8B5CF6', icon: 'hammer-outline' };
@@ -95,7 +95,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
       );
     }
 
-    if (!isEmployer && order.status === 'EXECUTOR_SELECTED' && amIExecutor) {
+    if (!isEmployer && order.status === 'CLAIMED' && amIExecutor) {
       return (
         <TouchableOpacity style={styles.startAction} onPress={onStart}>
           <Ionicons name="play-outline" size={24} color="#fff" />

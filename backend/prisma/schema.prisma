@@ -13,12 +13,14 @@ enum Role {
 }
 
 enum OrderStatus {
-  WAITING_RESPONSES
+  PENDING
+  PUBLISHED
   HAS_RESPONSES
-  EXECUTOR_SELECTED
+  CLAIMED
   IN_PROGRESS
   COMPLETED
   CANCELLED
+  DISPUTE
 }
 
 enum ApplicationStatus {

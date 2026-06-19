@@ -196,23 +196,23 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             </View>
             <View style={[
                 styles.statusBadge,
-                order.status === 'WAITING_RESPONSES' && { backgroundColor: 'rgba(45, 91, 255, 0.1)' },
+                order.status === 'PUBLISHED' && { backgroundColor: 'rgba(45, 91, 255, 0.1)' },
                 order.status === 'HAS_RESPONSES' && { backgroundColor: 'rgba(245, 158, 11, 0.1)' },
-                order.status === 'EXECUTOR_SELECTED' && { backgroundColor: 'rgba(59, 130, 246, 0.1)' },
+                order.status === 'CLAIMED' && { backgroundColor: 'rgba(59, 130, 246, 0.1)' },
                 order.status === 'IN_PROGRESS' && { backgroundColor: 'rgba(139, 92, 246, 0.1)' },
                 order.status === 'COMPLETED' && { backgroundColor: 'rgba(16, 185, 129, 0.1)' }
             ]}>
                <Text style={[
                    styles.statusText,
-                   order.status === 'WAITING_RESPONSES' && { color: COLORS.primary },
+                   order.status === 'PUBLISHED' && { color: COLORS.primary },
                    order.status === 'HAS_RESPONSES' && { color: '#F59E0B' },
-                   order.status === 'EXECUTOR_SELECTED' && { color: '#3B82F6' },
+                   order.status === 'CLAIMED' && { color: '#3B82F6' },
                    order.status === 'IN_PROGRESS' && { color: '#8B5CF6' },
                    order.status === 'COMPLETED' && { color: '#10B981' }
                ]}>
-                   {order.status === 'WAITING_RESPONSES' ? 'Ожидает исполнителя' :
+                   {order.status === 'PUBLISHED' ? 'Ожидает исполнителя' :
                     order.status === 'HAS_RESPONSES' ? 'Есть отклики' :
-                    order.status === 'EXECUTOR_SELECTED' ? 'Исполнитель выбран' :
+                    order.status === 'CLAIMED' ? 'Исполнитель выбран' :
                     order.status === 'IN_PROGRESS' ? 'В работе' :
                     order.status === 'COMPLETED' ? 'Выполнено' :
                     order.status === 'CANCELLED' ? 'Отменен' : order.status}
@@ -322,7 +322,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
               </TouchableOpacity>
 
-              {order.status === 'EXECUTOR_SELECTED' && (
+              {order.status === 'CLAIMED' && (
                 <TouchableOpacity
                   activeOpacity={0.9}
                   style={[styles.applyBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
@@ -356,16 +356,16 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               style={[
                 styles.applyBtn,
                 hasApplied && { backgroundColor: '#FF4757' },
-                order.status === 'EXECUTOR_SELECTED' && !hasApplied && { backgroundColor: COLORS.gray }
+                order.status === 'CLAIMED' && !hasApplied && { backgroundColor: COLORS.gray }
               ]}
               onPress={hasApplied ? handleCancelApplication : handleApply}
-              disabled={submitting || (order.status === 'EXECUTOR_SELECTED' && !hasApplied)}
+              disabled={submitting || (order.status === 'CLAIMED' && !hasApplied)}
             >
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.applyBtnText}>
-                  {hasApplied ? 'Отказаться' : order.status === 'EXECUTOR_SELECTED' ? 'Заказ занят' : 'Откликнуться'}
+                  {hasApplied ? 'Отказаться' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Откликнуться'}
                 </Text>
               )}
             </TouchableOpacity>
