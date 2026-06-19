@@ -198,13 +198,6 @@ const MapScreen = ({ navigation }: any) => {
           initialRegion={region}
           showsUserLocation={true}
           onPress={() => setSelectedOrder(null)}
-          onRegionChange={(reg) => {
-              console.log('[MAP] REGION_CHANGE', {
-                  lat: reg.latitude.toFixed(3),
-                  lng: reg.longitude.toFixed(3),
-                  delta: reg.latitudeDelta.toFixed(3)
-              });
-          }}
           onRegionChangeComplete={(reg) => {
               console.log('MAP_REGION_CHANGED', {
                   lat: reg.latitude.toFixed(3),
