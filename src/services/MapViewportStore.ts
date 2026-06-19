@@ -20,8 +20,10 @@ class MapViewportStore {
             return;
         }
 
+        // 1. Update state immediately so getRegion() is always current
         this.currentRegion = region;
 
+        // 2. Debounce notification to prevent heavy subscriber logic during rapid movement
         if (this.debounceTimer) clearTimeout(this.debounceTimer);
         this.debounceTimer = setTimeout(() => {
             console.log('MAP_VIEWPORT_CHANGED', {

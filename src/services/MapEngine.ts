@@ -16,6 +16,7 @@ class MapEngine {
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
   public spatialManager = spatialManager;
   private isHydrated = false;
+  private lastClusteredOrders: any[] = [];
 
   constructor(
       public apiService: any,
@@ -53,13 +54,27 @@ class MapEngine {
     };
   }
 
-  private notifySubscribers = () => {
+  private notifySubscribers = (clusteredOrders?: any[]) => {
     const orders = this.getOrdersArray();
     console.log('[MapEngine] notifySubscribers, count:', this.subscribers.size);
-    this.subscribers.forEach(cb => cb(orders));
+    this.subscribers.forEach((cb, source) => {
+        if (source === 'MapScreen' && clusteredOrders) {
+            cb(clusteredOrders);
+        } else {
+            cb(orders);
+        }
+    });
   }
 
-  triggerNotify = () => this.notifySubscribers();
+  triggerNotify = () => {
+      // Re-run clustering with current region if available
+      const region = mapViewportStore.getRegion();
+      if (region) {
+          this.triggerMapUpdate(region);
+      } else {
+          this.notifySubscribers();
+      }
+  };
 
   getOrdersArray = (myOnly: boolean = false): Order[] => {
     if (!this.entityStore) return [];
@@ -183,11 +198,45 @@ class MapEngine {
         console.log('MAP_FETCH_SKIPPED_DEBOUNCE');
         clearTimeout(this.debounceTimer);
     }
-    this.debounceTimer = setTimeout(() => this.syncMap(false, region), 500);
+    this.debounceTimer = setTimeout(() => {
+        // 1. RECALC VISIBLE & CLUSTERING (Heavy logic moved here)
+        console.log('MAP_VISIBLE_RECALC_START');
+        const startTime = Date.now();
+        const padding = region.latitudeDelta * 0.2;
+        const candidates = this.getOrdersInBounds(
+            region.latitude - region.latitudeDelta - padding,
+            region.latitude + region.latitudeDelta + padding,
+            region.longitude - region.longitudeDelta - padding,
+            region.longitude + region.longitudeDelta + padding
+        );
+
+        let result = this.clusterOrders(candidates, region.latitudeDelta);
+        if (region.latitudeDelta > 2) {
+            result = result.filter((item: any) => item.isCluster);
+        }
+
+        const safeItems = result.filter((item: any) => {
+            const coords = this.getOrderCoords(item);
+            return coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
+        });
+
+        this.lastClusteredOrders = safeItems;
+        console.log('MAP_VISIBLE_RECALC_END', {
+            candidates: candidates.length,
+            visible: safeItems.length,
+            duration: Date.now() - startTime
+        });
+
+        // 2. Notify Map Screen with optimized data
+        this.notifySubscribers(safeItems);
+
+        // 3. Trigger cache sync/fetch
+        this.syncMap(false, region);
+    }, 500);
   }
 
   // --- Selectors ---
-  getOrders = (myOnly: boolean = false) => this.getOrdersArray(myOnly);
+  getOrders = (myOnly: boolean = false) => myOnly ? this.getOrdersArray(true) : this.lastClusteredOrders;
   getOrder = (id: string) => this.entityStore?.getOrder(id);
   getUser = (id: string) => this.entityStore?.getUser(id);
   getCurrentUser = () => {

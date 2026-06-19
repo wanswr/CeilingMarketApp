@@ -24,7 +24,7 @@ import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
-  const [allOrders, setAllOrders] = useState<Order[]>(mapEngine.getOrders());
+  const [displayedOrders, setDisplayedOrders] = useState<any[]>(mapEngine.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -43,7 +43,7 @@ const MapScreen = ({ navigation }: any) => {
   useFocusEffect(
     useCallback(() => {
       const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
-        setAllOrders([...newOrders]);
+        setDisplayedOrders([...newOrders]);
         setLoading(false);
       }, 'MapScreen');
 
@@ -134,33 +134,10 @@ const MapScreen = ({ navigation }: any) => {
     if (movingTimeoutRef.current) clearTimeout(movingTimeoutRef.current);
     movingTimeoutRef.current = setTimeout(() => setIsMoving(false), 300);
 
+    // Update global store (this will debounce and eventually trigger MapEngine sync)
     mapViewportStore.setRegion(newRegion);
     mapEngine.triggerMapUpdate(newRegion);
   };
-
-  // 3. UI Clustering
-  const displayedItems = useMemo(() => {
-    const padding = region.latitudeDelta * 0.2;
-    const candidates = mapEngine.getOrdersInBounds(
-        region.latitude - region.latitudeDelta - padding,
-        region.latitude + region.latitudeDelta + padding,
-        region.longitude - region.longitudeDelta - padding,
-        region.longitude + region.longitudeDelta + padding
-    );
-
-    let result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
-    if (region.latitudeDelta > 2) {
-        result = result.filter((item: any) => item.isCluster);
-    }
-    return result;
-  }, [allOrders, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
-
-  const safeItems = useMemo(() => {
-      return displayedItems.filter((item: any) => {
-          const coords = mapEngine.getOrderCoords(item as any);
-          return coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
-      });
-  }, [displayedItems]);
 
   const centerToUser = async () => {
     if (location && mapRef.current) {
@@ -181,21 +158,21 @@ const MapScreen = ({ navigation }: any) => {
           const regionKey = `${region.latitude.toFixed(3)}:${region.longitude.toFixed(3)}:${region.latitudeDelta.toFixed(3)}`;
 
           if (lastUpdateRef.current &&
-              lastUpdateRef.current.ordersCount === allOrders.length &&
-              lastUpdateRef.current.visibleCount === safeItems.length &&
+              lastUpdateRef.current.ordersCount === displayedOrders.length &&
+              lastUpdateRef.current.visibleCount === displayedOrders.length &&
               lastUpdateRef.current.regionKey === regionKey) {
               return;
           }
 
           lastUpdateRef.current = {
-              ordersCount: allOrders.length,
-              visibleCount: safeItems.length,
+              ordersCount: displayedOrders.length,
+              visibleCount: displayedOrders.length,
               regionKey
           };
 
           console.log('MAP_RENDER', {
-              count: allOrders.length,
-              visible: safeItems.length,
+              count: displayedOrders.length,
+              visible: displayedOrders.length,
               loading,
               source: 'entityStore',
               region: {
@@ -205,7 +182,7 @@ const MapScreen = ({ navigation }: any) => {
               }
           });
       }
-  }, [allOrders.length, safeItems.length, loading, isMoving, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
+  }, [displayedOrders.length, loading, isMoving, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
 
   return (
     <ErrorBoundary>
@@ -217,7 +194,12 @@ const MapScreen = ({ navigation }: any) => {
           initialRegion={region}
           showsUserLocation={true}
           onPress={() => setSelectedOrder(null)}
-          onRegionChange={() => { if (!isMoving) setIsMoving(true); }}
+          onRegionChange={(newReg) => {
+              if (!isMoving) setIsMoving(true);
+              // V9: Fast responsive camera tracking
+              mapViewportStore.setRegion(newReg);
+              mapEngine.triggerMapUpdate(newReg);
+          }}
           onRegionChangeComplete={handleRegionChangeComplete}
           onPanDrag={() => {
             if (!isMoving) setIsMoving(true);
@@ -231,7 +213,7 @@ const MapScreen = ({ navigation }: any) => {
           customMapStyle={mapStyle}
           mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
         >
-          {!isMoving && safeItems.map((item: any) => {
+          {displayedOrders.map((item: any) => {
             const coords = mapEngine.getOrderCoords(item);
             if (!coords) return null;
 
@@ -382,7 +364,7 @@ const MapScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         )}
 
-        {loading && allOrders.length === 0 && (
+        {loading && displayedOrders.length === 0 && (
             <View style={styles.loaderOverlay} pointerEvents="none">
                 <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
