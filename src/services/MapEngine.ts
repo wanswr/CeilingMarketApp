@@ -109,13 +109,25 @@ class MapEngine {
     });
 
     // 1. DISTANCE-BASED SYNC (V8)
-    // Only fetch from API if we moved > 70km from the last loaded center or if store is empty
+    // Only fetch from API if we moved > threshold from the last loaded center
     const loadedArea = this.entityStore.loadedArea;
     const distance = loadedArea
         ? getDistance(viewRegion.latitude, viewRegion.longitude, loadedArea.lat, loadedArea.lng)
         : 999;
 
-    const shouldFetch = force || distance > 70 || this.entityStore.getAllOrders().length === 0;
+    // V8 Hardening: Cache radius threshold adjusted based on viewport.
+    // We fetch 100km radius, but we should refresh much sooner (e.g. 20km)
+    // if the user is zooming in/out to ensure fresh data in their viewport.
+    const threshold = viewRegion.latitudeDelta > 1 ? 50 : 20;
+    const shouldFetch = force || distance > threshold || this.entityStore.getAllOrders().length === 0;
+
+    console.log('[MapEngine] Cache logic:', {
+        distance: distance.toFixed(1) + 'km',
+        threshold: threshold + 'km',
+        isInitial: !loadedArea,
+        storeEmpty: this.entityStore.getAllOrders().length === 0,
+        shouldFetch
+    });
 
     if (!shouldFetch) {
         console.log('MAP_DATA_SOURCE: CACHE', {

@@ -31,6 +31,7 @@ const MOSCOW_REGION = {
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
+  const lastRegionRef = useRef<Region>(MOSCOW_REGION);
 
   // 0. Lifecycle & Navigation Logging
   useEffect(() => {
@@ -54,6 +55,12 @@ const MapScreen = ({ navigation }: any) => {
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState<Region>(MOSCOW_REGION);
+  const [isMoving, setIsMoving] = useState(false);
+  const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+      lastRegionRef.current = region;
+  }, [region]);
 
   // 1. Subscribe to MapEngine
   useEffect(() => {
@@ -106,6 +113,15 @@ const MapScreen = ({ navigation }: any) => {
   useFocusEffect(
     useCallback(() => {
       console.log('MAP_FOCUS');
+
+      // If we already have data and a saved position, just use that
+      const orders = mapEngine.getOrders();
+      if (orders.length > 0) {
+          console.log('[MapScreen] Focus: using cached state');
+          mapRef.current?.animateToRegion(lastRegionRef.current, 500);
+          return;
+      }
+
       (async () => {
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
@@ -130,9 +146,9 @@ const MapScreen = ({ navigation }: any) => {
               mapRef.current?.animateToRegion(userRegion, 500);
 
               // Auto-fit after a delay to ensure data is in store
-              const orders = mapEngine.getOrders();
-              if (orders.length > 0) {
-                  setTimeout(() => fitToOrders(orders), 1500);
+              const currentOrders = mapEngine.getOrders();
+              if (currentOrders.length > 0) {
+                  setTimeout(() => fitToOrders(currentOrders), 1500);
               }
             } else {
               // Denied: fallback to Moscow area
@@ -160,6 +176,13 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     if (!newRegion || !newRegion.latitude || !newRegion.longitude) return;
+
+    // Stop "Moving" state
+    if (movingTimeoutRef.current) clearTimeout(movingTimeoutRef.current);
+    movingTimeoutRef.current = setTimeout(() => {
+        setIsMoving(false);
+    }, 300);
+
     if (newRegion.latitude === region.latitude && newRegion.longitude === region.longitude) return;
 
     setRegion(newRegion);
@@ -243,6 +266,9 @@ const MapScreen = ({ navigation }: any) => {
           initialRegion={region}
           showsUserLocation={true}
           onPress={() => setSelectedOrder(null)}
+          onRegionChange={() => {
+              if (!isMoving) setIsMoving(true);
+          }}
           onRegionChangeComplete={(reg) => {
               console.log('MAP_REGION_CHANGED', {
                   lat: reg.latitude.toFixed(3),
@@ -251,14 +277,17 @@ const MapScreen = ({ navigation }: any) => {
               });
               handleRegionChangeComplete(reg);
           }}
-          onPanDrag={() => console.log('[MAP] PAN_DRAG')}
+          onPanDrag={() => {
+              if (!isMoving) setIsMoving(true);
+              console.log('[MAP] PAN_DRAG');
+          }}
           onMapReady={() => {
               console.log('[MAP] READY');
           }}
           customMapStyle={mapStyle}
           mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
         >
-          {safeItems.map((item: any) => {
+          {!isMoving && safeItems.map((item: any) => {
             const lat = Number(item.latitude ?? (item as any).lat);
             const lng = Number(item.longitude ?? (item as any).lng);
 

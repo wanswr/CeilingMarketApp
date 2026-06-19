@@ -66,11 +66,11 @@ class EntityStore {
   setOrder = (order: Order) => {
     // Task #4: Defensive validation
     if (!order?.id) return;
-    const lat = order.latitude ?? order.coordinates?.latitude ?? order.location?.latitude;
-    const lng = order.longitude ?? order.coordinates?.longitude ?? order.location?.longitude;
+    const lat = Number(order.latitude ?? (order as any).lat ?? (order as any).coordinates?.latitude ?? (order as any).location?.latitude);
+    const lng = Number(order.longitude ?? (order as any).lng ?? (order as any).coordinates?.longitude ?? (order as any).location?.longitude);
 
-    if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) {
-        if (__DEV__) console.warn(`[EntityStore] Rejecting order ${order.id} due to invalid coordinates`, { lat, lng });
+    if (isNaN(lat) || isNaN(lng)) {
+        console.warn(`[EntityStore] Rejecting order ${order.id} due to invalid coordinates`, { lat, lng });
         return;
     }
 
@@ -163,9 +163,21 @@ class EntityStore {
   }
 
   applyPatch = (patch: { created?: Order[], updated?: Order[], deleted?: string[] }) => {
+      const beforeCount = this.ordersById.size;
       if (patch.created) patch.created.forEach(o => this.setOrder(o));
       if (patch.updated) patch.updated.forEach(o => this.setOrder(o));
       if (patch.deleted) patch.deleted.forEach(id => this.removeOrder(id));
+      const afterCount = this.ordersById.size;
+
+      if (__DEV__) {
+          console.log('[EntityStore] Patch applied:', {
+              before: beforeCount,
+              after: afterCount,
+              created: patch.created?.length || 0,
+              updated: patch.updated?.length || 0,
+              deleted: patch.deleted?.length || 0
+          });
+      }
   }
 
   setUser = (user: UserProfile) => {
