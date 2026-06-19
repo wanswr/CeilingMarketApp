@@ -24,6 +24,24 @@ import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
+
+  // 0. Lifecycle & Navigation Logging
+  useEffect(() => {
+    console.log('MAP_SCREEN_MOUNT');
+
+    const unsubscribeState = navigation.addListener('state', (e: any) => {
+        const state = e.data.state;
+        const currentRoute = state?.routes[state.index]?.name;
+        const prevRoute = state?.index > 0 ? state?.routes[state.index - 1]?.name : 'none';
+        console.log('[NAVIGATION] current route:', currentRoute);
+        console.log('[NAVIGATION] previous route:', prevRoute);
+    });
+
+    return () => {
+      console.log('MAP_SCREEN_UNMOUNT');
+      unsubscribeState();
+    };
+  }, []);
   const [allOrders, setAllOrders] = useState<Order[]>(mapEngine.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
@@ -38,6 +56,15 @@ const MapScreen = ({ navigation }: any) => {
   // 1. Subscribe to MapEngine
   useEffect(() => {
     const unsubscribe = mapEngine.subscribe((newOrders) => {
+      console.log('MAP_RENDER', {
+          count: newOrders.length,
+          source: 'entityStore',
+          region: {
+              lat: region.latitude.toFixed(3),
+              lng: region.longitude.toFixed(3),
+              delta: region.latitudeDelta.toFixed(3)
+          }
+      });
       setAllOrders([...newOrders]); // Force spread to ensure reactivity
       setLoading(false);
     }, 'MapScreen');
@@ -56,6 +83,7 @@ const MapScreen = ({ navigation }: any) => {
   // 2. Initial Data Load & Location Sync
   useFocusEffect(
     useCallback(() => {
+      console.log('MAP_FOCUS');
       (async () => {
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
@@ -78,6 +106,10 @@ const MapScreen = ({ navigation }: any) => {
             mapEngine.syncMap(false, region);
         }
       })();
+
+      return () => {
+          console.log('MAP_BLUR');
+      };
     }, [])
   );
 
@@ -148,13 +180,17 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
-  if (__DEV__) {
-    console.log('[MAP DEBUG] Rendering:', {
-        items: safeItems.length,
-        regionLat: region.latitude,
-        regionLng: region.longitude
-    });
-  }
+
+  console.log('MAP_RENDER', {
+      count: allOrders.length,
+      visible: safeItems.length,
+      loading,
+      region: {
+          lat: region.latitude.toFixed(3),
+          lng: region.longitude.toFixed(3),
+          delta: region.latitudeDelta.toFixed(3)
+      }
+  });
 
   return (
     <ErrorBoundary>
@@ -166,9 +202,24 @@ const MapScreen = ({ navigation }: any) => {
           initialRegion={region}
           showsUserLocation={true}
           onPress={() => setSelectedOrder(null)}
-          onRegionChangeComplete={handleRegionChangeComplete}
+          onRegionChange={(reg) => {
+              console.log('[MAP] REGION_CHANGE', {
+                  lat: reg.latitude.toFixed(3),
+                  lng: reg.longitude.toFixed(3),
+                  delta: reg.latitudeDelta.toFixed(3)
+              });
+          }}
+          onRegionChangeComplete={(reg) => {
+              console.log('MAP_REGION_CHANGED', {
+                  lat: reg.latitude.toFixed(3),
+                  lng: reg.longitude.toFixed(3),
+                  delta: reg.latitudeDelta.toFixed(3)
+              });
+              handleRegionChangeComplete(reg);
+          }}
+          onPanDrag={() => console.log('[MAP] PAN_DRAG')}
           onMapReady={() => {
-              if (__DEV__) console.log('[MAP VIEW OK]');
+              console.log('[MAP] READY');
           }}
           customMapStyle={mapStyle}
           mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}

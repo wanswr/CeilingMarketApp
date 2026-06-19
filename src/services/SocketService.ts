@@ -19,49 +19,64 @@ class SocketService {
     });
 
     this.socket.on('connect', () => {
-      console.log('[WebSocket] Connected to backend - ID:', this.socket?.id);
+      console.log('WEBSOCKET_CONNECTED', { id: this.socket?.id });
     });
 
     this.socket.on('order.created', (payload: any) => {
       const order = payload.order || payload;
+      const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      if (__DEV__) {
-          console.log('[WebSocket] New order received:', order.id);
-      }
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
+      const countAfter = mapEngine.entityStore?.getAllOrders().length;
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.created', id: order.id, countBefore, countAfter });
     });
 
     this.socket.on('order.status.changed', (order: any) => {
+      const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] order.status.changed received:', order.id, order.status);
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
+      const countAfter = mapEngine.entityStore?.getAllOrders().length;
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.status.changed', id: order.id, status: order.status, countBefore, countAfter });
     });
 
     this.socket.on('order.updated', (order: any) => {
+      const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] order.updated received:', order.id);
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
+      const countAfter = mapEngine.entityStore?.getAllOrders().length;
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.updated', id: order.id, countBefore, countAfter });
     });
 
     this.socket.on('application.new', (application: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] New application for order:', application.orderId);
-      // Update order to reflect HAS_RESPONSES and include new app
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'application.new', orderId: application.orderId });
       mapEngine.syncOrder(application.orderId, true);
     });
 
     this.socket.on('order.completed', (order: any) => {
+      const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('[WebSocket] order.completed received:', order.id);
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
+      const countAfter = mapEngine.entityStore?.getAllOrders().length;
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.completed', id: order.id, countBefore, countAfter });
+    });
+
+    this.socket.on('order.deleted', (payload: any) => {
+      const orderId = payload.id || payload.orderId || payload;
+      const countBefore = mapEngine.entityStore?.getAllOrders().length;
+      mapEngine.requestRouter.metrics.websocketUpdates++;
+      mapEngine.entityStore?.removeOrder(orderId);
+      mapEngine.triggerNotify();
+      const countAfter = mapEngine.entityStore?.getAllOrders().length;
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.deleted', id: orderId, countBefore, countAfter });
     });
 
     this.socket.on('disconnect', () => {
-      console.log('[WebSocket] Disconnected');
+      console.log('WEBSOCKET_DISCONNECTED');
     });
   }
 

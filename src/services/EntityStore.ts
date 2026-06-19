@@ -99,7 +99,19 @@ class EntityStore {
       this.setUser(o.executor);
     }
 
+    const prevCount = this.ordersById.size;
     this.ordersById.set(o.id, mergedOrder);
+    const newCount = this.ordersById.size;
+
+    if (prevCount !== newCount) {
+        console.log('ORDERS_COUNT_CHANGED', {
+            previousCount: prevCount,
+            newCount: newCount,
+            reason: existing ? 'update_with_new_id' : 'new_order_added',
+            orderId: o.id
+        });
+    }
+
     this.meta.lastUpdated.set(`order:${o.id}`, Date.now());
     this.meta.writes++;
 
@@ -127,9 +139,19 @@ class EntityStore {
   removeOrder = (id: string) => {
     const order = this.ordersById.get(id);
     if (order) {
+        const prevCount = this.ordersById.size;
         this.removeFromGrid(order);
         this.ordersById.delete(id);
         this.myOrders.delete(id);
+        const newCount = this.ordersById.size;
+
+        console.log('ORDERS_COUNT_CHANGED', {
+            previousCount: prevCount,
+            newCount: newCount,
+            reason: 'order_removed',
+            orderId: id
+        });
+
         this.meta.writes++;
     }
   }

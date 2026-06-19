@@ -50,6 +50,7 @@ class MapEngine {
       this.spatialManager.hydrate()
     ]);
     this.isHydrated = true;
+    console.log('MAP_DATA_SOURCE: STORAGE', { count: this.entityStore.getAllOrders().length });
     if (__DEV__) console.log(`[MapEngine] MAP INIT COMPLETE: ${this.entityStore.getAllOrders().length} orders in ${Date.now() - start}ms`);
     this.notifySubscribers();
   }
@@ -59,19 +60,17 @@ class MapEngine {
    */
   subscribe = (callback: OrderCallback, source: string = 'unknown') => {
     this.subscribers.add(callback);
+    console.log('MAP_SUBSCRIBE', { source, total: this.subscribers.size });
 
     // V6 Hardening: Ensure initial state is pushed correctly
     if (this.isHydrated) {
         const currentOrders = this.getOrdersArray();
-        if (__DEV__) console.log(`[MapEngine] New Subscriber from [${source}]. Total:`, this.subscribers.size, 'Orders:', currentOrders.length);
         callback([...currentOrders]);
-    } else {
-        if (__DEV__) console.log(`[MapEngine] New Subscriber from [${source}]. Waiting for hydration...`);
     }
 
     return () => {
         this.subscribers.delete(callback);
-        if (__DEV__) console.log(`[MapEngine] Unsubscribe from [${source}]. Remaining:`, this.subscribers.size);
+        console.log('MAP_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
     };
   }
 
@@ -101,10 +100,12 @@ class MapEngine {
   syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
     if (!this.entityStore || !viewRegion) return;
 
-    if (__DEV__) {
-        console.log('[MapEngine DIAG] Active Subscribers:', this.subscribers.size);
-        console.log('[MapEngine DIAG] Orders in Store:', this.entityStore.getAllOrders().length);
-    }
+    console.log('MAP_ENGINE_STATE', {
+        subscribers: this.subscribers.size,
+        ordersInMemory: this.entityStore.getAllOrders().length,
+        cacheSize: this.getHeuristicMemoryUsage(),
+        loadedChunks: this.spatialManager.getLoadedChunksCount()
+    });
 
     // V7 Hardening: Multi-lock. Skip if locked or if we just recently synced this area
     if (this.syncLock) {
@@ -130,7 +131,9 @@ class MapEngine {
 
     // 2. CHECK SPATIAL CACHE
     if (!force && this.spatialManager.isAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng)) {
-        if (__DEV__) console.log('[MapEngine] SPATIAL CACHE HIT');
+        console.log('MAP_DATA_SOURCE: CACHE', {
+            count: this.entityStore.getAllOrders().length
+        });
         this.requestRouter.metrics.spatialCacheHits++;
         // If it's a cache hit, we still want to ensure UI is up to date with what's in store
         this.notifySubscribers();
@@ -152,6 +155,15 @@ class MapEngine {
       this.requestRouter.metrics.spatialRequests++;
       const lastSyncTime = this.entityStore.getMeta('map_last_sync') || '0';
 
+      console.log('[SPATIAL_FETCH_START]', {
+          minLat: aligned.minLat,
+          maxLat: aligned.maxLat,
+          minLng: aligned.minLng,
+          maxLng: aligned.maxLng,
+          mode: 'bbox'
+      });
+      const startTime = Date.now();
+
       const response = await this.requestRouter.request<{ created: Order[], updated: Order[], deleted: string[] }>(
         spatialKey,
         async () => {
@@ -168,11 +180,15 @@ class MapEngine {
       );
 
       if (response) {
-        if (__DEV__) {
-            console.log(`[MapEngine] MAP BACKGROUND UPDATE: received ${response.created?.length || 0} new orders`);
-            console.log(`[MapEngine] SPATIAL REQUESTS/MIN: ${this.requestRouter.metrics.spatialRequests}`);
-        }
+        console.log('[SPATIAL_FETCH_END]', {
+            returnedOrders: response.created?.length || 0,
+            durationMs: Date.now() - startTime
+        });
+
         this.entityStore.applyPatch(response);
+        console.log('MAP_DATA_SOURCE: API', {
+            count: this.entityStore.getAllOrders().length
+        });
         this.spatialManager.markAreaLoaded(aligned.minLat, aligned.maxLat, aligned.minLng, aligned.maxLng);
         this.requestRouter.metrics.spatialChunksLoaded = this.spatialManager.getLoadedChunksCount();
         this.notifySubscribers();
@@ -204,8 +220,14 @@ class MapEngine {
    * Initial Load V6: Load 100km radius around user.
    */
   initialLoad = async (lat: number, lng: number) => {
+      console.log('[SPATIAL_FETCH_START]', { lat, lng, radius: 100, mode: 'initial' });
+      const startTime = Date.now();
       try {
           const response = await this.apiService.getSpatialOrders({ lat, lng, radius: 100 });
+          console.log('[SPATIAL_FETCH_END]', {
+              returnedOrders: response.data?.created?.length || 0,
+              durationMs: Date.now() - startTime
+          });
           this.entityStore?.applyPatch(response.data);
           this.spatialManager.markAreaLoaded(lat - 1, lat + 1, lng - 1, lng + 1); // Approx 100km area
           this.notifySubscribers();
@@ -455,17 +477,19 @@ class MapEngine {
     return this.apiService.getBaseUrl();
   }
 
+  getHeuristicMemoryUsage = () => {
+      const ordersCount = this.entityStore?.getAllOrders().length || 0;
+      const cacheSizeMb = ((ordersCount * 2) / 1024).toFixed(2);
+      return `${cacheSizeMb} MB`;
+  }
+
   logMemoryUsage = () => {
       if (__DEV__) {
-          const ordersCount = this.entityStore.getAllOrders().length;
           const chunksCount = this.spatialManager.getLoadedChunksCount();
-          // Heuristic: ~2KB per order record
-          const cacheSizeMb = ((ordersCount * 2) / 1024).toFixed(2);
-
           console.log('[MapEngine] Memory:', {
               loadedChunks: chunksCount,
-              ordersInMemory: ordersCount,
-              cacheSizeMb: `${cacheSizeMb} MB`
+              ordersInMemory: this.entityStore.getAllOrders().length,
+              cacheSizeMb: this.getHeuristicMemoryUsage()
           });
       }
   }
