@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   View, 
   StyleSheet, 
@@ -11,85 +11,51 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import { useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { mapEngine } from '../services/MapEngine';
+import { mapViewportStore } from '../services/MapViewportStore';
 import { formatDate } from '../utils/date';
 import { Order } from '../types';
 import ErrorBoundary from '../components/common/ErrorBoundary';
 
-const MOSCOW_REGION = {
-  latitude: 55.751244,
-  longitude: 37.618423,
-  latitudeDelta: 0.5,
-  longitudeDelta: 0.5,
-};
-
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
-  const lastRegionRef = useRef<Region>(MOSCOW_REGION);
-
-  // 0. Lifecycle & Navigation Logging
-  useEffect(() => {
-    console.log('MAP_SCREEN_MOUNT');
-
-    const unsubscribeState = navigation.addListener('state', (e: any) => {
-        const state = e.data.state;
-        const currentRoute = state?.routes[state.index]?.name;
-        const prevRoute = state?.index > 0 ? state?.routes[state.index - 1]?.name : 'none';
-        console.log('[NAVIGATION] current route:', currentRoute);
-        console.log('[NAVIGATION] previous route:', prevRoute);
-    });
-
-    return () => {
-      console.log('MAP_SCREEN_UNMOUNT');
-      unsubscribeState();
-    };
-  }, []);
   const [allOrders, setAllOrders] = useState<Order[]>(mapEngine.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [region, setRegion] = useState<Region>(MOSCOW_REGION);
+  const [region, setRegion] = useState<Region>(mapViewportStore.getRegion());
   const [isMoving, setIsMoving] = useState(false);
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 0. Lifecycle Logging
   useEffect(() => {
-      lastRegionRef.current = region;
-  }, [region]);
+    console.log('MAP_SCREEN_MOUNT');
+    return () => console.log('MAP_SCREEN_UNMOUNT');
+  }, []);
 
-  // 1. Subscribe to MapEngine
+  // 1. Subscriptions
   useEffect(() => {
-    const unsubscribe = mapEngine.subscribe((newOrders) => {
-      console.log('MAP_RENDER', {
-          count: newOrders.length,
-          source: 'entityStore',
-          region: {
-              lat: region.latitude.toFixed(3),
-              lng: region.longitude.toFixed(3),
-              delta: region.latitudeDelta.toFixed(3)
-          }
-      });
-      setAllOrders([...newOrders]); // Force spread to ensure reactivity
+    const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
+      setAllOrders([...newOrders]);
       setLoading(false);
     }, 'MapScreen');
 
-    // Immediate local sync if store is empty to prevent blank screen
-    if (mapEngine.getOrders().length === 0) {
-      mapEngine.syncMap(false, region);
-    }
+    const unsubscribeViewport = mapViewportStore.subscribe((newRegion) => {
+      setRegion(newRegion);
+    });
 
     return () => {
-      if (__DEV__) console.log('[MapScreen] Cleaning up subscription');
-      unsubscribe();
+      unsubscribeOrders();
+      unsubscribeViewport();
     };
   }, []);
 
-  const fitToOrders = (orders: Order[]) => {
+  const fitToOrders = useCallback((orders: Order[]) => {
     if (!orders || orders.length === 0 || !mapRef.current) return;
 
     const coords = orders
@@ -107,97 +73,69 @@ const MapScreen = ({ navigation }: any) => {
         animated: true,
       });
     }
-  };
+  }, [selectedOrder]);
 
-  // 2. Initial Data Load & Location Sync (V8: Strategic Initialization)
+  // 2. Focus Logic
   useFocusEffect(
     useCallback(() => {
       console.log('MAP_FOCUS');
 
-      // If we already have data and a saved position, just use that
       const orders = mapEngine.getOrders();
       if (orders.length > 0) {
           console.log('[MapScreen] Focus: using cached state');
-          mapRef.current?.animateToRegion(lastRegionRef.current, 500);
+          mapRef.current?.animateToRegion(mapViewportStore.getRegion(), 500);
           return;
       }
 
       (async () => {
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
-
             if (status === 'granted') {
               const loc = await Location.getCurrentPositionAsync({});
               setLocation(loc);
-
               const userRegion = {
                 latitude: loc.coords.latitude,
                 longitude: loc.coords.longitude,
                 latitudeDelta: 0.25,
                 longitudeDelta: 0.25
               };
-
-              setRegion(userRegion);
-
-              // Load 100km around user
+              mapViewportStore.setRegion(userRegion);
               await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
-
-              // Animate camera to user
               mapRef.current?.animateToRegion(userRegion, 500);
 
-              // Auto-fit after a delay to ensure data is in store
               const currentOrders = mapEngine.getOrders();
               if (currentOrders.length > 0) {
                   setTimeout(() => fitToOrders(currentOrders), 1500);
               }
             } else {
-              // Denied: fallback to Moscow area
-              setRegion(MOSCOW_REGION);
-              await mapEngine.initialLoad(MOSCOW_REGION.latitude, MOSCOW_REGION.longitude);
-
-              // Try to fit to available orders if any
+              const fallback = mapViewportStore.getRegion();
+              await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
               const currentOrders = mapEngine.getOrders();
               if (currentOrders.length > 0) {
                   setTimeout(() => fitToOrders(currentOrders), 1000);
               }
             }
         } catch (e) {
-            console.error('[MapScreen] Location error:', e);
-            // Fallback load
-            mapEngine.syncMap(false, MOSCOW_REGION);
+            console.error('[MapScreen] Init Error:', e);
         }
       })();
 
-      return () => {
-          console.log('MAP_BLUR');
-      };
-    }, [])
+      return () => console.log('MAP_BLUR');
+    }, [fitToOrders])
   );
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     if (!newRegion || !newRegion.latitude || !newRegion.longitude) return;
 
-    // Stop "Moving" state
     if (movingTimeoutRef.current) clearTimeout(movingTimeoutRef.current);
-    movingTimeoutRef.current = setTimeout(() => {
-        setIsMoving(false);
-    }, 300);
+    movingTimeoutRef.current = setTimeout(() => setIsMoving(false), 300);
 
-    if (newRegion.latitude === region.latitude && newRegion.longitude === region.longitude) return;
-
-    setRegion(newRegion);
-    // V6 Normalization
-    mapEngine.triggerMapUpdate({
-      latitude: Number(newRegion.latitude.toFixed(3)),
-      longitude: Number(newRegion.longitude.toFixed(3)),
-      latitudeDelta: newRegion.latitudeDelta,
-      longitudeDelta: newRegion.longitudeDelta
-    });
+    mapViewportStore.setRegion(newRegion);
+    mapEngine.triggerMapUpdate(newRegion);
   };
 
-  // 3. UI Clustering & Spatial Filtering (V8: Local processing only)
+  // 3. UI Clustering
   const displayedItems = useMemo(() => {
-    // 1. Efficient candidate selection using Spatial Grid Index (O(1) bucket lookup)
     const padding = region.latitudeDelta * 0.2;
     const candidates = mapEngine.getOrdersInBounds(
         region.latitude - region.latitudeDelta - padding,
@@ -206,55 +144,49 @@ const MapScreen = ({ navigation }: any) => {
         region.longitude + region.longitudeDelta + padding
     );
 
-    // 2. Run clustering on viewport candidates
-    const start = Date.now();
     let result = mapEngine.clusterOrders(candidates, region.latitudeDelta);
-
-    // Performance: Filter out individual markers if zoomed out too far
     if (region.latitudeDelta > 2) {
         result = result.filter((item: any) => item.isCluster);
     }
-
-    if (__DEV__) {
-        const time = Date.now() - start;
-        const meta = (mapEngine as any).entityStore?.meta;
-        if (meta) meta.lastClusterTime = time;
-    }
-
     return result;
-  }, [allOrders, region]);
+  }, [allOrders, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
 
   const safeItems = useMemo(() => {
       return displayedItems.filter(item => {
-          const lat = Number(item.latitude ?? (item as any).lat);
-          const lng = Number(item.longitude ?? (item as any).lng);
-          return Number.isFinite(lat) && Number.isFinite(lng);
+          const coords = mapEngine.getOrderCoords(item as any);
+          return coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
       });
   }, [displayedItems]);
 
   const centerToUser = async () => {
     if (location && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      }, 1000);
+      const userRegion = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+      };
+      mapRef.current.animateToRegion(userRegion, 1000);
+      mapViewportStore.setRegion(userRegion);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
   };
 
-
-  console.log('MAP_RENDER', {
-      count: allOrders.length,
-      visible: safeItems.length,
-      loading,
-      region: {
-          lat: region.latitude.toFixed(3),
-          lng: region.longitude.toFixed(3),
-          delta: region.latitudeDelta.toFixed(3)
+  useEffect(() => {
+      if (!isMoving) {
+          console.log('MAP_RENDER', {
+              count: allOrders.length,
+              visible: safeItems.length,
+              loading,
+              source: 'entityStore',
+              region: {
+                  lat: region.latitude.toFixed(3),
+                  lng: region.longitude.toFixed(3),
+                  delta: region.latitudeDelta.toFixed(3)
+              }
+          });
       }
-  });
+  }, [allOrders.length, safeItems.length, loading, isMoving, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
 
   return (
     <ErrorBoundary>
@@ -266,40 +198,26 @@ const MapScreen = ({ navigation }: any) => {
           initialRegion={region}
           showsUserLocation={true}
           onPress={() => setSelectedOrder(null)}
-          onRegionChange={() => {
-              if (!isMoving) setIsMoving(true);
-          }}
-          onRegionChangeComplete={(reg) => {
-              console.log('MAP_REGION_CHANGED', {
-                  lat: reg.latitude.toFixed(3),
-                  lng: reg.longitude.toFixed(3),
-                  delta: reg.latitudeDelta.toFixed(3)
-              });
-              handleRegionChangeComplete(reg);
-          }}
-          onPanDrag={() => {
-              if (!isMoving) setIsMoving(true);
-              console.log('[MAP] PAN_DRAG');
-          }}
-          onMapReady={() => {
-              console.log('[MAP] READY');
-          }}
+          onRegionChange={() => { if (!isMoving) setIsMoving(true); }}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          onPanDrag={() => { if (!isMoving) setIsMoving(true); console.log('[MAP] PAN_DRAG'); }}
+          onMapReady={() => console.log('[MAP] READY')}
           customMapStyle={mapStyle}
           mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
         >
           {!isMoving && safeItems.map((item: any) => {
-            const lat = Number(item.latitude ?? (item as any).lat);
-            const lng = Number(item.longitude ?? (item as any).lng);
+            const coords = mapEngine.getOrderCoords(item);
+            if (!coords) return null;
 
             if (item.isCluster) {
               return (
                 <Marker
                   key={item.id}
-                  coordinate={{ latitude: lat, longitude: lng }}
+                  coordinate={coords}
                   onPress={() => {
                       mapRef.current?.animateToRegion({
-                          latitude: lat,
-                          longitude: lng,
+                          latitude: coords.latitude,
+                          longitude: coords.longitude,
                           latitudeDelta: region.latitudeDelta / 4,
                           longitudeDelta: region.longitudeDelta / 4,
                       }, 500);
@@ -315,7 +233,7 @@ const MapScreen = ({ navigation }: any) => {
             return (
               <Marker
                 key={item.id}
-                coordinate={{ latitude: lat, longitude: lng }}
+                coordinate={coords}
                 onPress={(e) => {
                   e.stopPropagation();
                   setSelectedOrder(item);

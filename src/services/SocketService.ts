@@ -69,7 +69,7 @@ class SocketService {
     this.socket.on('application.new', (application: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'application.new', orderId: application.orderId });
-      mapEngine.syncOrder(application.orderId, true);
+      mapEngine.syncOrder(application.orderId);
     });
 
     this.socket.on('order.completed', (order: any) => {

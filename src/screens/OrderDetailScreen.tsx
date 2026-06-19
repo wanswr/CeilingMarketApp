@@ -99,7 +99,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           onPress: async () => {
             setSubmitting(true);
             try {
-              await mapEngine.acceptApplication(applicationId, orderId);
+              await mapEngine.acceptApplication(applicationId);
               setShowApplications(false);
               Alert.alert('Успех', 'Исполнитель выбран');
             } catch (e) {
