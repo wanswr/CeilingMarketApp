@@ -27,7 +27,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         setOrder(updated);
         setLoading(false);
       }
-    });
+    }, `OrderDetailScreen_${orderId}`);
 
     mapEngine.syncOrder(orderId).catch(() => {
       if (!order) {

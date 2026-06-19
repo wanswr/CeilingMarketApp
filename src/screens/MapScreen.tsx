@@ -31,6 +31,7 @@ const MapScreen = ({ navigation }: any) => {
   const [region, setRegion] = useState<Region>(mapViewportStore.getRegion());
   const [isMoving, setIsMoving] = useState(false);
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastPanDragRef = useRef<number>(0);
 
   // 0. Lifecycle Logging
   useEffect(() => {
@@ -38,22 +39,24 @@ const MapScreen = ({ navigation }: any) => {
     return () => console.log('MAP_SCREEN_UNMOUNT');
   }, []);
 
-  // 1. Subscriptions
-  useEffect(() => {
-    const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
-      setAllOrders([...newOrders]);
-      setLoading(false);
-    }, 'MapScreen');
+  // 1. Subscriptions (Focus-based for V9 Optimization)
+  useFocusEffect(
+    useCallback(() => {
+      const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
+        setAllOrders([...newOrders]);
+        setLoading(false);
+      }, 'MapScreen');
 
-    const unsubscribeViewport = mapViewportStore.subscribe((newRegion) => {
-      setRegion(newRegion);
-    });
+      const unsubscribeViewport = mapViewportStore.subscribe((newRegion) => {
+        setRegion(newRegion);
+      }, 'MapScreen');
 
-    return () => {
-      unsubscribeOrders();
-      unsubscribeViewport();
-    };
-  }, []);
+      return () => {
+        unsubscribeOrders();
+        unsubscribeViewport();
+      };
+    }, [])
+  );
 
   const fitToOrders = useCallback((orders: Order[]) => {
     if (!orders || orders.length === 0 || !mapRef.current) return;
@@ -78,14 +81,13 @@ const MapScreen = ({ navigation }: any) => {
   // 2. Focus Logic
   useFocusEffect(
     useCallback(() => {
-      console.log('MAP_FOCUS');
-
+      // Avoid focus logic if we already have orders and are just returning to the screen
       const orders = mapEngine.getOrders();
       if (orders.length > 0) {
-          console.log('[MapScreen] Focus: using cached state');
-          mapRef.current?.animateToRegion(mapViewportStore.getRegion(), 500);
           return;
       }
+
+      console.log('MAP_FOCUS');
 
       (async () => {
         try {
@@ -124,6 +126,8 @@ const MapScreen = ({ navigation }: any) => {
     }, [fitToOrders])
   );
 
+  const lastUpdateRef = useRef<{ordersCount: number, visibleCount: number, regionKey: string} | null>(null);
+
   const handleRegionChangeComplete = (newRegion: Region) => {
     if (!newRegion || !newRegion.latitude || !newRegion.longitude) return;
 
@@ -152,7 +156,7 @@ const MapScreen = ({ navigation }: any) => {
   }, [allOrders, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
 
   const safeItems = useMemo(() => {
-      return displayedItems.filter(item => {
+      return displayedItems.filter((item: any) => {
           const coords = mapEngine.getOrderCoords(item as any);
           return coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
       });
@@ -174,6 +178,21 @@ const MapScreen = ({ navigation }: any) => {
 
   useEffect(() => {
       if (!isMoving) {
+          const regionKey = `${region.latitude.toFixed(3)}:${region.longitude.toFixed(3)}:${region.latitudeDelta.toFixed(3)}`;
+
+          if (lastUpdateRef.current &&
+              lastUpdateRef.current.ordersCount === allOrders.length &&
+              lastUpdateRef.current.visibleCount === safeItems.length &&
+              lastUpdateRef.current.regionKey === regionKey) {
+              return;
+          }
+
+          lastUpdateRef.current = {
+              ordersCount: allOrders.length,
+              visibleCount: safeItems.length,
+              regionKey
+          };
+
           console.log('MAP_RENDER', {
               count: allOrders.length,
               visible: safeItems.length,
@@ -200,7 +219,14 @@ const MapScreen = ({ navigation }: any) => {
           onPress={() => setSelectedOrder(null)}
           onRegionChange={() => { if (!isMoving) setIsMoving(true); }}
           onRegionChangeComplete={handleRegionChangeComplete}
-          onPanDrag={() => { if (!isMoving) setIsMoving(true); console.log('[MAP] PAN_DRAG'); }}
+          onPanDrag={() => {
+            if (!isMoving) setIsMoving(true);
+            const now = Date.now();
+            if (now - lastPanDragRef.current > 500) {
+                console.log('[MAP] PAN_DRAG');
+                lastPanDragRef.current = now;
+            }
+          }}
           onMapReady={() => console.log('[MAP] READY')}
           customMapStyle={mapStyle}
           mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}

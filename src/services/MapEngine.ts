@@ -8,7 +8,7 @@ import { spatialManager } from '../map/SpatialManager';
 type OrderCallback = (orders: Order[]) => void;
 
 class MapEngine {
-  private subscribers: Set<OrderCallback> = new Set();
+  private subscribers: Map<string, OrderCallback> = new Map();
   private debounceTimer: NodeJS.Timeout | null = null;
   private syncLock: boolean = false;
   private currentAbortController: AbortController | null = null;
@@ -35,20 +35,25 @@ class MapEngine {
     this.notifySubscribers();
   }
 
-  subscribe = (callback: OrderCallback, source: string = 'unknown') => {
-    this.subscribers.add(callback);
+  subscribe = (callback: OrderCallback, source: string) => {
+    if (!source) {
+        console.warn('[MapEngine] Subscribe called without source');
+        source = 'unknown_' + Math.random().toString(36).substr(2, 5);
+    }
+    this.subscribers.set(source, callback);
     console.log('MAP_SUBSCRIBE', { source, total: this.subscribers.size });
     if (this.isHydrated) {
         callback([...this.getOrdersArray()]);
     }
     return () => {
-        this.subscribers.delete(callback);
+        this.subscribers.delete(source);
         console.log('MAP_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
     };
   }
 
   private notifySubscribers = () => {
     const orders = this.getOrdersArray();
+    console.log('[MapEngine] notifySubscribers, count:', this.subscribers.size);
     this.subscribers.forEach(cb => cb(orders));
   }
 
@@ -57,7 +62,7 @@ class MapEngine {
   getOrdersArray = (myOnly: boolean = false): Order[] => {
     if (!this.entityStore) return [];
     const orders = myOnly ? this.entityStore.getMyOrders() : this.entityStore.getAllOrders();
-    return orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return orders.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
@@ -156,6 +161,12 @@ class MapEngine {
 
   // --- Actions ---
   syncUser = async (force: boolean = false) => {
+    if (!force) {
+      const cached = this.entityStore.getCurrentUser();
+      if (cached) {
+        return cached;
+      }
+    }
     const data = (await this.apiService.getProfile()).data;
     this.entityStore.setUser({ ...data, isMe: true });
     return data;

@@ -9,7 +9,7 @@ class MapViewportStore {
         longitudeDelta: 0.5,
     };
 
-    private subscribers: Set<(region: Region) => void> = new Set();
+    private subscribers: Map<string, (region: Region) => void> = new Map();
 
     setRegion(region: Region) {
         if (this.currentRegion.latitude === region.latitude &&
@@ -32,12 +32,17 @@ class MapViewportStore {
         return { ...this.currentRegion };
     }
 
-    subscribe(callback: (region: Region) => void) {
-        this.subscribers.add(callback);
-        return () => this.subscribers.delete(callback);
+    subscribe(callback: (region: Region) => void, source: string) {
+        this.subscribers.set(source, callback);
+        console.log('MAP_VIEWPORT_SUBSCRIBE', { source, total: this.subscribers.size });
+        return () => {
+            this.subscribers.delete(source);
+            console.log('MAP_VIEWPORT_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
+        };
     }
 
     private notify() {
+        console.log('[MapViewportStore] notify, count:', this.subscribers.size);
         this.subscribers.forEach(cb => cb(this.currentRegion));
     }
 }

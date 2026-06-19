@@ -10,6 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { mapEngine } from '../services/MapEngine';
 import { Order, OrderStatus, WorkType } from '../types';
@@ -56,19 +57,21 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [dateFilter, setDateFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
 
-  useEffect(() => {
-    const unsubscribe = mapEngine.subscribe(() => {
-      setOrders(mapEngine.getOrders(true));
-    }, 'OrdersListScreen');
+  useFocusEffect(
+    React.useCallback(() => {
+      const unsubscribe = mapEngine.subscribe(() => {
+        setOrders(mapEngine.getOrders(true));
+      }, 'OrdersListScreen');
 
-    const user = mapEngine.getCurrentUser();
-    if (user) setCurrentUser(user);
-    else mapEngine.syncUser().then(setCurrentUser);
+      const user = mapEngine.getCurrentUser();
+      if (user) setCurrentUser(user);
+      else mapEngine.syncUser().then(setCurrentUser);
 
-    mapEngine.syncMyOrders();
+      mapEngine.syncMyOrders();
 
-    return () => unsubscribe();
-  }, []);
+      return () => unsubscribe();
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
