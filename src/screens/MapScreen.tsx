@@ -24,6 +24,7 @@ import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
+  const isFocusedRef = useRef(true);
   const [displayedOrders, setDisplayedOrders] = useState<any[]>(mapEngine.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
@@ -82,6 +83,7 @@ const MapScreen = ({ navigation }: any) => {
   // 2. Focus Logic
   useFocusEffect(
     useCallback(() => {
+      isFocusedRef.current = true;
       // Avoid focus logic if we already have orders and are just returning to the screen
       const orders = mapEngine.getOrders();
       if (orders.length > 0) {
@@ -123,14 +125,17 @@ const MapScreen = ({ navigation }: any) => {
         }
       })();
 
-      return () => console.log('MAP_BLUR');
+      return () => {
+        isFocusedRef.current = false;
+        console.log('MAP_BLUR');
+      };
     }, [fitToOrders])
   );
 
   const lastUpdateRef = useRef<{ordersCount: number, visibleCount: number, regionKey: string} | null>(null);
 
   const handleRegionChangeComplete = (newRegion: Region) => {
-    if (!newRegion || !newRegion.latitude || !newRegion.longitude) return;
+    if (!newRegion || !newRegion.latitude || !newRegion.longitude || !isFocusedRef.current) return;
 
     if (movingTimeoutRef.current) clearTimeout(movingTimeoutRef.current);
     movingTimeoutRef.current = setTimeout(() => setIsMoving(false), 300);
@@ -196,6 +201,7 @@ const MapScreen = ({ navigation }: any) => {
           showsUserLocation={true}
           onPress={() => setSelectedOrder(null)}
           onRegionChange={(newReg) => {
+              if (!isFocusedRef.current) return;
               if (!isMoving) setIsMoving(true);
               // 1. Update camera state immediately (responsive)
               mapViewportStore.setRegion(newReg);

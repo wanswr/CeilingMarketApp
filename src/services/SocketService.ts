@@ -12,11 +12,15 @@ class SocketService {
         return;
     }
 
-    console.log('[WebSocket] Initializing connection to:', url);
-    this.socket = io(url.replace('/api/', ''), {
+    const socketUrl = url.replace('/api/', '');
+    console.log('[WebSocket] Initializing connection to:', socketUrl);
+    this.socket = io(socketUrl, {
         reconnection: true,
-        reconnectionAttempts: 10,
+        reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+        transports: ['websocket'], // Prefer pure websockets for stability
     });
 
     this.socket.on('connect', () => {
@@ -91,8 +95,12 @@ class SocketService {
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.deleted', id: orderId, countBefore, countAfter });
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('WEBSOCKET_DISCONNECTED');
+    this.socket.on('disconnect', (reason) => {
+      console.log('WEBSOCKET_DISCONNECTED', { reason });
+    });
+
+    this.socket.on('connect_error', (error) => {
+      console.warn('WEBSOCKET_CONNECT_ERROR', { message: error.message });
     });
   }
 
