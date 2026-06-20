@@ -41,24 +41,6 @@ const MapScreen = ({ navigation }: any) => {
     return () => console.log('MAP_SCREEN_UNMOUNT');
   }, []);
 
-  // 1. Subscriptions (Focus-based for V9 Optimization)
-  useFocusEffect(
-    useCallback(() => {
-      const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
-        setDisplayedOrders([...newOrders]);
-        setLoading(false);
-      }, 'MapScreen');
-
-      const unsubscribeViewport = mapViewportStore.subscribe((newRegion) => {
-        setRegion(newRegion);
-      }, 'MapScreen');
-
-      return () => {
-        unsubscribeOrders();
-        unsubscribeViewport();
-      };
-    }, [])
-  );
 
   const fitToOrders = useCallback((orders: Order[]) => {
     if (!orders || orders.length === 0 || !mapRef.current) return;
@@ -80,56 +62,77 @@ const MapScreen = ({ navigation }: any) => {
     }
   }, [selectedOrder]);
 
-  // 2. Focus Logic
+  // 1. Static Subscriptions (Mount/Unmount)
+  useEffect(() => {
+    console.log('MAP_SCREEN_MOUNT');
+
+    const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
+      setDisplayedOrders([...newOrders]);
+      setLoading(false);
+    }, 'MapScreen');
+
+    const unsubscribeViewport = mapViewportStore.subscribe((newRegion) => {
+      setRegion(newRegion);
+    }, 'MapScreen');
+
+    return () => {
+      console.log('MAP_SCREEN_UNMOUNT');
+      unsubscribeOrders();
+      unsubscribeViewport();
+    };
+  }, []);
+
+  // 2. Active Focus Lifecycle
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
-      // Avoid focus logic if we already have orders and are just returning to the screen
+
+      // Refresh state from store on focus (in case we missed updates while backgrounded)
+      setDisplayedOrders([...mapEngine.getOrders()]);
+      setRegion(mapViewportStore.getRegion());
+
+      // --- Init Logic ---
       const orders = mapEngine.getOrders();
-      if (orders.length > 0) {
-          return;
-      }
+      if (orders.length === 0) {
+          console.log('MAP_FOCUS (Init)');
+          (async () => {
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status === 'granted') {
+                  const loc = await Location.getCurrentPositionAsync({});
+                  setLocation(loc);
+                  const userRegion = {
+                    latitude: loc.coords.latitude,
+                    longitude: loc.coords.longitude,
+                    latitudeDelta: 0.25,
+                    longitudeDelta: 0.25
+                  };
+                  mapViewportStore.setRegion(userRegion);
+                  await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
+                  mapRef.current?.animateToRegion(userRegion, 500);
 
-      console.log('MAP_FOCUS');
-
-      (async () => {
-        try {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status === 'granted') {
-              const loc = await Location.getCurrentPositionAsync({});
-              setLocation(loc);
-              const userRegion = {
-                latitude: loc.coords.latitude,
-                longitude: loc.coords.longitude,
-                latitudeDelta: 0.25,
-                longitudeDelta: 0.25
-              };
-              mapViewportStore.setRegion(userRegion);
-              await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
-              mapRef.current?.animateToRegion(userRegion, 500);
-
-              const currentOrders = mapEngine.getOrders();
-              if (currentOrders.length > 0) {
-                  setTimeout(() => fitToOrders(currentOrders), 1500);
-              }
-            } else {
-              const fallback = mapViewportStore.getRegion();
-              await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
-              const currentOrders = mapEngine.getOrders();
-              if (currentOrders.length > 0) {
-                  setTimeout(() => fitToOrders(currentOrders), 1000);
-              }
+                  const currentOrders = mapEngine.getOrders();
+                  if (currentOrders.length > 0) {
+                      const coords = currentOrders.map(o => mapEngine.getOrderCoords(o)).filter(Boolean) as any[];
+                      if (coords.length > 0) {
+                          setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 80, right: 80, bottom: 250, left: 80 }, animated: true }), 1500);
+                      }
+                  }
+                } else {
+                  const fallback = mapViewportStore.getRegion();
+                  await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
+                }
+            } catch (e) {
+                console.error('[MapScreen] Init Error:', e);
             }
-        } catch (e) {
-            console.error('[MapScreen] Init Error:', e);
-        }
-      })();
+          })();
+      }
 
       return () => {
         isFocusedRef.current = false;
         console.log('MAP_BLUR');
       };
-    }, [fitToOrders])
+    }, [])
   );
 
   const lastUpdateRef = useRef<{ordersCount: number, visibleCount: number, regionKey: string} | null>(null);

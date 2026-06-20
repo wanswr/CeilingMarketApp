@@ -57,11 +57,17 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [dateFilter, setDateFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('newest');
 
+  useEffect(() => {
+    const unsubscribe = mapEngine.subscribe(() => {
+      setOrders(mapEngine.getOrders(true));
+    }, 'OrdersListScreen');
+    return () => unsubscribe();
+  }, []);
+
   useFocusEffect(
     React.useCallback(() => {
-      const unsubscribe = mapEngine.subscribe(() => {
-        setOrders(mapEngine.getOrders(true));
-      }, 'OrdersListScreen');
+      // Sync UI state on focus
+      setOrders(mapEngine.getOrders(true));
 
       const user = mapEngine.getCurrentUser();
       if (user) setCurrentUser(user);
@@ -71,8 +77,6 @@ const OrdersListScreen = ({ navigation }: any) => {
       if (!mapEngine.entityStore.isMyOrdersLoaded) {
         mapEngine.syncMyOrders();
       }
-
-      return () => unsubscribe();
     }, [])
   );
 
