@@ -35,7 +35,7 @@ class MapEngine {
     ]);
     this.isHydrated = true;
     console.log('MAP_DATA_SOURCE: STORAGE', { count: this.entityStore.getAllOrders().length });
-    this.notifySubscribers();
+    this.triggerNotify();
   }
 
   subscribe = (callback: OrderCallback, source: string) => {
@@ -57,9 +57,16 @@ class MapEngine {
   private notifySubscribers = (clusteredOrders?: any[]) => {
     const orders = this.getOrdersArray();
     if (__DEV__) console.log('[MapEngine] notifySubscribers, count:', this.subscribers.size);
+
+    let mapOrders = clusteredOrders;
+    if (!mapOrders) {
+        const currentRegion = mapViewportStore.getRegion();
+        mapOrders = this.recalculateClusteredOrders(currentRegion);
+    }
+
     this.subscribers.forEach((cb, source) => {
-        if (source === 'MapScreen' && clusteredOrders) {
-            cb(clusteredOrders);
+        if (source === 'MapScreen') {
+            cb(mapOrders!);
         } else {
             cb(orders);
         }
@@ -173,7 +180,7 @@ class MapEngine {
             latitudeDelta: viewRegion.latitudeDelta
         };
         console.log('MAP_DATA_SOURCE: API', { count: this.entityStore.getAllOrders().length });
-        this.notifySubscribers();
+        this.triggerNotify();
         this.entityStore.persist();
       }
     } catch (error: any) {
@@ -189,51 +196,61 @@ class MapEngine {
       return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.5, longitudeDelta: 0.5 });
   }
 
+  private recalculateClusteredOrders = (region: any): any[] => {
+    if (__DEV__) console.log('MAP_VISIBLE_RECALC_START');
+    const startTime = Date.now();
+    const latPadding = region.latitudeDelta * 0.7; // Wider padding for smoother panning
+    const lngPadding = region.longitudeDelta * 0.7;
+
+    const candidates = this.getOrdersInBounds(
+        region.latitude - latPadding,
+        region.latitude + latPadding,
+        region.longitude - lngPadding,
+        region.longitude + lngPadding
+    );
+
+    // V9: Perform clustering but NEVER hide single orders unless they are actually in a cluster
+    const result = this.clusterOrders(candidates, region.latitudeDelta);
+
+    const safeItems = result.filter((item: any) => {
+        const coords = this.getOrderCoords(item);
+        return coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
+    });
+
+    this.lastClusteredOrders = safeItems;
+    if (__DEV__) {
+        console.log('MAP_VISIBLE_RECALC_END', {
+            candidates: candidates.length,
+            visible: safeItems.length,
+            duration: Date.now() - startTime
+        });
+    }
+    return safeItems;
+  }
+
   triggerMapUpdate = (region: any) => {
     if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
     }
     this.debounceTimer = setTimeout(() => {
         // 1. RECALC VISIBLE & CLUSTERING (Heavy logic moved here)
-        if (__DEV__) console.log('MAP_VISIBLE_RECALC_START');
-        const startTime = Date.now();
-        const padding = region.latitudeDelta * 0.2;
-        const candidates = this.getOrdersInBounds(
-            region.latitude - region.latitudeDelta - padding,
-            region.latitude + region.latitudeDelta + padding,
-            region.longitude - region.longitudeDelta - padding,
-            region.longitude + region.longitudeDelta + padding
-        );
-
-        let result = this.clusterOrders(candidates, region.latitudeDelta);
-        if (region.latitudeDelta > 2) {
-            result = result.filter((item: any) => item.isCluster);
-        }
-
-        const safeItems = result.filter((item: any) => {
-            const coords = this.getOrderCoords(item);
-            return coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
-        });
-
-        this.lastClusteredOrders = safeItems;
-        if (__DEV__) {
-            console.log('MAP_VISIBLE_RECALC_END', {
-                candidates: candidates.length,
-                visible: safeItems.length,
-                duration: Date.now() - startTime
-            });
-        }
+        const safeItems = this.recalculateClusteredOrders(region);
 
         // 2. Notify Map Screen with optimized data
         this.notifySubscribers(safeItems);
 
         // 3. Trigger cache sync/fetch
         this.syncMap(false, region);
-    }, 500);
+    }, 300); // Swifter update
   }
 
   // --- Selectors ---
-  getOrders = (myOnly: boolean = false) => myOnly ? this.getOrdersArray(true) : this.lastClusteredOrders;
+  getOrders = (myOnly: boolean = false) => {
+      if (myOnly) return this.getOrdersArray(true);
+      if (this.lastClusteredOrders.length > 0) return this.lastClusteredOrders;
+      // Fallback for first render before any region change
+      return this.recalculateClusteredOrders(mapViewportStore.getRegion());
+  };
   getOrder = (id: string) => this.entityStore?.getOrder(id);
   getUser = (id: string) => this.entityStore?.getUser(id);
   getCurrentUser = () => {

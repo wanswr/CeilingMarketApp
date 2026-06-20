@@ -117,6 +117,7 @@ const MapScreen = ({ navigation }: any) => {
                       if (coords.length > 0) {
                           setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 80, right: 80, bottom: 250, left: 80 }, animated: true }), 1500);
                       }
+                      setDisplayedOrders([...mapEngine.getOrders()]);
                   }
                 } else {
                   const fallback = mapViewportStore.getRegion();
