@@ -34,7 +34,7 @@ class MapViewportStore {
                 });
             }
             this.notify();
-        }, 400);
+        }, 250);
     }
 
     getRegion(): Region {

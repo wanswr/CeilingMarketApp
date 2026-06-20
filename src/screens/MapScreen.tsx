@@ -32,6 +32,7 @@ const MapScreen = ({ navigation }: any) => {
   const [isMoving, setIsMoving] = useState(false);
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPanDragRef = useRef<number>(0);
+  const lastSyncRequestRef = useRef<number>(0);
 
   // 0. Lifecycle Logging
   useEffect(() => {
@@ -196,9 +197,17 @@ const MapScreen = ({ navigation }: any) => {
           onPress={() => setSelectedOrder(null)}
           onRegionChange={(newReg) => {
               if (!isMoving) setIsMoving(true);
-              // V9: Fast responsive camera tracking
+              // 1. Update camera state immediately (responsive)
               mapViewportStore.setRegion(newReg);
-              mapEngine.triggerMapUpdate(newReg);
+
+              // 2. Throttled background sync check
+              const now = Date.now();
+              if (now - lastSyncRequestRef.current > 200) {
+                  if (mapEngine.isSyncRequired(newReg)) {
+                      mapEngine.triggerMapUpdate(newReg);
+                      lastSyncRequestRef.current = now;
+                  }
+              }
           }}
           onRegionChangeComplete={handleRegionChangeComplete}
           onPanDrag={() => {

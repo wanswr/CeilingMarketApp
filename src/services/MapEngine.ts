@@ -94,8 +94,8 @@ class MapEngine {
       return R * c;
   }
 
-  syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
-    if (!this.entityStore || !viewRegion) return;
+  isSyncRequired = (viewRegion: any, force: boolean = false): boolean => {
+    if (!this.entityStore || !viewRegion) return false;
 
     // 1. BOUNDS-BASED CACHE CHECK (V9)
     const viewport = {
@@ -105,8 +105,6 @@ class MapEngine {
         west: viewRegion.longitude - viewRegion.longitudeDelta / 2,
     };
 
-    if (__DEV__) console.log('MAP_CACHE_CHECK', { viewport, loaded: this.entityStore.loadedBounds });
-
     const isInside = this.entityStore.loadedBounds &&
         viewport.north <= this.entityStore.loadedBounds.north &&
         viewport.south >= this.entityStore.loadedBounds.south &&
@@ -115,29 +113,27 @@ class MapEngine {
 
     const shouldFetch = force || !isInside || this.entityStore.getAllOrders().length === 0;
 
-    if (!shouldFetch) {
-        if (__DEV__) console.log('MAP_CACHE_HIT', { count: this.entityStore.getAllOrders().length });
-        this.notifySubscribers();
-        return;
-    }
-
-    if (this.syncLock) {
-        if (__DEV__) console.log('MAP_FETCH_SKIPPED_ACTIVE_REQUEST');
-        return;
-    }
+    if (!shouldFetch) return false;
+    if (this.syncLock) return false;
 
     // 1.5. MOVEMENT THRESHOLD CHECK
     if (!force && this.lastSyncRegion) {
         const dist = this.calculateDistance(viewRegion.latitude, viewRegion.longitude, this.lastSyncRegion.latitude, this.lastSyncRegion.longitude);
         const scaleChange = Math.abs(viewRegion.latitudeDelta - this.lastSyncRegion.latitudeDelta) / this.lastSyncRegion.latitudeDelta;
 
-        if (dist < 10 && scaleChange < 0.2) {
-            if (__DEV__) console.log('MAP_FETCH_SKIPPED_SMALL_MOVEMENT', { dist: dist.toFixed(2), scaleChange: scaleChange.toFixed(2) });
-            return;
-        }
+        if (dist < 10 && scaleChange < 0.2) return false;
     }
 
-    if (__DEV__) console.log('MAP_CACHE_MISS', { reason: force ? 'force' : !isInside ? 'out_of_bounds' : 'empty' });
+    return true;
+  }
+
+  syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
+    if (!this.entityStore || !viewRegion) return;
+
+    if (!this.isSyncRequired(viewRegion, force)) {
+        if (!this.syncLock) this.notifySubscribers();
+        return;
+    }
 
     if (this.currentAbortController) this.currentAbortController.abort();
     this.currentAbortController = new AbortController();
@@ -195,7 +191,6 @@ class MapEngine {
 
   triggerMapUpdate = (region: any) => {
     if (this.debounceTimer) {
-        if (__DEV__) console.log('MAP_FETCH_SKIPPED_DEBOUNCE');
         clearTimeout(this.debounceTimer);
     }
     this.debounceTimer = setTimeout(() => {
