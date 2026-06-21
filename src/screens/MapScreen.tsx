@@ -63,7 +63,10 @@ const MapScreen = ({ navigation }: any) => {
   }, [selectedOrder]);
 
   // 1. Static Subscriptions (Mount/Unmount)
+  const isSubscribedRef = useRef(false);
+
   useEffect(() => {
+    if (isSubscribedRef.current) return;
     console.log('MAP_SCREEN_MOUNT');
 
     const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
@@ -75,10 +78,13 @@ const MapScreen = ({ navigation }: any) => {
       setRegion(newRegion);
     }, 'MapScreen');
 
+    isSubscribedRef.current = true;
+
     return () => {
       console.log('MAP_SCREEN_UNMOUNT');
       unsubscribeOrders();
       unsubscribeViewport();
+      isSubscribedRef.current = false;
     };
   }, []);
 

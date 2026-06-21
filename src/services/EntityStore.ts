@@ -91,6 +91,8 @@ class EntityStore {
         ...order,
         latitude: coords.lat,
         longitude: coords.lng,
+        lat: coords.lat, // Redundant for convenience
+        lng: coords.lng,
         applications: mergedApplications
     };
 
@@ -98,6 +100,8 @@ class EntityStore {
 
     // Skip if no change (stable reference optimization)
     if (existing && JSON.stringify(existing) === JSON.stringify(mergedOrder)) return;
+
+    if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status });
 
     // Update spatial grid: remove from old cell if location changed
     if (existing) {
@@ -107,6 +111,7 @@ class EntityStore {
         }
     }
 
+    if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status });
     this.ordersById.set(order.id, mergedOrder);
     this.updateOrderInGrid(mergedOrder);
 
@@ -118,12 +123,12 @@ class EntityStore {
 
     if (isMeEmployer || isMeExecutor || isMeApplicant) {
       if (!this.myOrders.has(mergedOrder.id)) {
-          console.log('ORDERS_COUNT_CHANGED', { previousCount: this.myOrders.size, newCount: this.myOrders.size + 1, reason: 'order_added_to_my', orderId: mergedOrder.id });
+          if (__DEV__) console.log('ORDERS_COUNT_CHANGED', { previousCount: this.myOrders.size, newCount: this.myOrders.size + 1, reason: 'order_added_to_my', orderId: mergedOrder.id });
           this.myOrders.add(mergedOrder.id);
       }
     } else {
       if (this.myOrders.has(mergedOrder.id)) {
-          console.log('ORDERS_COUNT_CHANGED', { previousCount: this.myOrders.size, newCount: this.myOrders.size - 1, reason: 'order_removed_from_my', orderId: mergedOrder.id });
+          if (__DEV__) console.log('ORDERS_COUNT_CHANGED', { previousCount: this.myOrders.size, newCount: this.myOrders.size - 1, reason: 'order_removed_from_my', orderId: mergedOrder.id });
           this.myOrders.delete(mergedOrder.id);
       }
     }
@@ -131,11 +136,12 @@ class EntityStore {
     this.meta.writes++;
   }
 
-  removeOrder = (id: string) => {
+  removeOrder = (id: string, reason: string = 'unknown') => {
     const order = this.ordersById.get(id);
     if (order) {
         this.removeFromGrid(order);
     }
+    if (__DEV__) console.log('STORE_REMOVE', { id, reason });
     this.ordersById.delete(id);
     if (this.myOrders.has(id)) {
         this.myOrders.delete(id);
@@ -152,18 +158,16 @@ class EntityStore {
 
   setOrders = (orders: Order[]) => {
       // V5: FULL RECONCILIATION
-      // For "My Orders", if the API returns a list, it is the absolute truth.
-      // We should remove any orders currently marked as "My Orders" that aren't in this list.
       const incomingIds = new Set(orders.map(o => o.id));
       const myOrderIds = Array.from(this.myOrders);
 
       myOrderIds.forEach(id => {
           if (!incomingIds.has(id)) {
-              // It's no longer my order (deleted or role changed)
-              this.removeOrder(id);
+              this.removeOrder(id, 'sync_reconciliation');
           }
       });
 
+      if (__DEV__) console.log('STORE_REPLACE', { count: orders.length });
       orders.forEach(o => this.setOrder(o));
       this.isMyOrdersLoaded = true;
       this.persist();
@@ -233,28 +237,23 @@ class EntityStore {
 
   hydrate = async () => {
     try {
-      // V5: Cache versioning. Clear old versions.
       await AsyncStorage.removeItem('entity_store_v4');
       await AsyncStorage.removeItem('map_cache_v1');
-      await AsyncStorage.removeItem('orders_cache');
 
       const data = await AsyncStorage.getItem('entity_store_v5');
       if (!data) return false;
       const parsed = JSON.parse(data);
 
-      // Strict Cache Verification: only use if updated in the last 30 minutes
-      // This forces more frequent API refreshes while keeping app start snappy
       const CACHE_TTL = 30 * 60 * 1000;
       if (!parsed.updatedAt || Date.now() - parsed.updatedAt > CACHE_TTL) {
-          console.log('[EntityStore] Cache expired');
+          if (__DEV__) console.log('STORE_HYDRATE', { status: 'expired' });
           await AsyncStorage.removeItem('entity_store_v5');
           return false;
       }
 
       if (parsed.loadedBounds) this.loadedBounds = parsed.loadedBounds;
       if (parsed.orders) {
-          // Hydrate but don't mark as "InitialLoaded" from cache alone
-          // We want the first spatial fetch to still happen
+          if (__DEV__) console.log('STORE_HYDRATE', { status: 'success', count: parsed.orders.length });
           parsed.orders.forEach((o: Order) => this.setOrder(o));
       }
       return true;

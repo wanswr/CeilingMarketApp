@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -19,7 +19,11 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [offerPrice, setOfferPrice] = useState('');
 
+  const isSubscribedRef = useRef(false);
+
   useEffect(() => {
+    if (isSubscribedRef.current) return;
+
     mapEngine.syncUser().then(setCurrentUser);
     const unsubscribe = mapEngine.subscribe(() => {
       const updated = mapEngine.getOrder(orderId);
@@ -29,6 +33,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       }
     }, `OrderDetailScreen_${orderId}`);
 
+    isSubscribedRef.current = true;
+
     mapEngine.syncOrder(orderId).catch(() => {
       if (!order) {
         Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
@@ -36,7 +42,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      isSubscribedRef.current = false;
+    };
   }, [orderId]);
 
   const handleCancelApplication = async () => {

@@ -42,7 +42,7 @@ class MapEngine {
 
     const count = this.entityStore.getAllOrders().length;
     if (count > 0) {
-        console.log('MAP_DATA_SOURCE: STORAGE (Hydrated)', { count });
+        if (__DEV__) console.log('STORE_HYDRATE', { count, source: 'storage' });
         this.triggerNotify();
     }
   }
@@ -187,16 +187,15 @@ class MapEngine {
 
         let prunedCount = 0;
         existingInRegion.forEach((order: Order) => {
-            // Only prune if it's NOT a "My Order" and NOT in the new response
             const isMine = order.employerId === myId || order.executorId === myId || order.applications?.some((a: any) => a.executorId === myId);
             if (!isMine && !newOrderIds.has(order.id)) {
-                this.entityStore.removeOrder(order.id);
+                this.entityStore.removeOrder(order.id, 'stale_spatial');
                 prunedCount++;
             }
         });
 
         if (prunedCount > 0 && __DEV__) {
-            console.log('MAP_PRUNED_STALE_ORDERS', { count: prunedCount });
+            console.log('STORE_STALE_REMOVED', { count: prunedCount });
         }
 
         this.entityStore.applyPatch(response.data);
@@ -228,7 +227,9 @@ class MapEngine {
 
   initialLoad = async (lat: number, lng: number) => {
       // V5: Force a sync on initial load to ensure we are not looking at stale storage data
-      console.log('[MapEngine] Performing initial server sync...');
+      if (__DEV__) console.log('[MapEngine] Performing initial server sync...');
+      // Mark as NOT initial loaded to ensure the syncMap(true) actually runs and clears storage ghost orders
+      this.entityStore.isInitialLoaded = false;
       return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.5, longitudeDelta: 0.5 });
   }
 
