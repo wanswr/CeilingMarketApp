@@ -122,6 +122,7 @@ class EntityStore {
             this.myOrders.delete(id);
         }
         this.meta.writes++;
+        this.persist();
     }
   }
 
@@ -132,8 +133,22 @@ class EntityStore {
   }
 
   setOrders = (orders: Order[]) => {
+      // V5: FULL RECONCILIATION
+      // For "My Orders", if the API returns a list, it is the absolute truth.
+      // We should remove any orders currently marked as "My Orders" that aren't in this list.
+      const incomingIds = new Set(orders.map(o => o.id));
+      const myOrderIds = Array.from(this.myOrders);
+
+      myOrderIds.forEach(id => {
+          if (!incomingIds.has(id)) {
+              // It's no longer my order (deleted or role changed)
+              this.removeOrder(id);
+          }
+      });
+
       orders.forEach(o => this.setOrder(o));
       this.isMyOrdersLoaded = true;
+      this.persist();
   }
 
   setUser = (user: UserProfile) => {
@@ -200,12 +215,28 @@ class EntityStore {
 
   hydrate = async () => {
     try {
-      const data = await AsyncStorage.getItem('entity_store_v4');
+      // V5: Cache versioning. Clear old versions.
+      await AsyncStorage.removeItem('entity_store_v4');
+
+      const data = await AsyncStorage.getItem('entity_store_v5');
       if (!data) return false;
       const parsed = JSON.parse(data);
+
+      // Strict Cache Verification: only use if updated in the last 30 minutes
+      // This forces more frequent API refreshes while keeping app start snappy
+      const CACHE_TTL = 30 * 60 * 1000;
+      if (!parsed.updatedAt || Date.now() - parsed.updatedAt > CACHE_TTL) {
+          console.log('[EntityStore] Cache expired');
+          await AsyncStorage.removeItem('entity_store_v5');
+          return false;
+      }
+
       if (parsed.loadedBounds) this.loadedBounds = parsed.loadedBounds;
-      if (parsed.orders) parsed.orders.forEach((o: Order) => this.setOrder(o));
-      this.isInitialLoaded = true;
+      if (parsed.orders) {
+          // Hydrate but don't mark as "InitialLoaded" from cache alone
+          // We want the first spatial fetch to still happen
+          parsed.orders.forEach((o: Order) => this.setOrder(o));
+      }
       return true;
     } catch (e) {
       return false;
@@ -219,7 +250,7 @@ class EntityStore {
         loadedBounds: this.loadedBounds,
         updatedAt: Date.now()
       };
-      await AsyncStorage.setItem('entity_store_v4', JSON.stringify(data));
+      await AsyncStorage.setItem('entity_store_v5', JSON.stringify(data));
     } catch (e) {}
   }
 

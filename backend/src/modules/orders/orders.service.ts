@@ -331,7 +331,9 @@ export class OrdersService {
   async remove(id: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
-    return this.prisma.order.delete({ where: { id } });
+    await this.prisma.order.delete({ where: { id } });
+    this.gateway.broadcast('order.deleted', { id });
+    return { id };
   }
 
   async cancelApplication(orderId: string, executorId: string) {
@@ -407,10 +409,15 @@ export class OrdersService {
         status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] },
         latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
         longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
+        // If updatedAfter is provided, we only want those changed.
+        // If not, we are doing a full region sync, so we rely on the pruning logic on frontend.
         updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
       },
-      take: 2000,
-      include: { employer: { select: { id: true, name: true, rating: true, avatar: true } } },
+      take: 1000,
+      include: {
+        employer: { select: { id: true, name: true, rating: true, avatar: true } },
+        applications: { select: { id: true, executorId: true, status: true } }
+      },
     });
 
     return { created: orders, updated: [], deleted: [] };

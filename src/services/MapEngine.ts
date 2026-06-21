@@ -34,8 +34,12 @@ class MapEngine {
       this.spatialManager.hydrate()
     ]);
     this.isHydrated = true;
-    console.log('MAP_DATA_SOURCE: STORAGE', { count: this.entityStore.getAllOrders().length });
-    this.triggerNotify();
+
+    const count = this.entityStore.getAllOrders().length;
+    if (count > 0) {
+        console.log('MAP_DATA_SOURCE: STORAGE (Hydrated)', { count });
+        this.triggerNotify();
+    }
   }
 
   subscribe = (callback: OrderCallback, source: string) => {
@@ -221,7 +225,8 @@ class MapEngine {
   }
 
   initialLoad = async (lat: number, lng: number) => {
-      if (this.entityStore.isInitialLoaded) return;
+      // V5: Force a sync on initial load to ensure we are not looking at stale storage data
+      console.log('[MapEngine] Performing initial server sync...');
       return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.5, longitudeDelta: 0.5 });
   }
 
@@ -366,6 +371,12 @@ class MapEngine {
   acceptApplication = async (id: string) => this.apiService.acceptApplication(id);
   startOrder = async (id: string) => this.apiService.startOrder(id);
   completeOrder = async (id: string) => this.apiService.completeOrder(id);
+  deleteOrder = async (id: string) => {
+    const res = await this.apiService.deleteOrder(id);
+    this.entityStore.removeOrder(id);
+    this.triggerNotify();
+    return res.data;
+  };
   activateSubscription = async (days: number) => {
     const res = await this.apiService.activateSubscription(days);
     const profile = await this.apiService.getProfile();
