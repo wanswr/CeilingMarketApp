@@ -70,6 +70,7 @@ const MapScreen = ({ navigation }: any) => {
     console.log('MAP_SCREEN_MOUNT');
 
     const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
+      // V9: Ensure we always use a fresh array reference to trigger React re-render
       setDisplayedOrders([...newOrders]);
       setLoading(false);
     }, 'MapScreen');

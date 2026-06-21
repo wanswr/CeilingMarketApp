@@ -68,7 +68,7 @@ class EntityStore {
       return { lat, lng };
   }
 
-  setOrder = (order: Order) => {
+  setOrder = (order: Order, source: string = 'unknown') => {
     if (!order?.id) return;
 
     const coords = this.getCoords(order);
@@ -101,7 +101,7 @@ class EntityStore {
     // Skip if no change (stable reference optimization)
     if (existing && JSON.stringify(existing) === JSON.stringify(mergedOrder)) return;
 
-    if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status });
+    if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status, source });
 
     // Update spatial grid: remove from old cell if location changed
     if (existing) {
@@ -150,10 +150,10 @@ class EntityStore {
     this.persist();
   }
 
-  applyPatch = (patch: { created?: Order[], updated?: Order[], deleted?: string[] }) => {
-      if (patch.created) patch.created.forEach(o => this.setOrder(o));
-      if (patch.updated) patch.updated.forEach(o => this.setOrder(o));
-      if (patch.deleted) patch.deleted.forEach(id => this.removeOrder(id));
+  applyPatch = (patch: { created?: Order[], updated?: Order[], deleted?: string[] }, source: string = 'api_patch') => {
+      if (patch.created) patch.created.forEach(o => this.setOrder(o, source));
+      if (patch.updated) patch.updated.forEach(o => this.setOrder(o, source));
+      if (patch.deleted) patch.deleted.forEach(id => this.removeOrder(id, source));
   }
 
   setOrders = (orders: Order[]) => {
@@ -167,7 +167,7 @@ class EntityStore {
           }
       });
 
-      if (__DEV__) console.log('STORE_REPLACE', { count: orders.length });
+      if (__DEV__) console.log('STORE_REPLACE', { count: orders.length, source: 'sync' });
       orders.forEach(o => this.setOrder(o));
       this.isMyOrdersLoaded = true;
       this.persist();

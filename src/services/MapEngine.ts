@@ -53,19 +53,21 @@ class MapEngine {
         source = 'unknown_' + Math.random().toString(36).substr(2, 5);
     }
     this.subscribers.set(source, callback);
-    console.log('MAP_SUBSCRIBE', { source, total: this.subscribers.size });
-    if (this.isHydrated) {
-        callback([...this.getOrdersArray()]);
-    }
+    if (__DEV__) console.log('MAP_SUBSCRIBE', { source, total: this.subscribers.size });
+
+    // V9: Immediate snapshot with source-aware clustering and fresh reference
+    const isMap = source === 'MapScreen';
+    const snapshot = this.getOrders(!isMap);
+    callback([...snapshot]);
+
     return () => {
         this.subscribers.delete(source);
-        console.log('MAP_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
+        if (__DEV__) console.log('MAP_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
     };
   }
 
   private notifySubscribers = (clusteredOrders?: any[]) => {
     const orders = this.getOrdersArray();
-    if (__DEV__) console.log('[MapEngine] notifySubscribers, count:', this.subscribers.size);
 
     let mapOrders = clusteredOrders;
     if (!mapOrders) {
@@ -73,11 +75,19 @@ class MapEngine {
         mapOrders = this.recalculateClusteredOrders(currentRegion);
     }
 
+    if (__DEV__) {
+        console.log('MAP_NOTIFY', {
+            visible: mapOrders.length,
+            total: orders.length,
+            subscribers: this.subscribers.size
+        });
+    }
+
     this.subscribers.forEach((cb, source) => {
         if (source === 'MapScreen') {
-            cb(mapOrders!);
+            cb([...mapOrders!]); // Always fresh reference
         } else {
-            cb(orders);
+            cb([...orders]);
         }
     });
   }
@@ -170,7 +180,7 @@ class MapEngine {
 
       if (response.data) {
         const returnedOrders = response.data.created || response.data.orders || [];
-        if (__DEV__) console.log('MAP_FETCH_END', { returnedOrders: returnedOrders.length, durationMs: Date.now() - startTime });
+        if (__DEV__) console.log('MAP_FETCH_END', { returnedOrders: returnedOrders.length, requestId, durationMs: Date.now() - startTime });
 
         // V9: PRUNING STALE SPATIAL DATA
         // Before applying the new patch, find orders that should be in this region but weren't returned
@@ -198,7 +208,7 @@ class MapEngine {
             console.log('STORE_STALE_REMOVED', { count: prunedCount });
         }
 
-        this.entityStore.applyPatch(response.data);
+        this.entityStore.applyPatch(response.data, 'spatial_fetch');
 
         // V9: Expanded Bounds (approx 120km to ensure buffer)
         this.entityStore.loadedBounds = {
@@ -274,16 +284,12 @@ class MapEngine {
     if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
     }
+    // V9: Faster update loop for snappier markers
     this.debounceTimer = setTimeout(() => {
-        // 1. RECALC VISIBLE & CLUSTERING (Heavy logic moved here)
         const safeItems = this.recalculateClusteredOrders(region);
-
-        // 2. Notify Map Screen with optimized data
         this.notifySubscribers(safeItems);
-
-        // 3. Trigger cache sync/fetch
         this.syncMap(false, region);
-    }, 300); // Swifter update
+    }, 200);
   }
 
   // --- Selectors ---

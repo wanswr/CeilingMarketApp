@@ -48,7 +48,7 @@ class SocketService {
 
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order);
+      mapEngine.entityStore?.setOrder(order, 'websocket');
       mapEngine.triggerNotify();
       mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
@@ -58,7 +58,7 @@ class SocketService {
     this.socket.on('order.status.changed', (order: any) => {
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order);
+      mapEngine.entityStore?.setOrder(order, 'websocket');
       mapEngine.triggerNotify();
       mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
@@ -68,7 +68,7 @@ class SocketService {
     this.socket.on('order.updated', (order: any) => {
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order);
+      mapEngine.entityStore?.setOrder(order, 'websocket');
       mapEngine.triggerNotify();
       mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
@@ -84,8 +84,9 @@ class SocketService {
     this.socket.on('order.completed', (order: any) => {
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order);
+      mapEngine.entityStore?.setOrder(order, 'websocket');
       mapEngine.triggerNotify();
+      mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.completed', id: order.id, countBefore, countAfter });
     });
