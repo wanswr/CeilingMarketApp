@@ -61,16 +61,18 @@ class EntityStore {
       console.log('[EntityStore] MyOrders recomputed. Count:', this.myOrders.size);
   }
 
+  private getCoords(order: any): { lat: number; lng: number } | null {
+      const lat = Number(order.latitude ?? order.lat ?? order.coordinates?.latitude ?? order.location?.latitude);
+      const lng = Number(order.longitude ?? order.lng ?? order.coordinates?.longitude ?? order.location?.longitude);
+      if (isNaN(lat) || isNaN(lng)) return null;
+      return { lat, lng };
+  }
+
   setOrder = (order: Order) => {
     if (!order?.id) return;
 
-    // Normalize coordinates - handle multiple common field names
-    const lat = Number(order.latitude ?? (order as any).lat ?? (order as any).coordinates?.latitude ?? (order as any).location?.latitude);
-    const lng = Number(order.longitude ?? (order as any).lng ?? (order as any).coordinates?.longitude ?? (order as any).location?.longitude);
-
-    if (isNaN(lat) || isNaN(lng)) {
-        return;
-    }
+    const coords = this.getCoords(order);
+    if (!coords) return;
 
     const existing = this.ordersById.get(order.id);
 
@@ -84,10 +86,26 @@ class EntityStore {
         mergedApplications = Array.from(appMap.values());
     }
 
-    const mergedOrder = existing ? { ...existing, ...order, applications: mergedApplications } : { ...order, applications: mergedApplications };
+    // V9: Ensure consistent field names in the store
+    const normalizedOrder = {
+        ...order,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        applications: mergedApplications
+    };
+
+    const mergedOrder = existing ? { ...existing, ...normalizedOrder } : normalizedOrder;
 
     // Skip if no change (stable reference optimization)
     if (existing && JSON.stringify(existing) === JSON.stringify(mergedOrder)) return;
+
+    // Update spatial grid: remove from old cell if location changed
+    if (existing) {
+        const oldCoords = this.getCoords(existing);
+        if (oldCoords && (oldCoords.lat !== coords.lat || oldCoords.lng !== coords.lng)) {
+            this.removeFromGrid(existing);
+        }
+    }
 
     this.ordersById.set(order.id, mergedOrder);
     this.updateOrderInGrid(mergedOrder);
@@ -117,13 +135,13 @@ class EntityStore {
     const order = this.ordersById.get(id);
     if (order) {
         this.removeFromGrid(order);
-        this.ordersById.delete(id);
-        if (this.myOrders.has(id)) {
-            this.myOrders.delete(id);
-        }
-        this.meta.writes++;
-        this.persist();
     }
+    this.ordersById.delete(id);
+    if (this.myOrders.has(id)) {
+        this.myOrders.delete(id);
+    }
+    this.meta.writes++;
+    this.persist();
   }
 
   applyPatch = (patch: { created?: Order[], updated?: Order[], deleted?: string[] }) => {
@@ -175,17 +193,17 @@ class EntityStore {
   getMyOrders = (): Order[] => Array.from(this.myOrders).map(id => this.ordersById.get(id)).filter(Boolean) as Order[];
 
   private updateOrderInGrid = (order: Order) => {
-      const lat = Number(order.latitude ?? (order as any).lat ?? (order as any).coordinates?.latitude ?? (order as any).location?.latitude);
-      const lng = Number(order.longitude ?? (order as any).lng ?? (order as any).coordinates?.longitude ?? (order as any).location?.longitude);
-      const key = `${Math.floor(lat * 2)}:${Math.floor(lng * 2)}`;
+      const coords = this.getCoords(order);
+      if (!coords) return;
+      const key = `${Math.floor(coords.lat * 2)}:${Math.floor(coords.lng * 2)}`;
       if (!this.spatialGrid.has(key)) this.spatialGrid.set(key, new Set());
       this.spatialGrid.get(key)!.add(order.id);
   }
 
   private removeFromGrid = (order: Order) => {
-      const lat = Number(order.latitude ?? (order as any).lat ?? (order as any).coordinates?.latitude ?? (order as any).location?.latitude);
-      const lng = Number(order.longitude ?? (order as any).lng ?? (order as any).coordinates?.longitude ?? (order as any).location?.longitude);
-      const key = `${Math.floor(lat * 2)}:${Math.floor(lng * 2)}`;
+      const coords = this.getCoords(order);
+      if (!coords) return;
+      const key = `${Math.floor(coords.lat * 2)}:${Math.floor(coords.lng * 2)}`;
       this.spatialGrid.get(key)?.delete(order.id);
   }
 
@@ -207,9 +225,9 @@ class EntityStore {
           .map(id => this.ordersById.get(id))
           .filter(o => {
               if (!o) return false;
-              const lat = Number(o.latitude ?? (o as any).lat ?? (o as any).coordinates?.latitude ?? (o as any).location?.latitude);
-              const lng = Number(o.longitude ?? (o as any).lng ?? (o as any).coordinates?.longitude ?? (o as any).location?.longitude);
-              return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
+              const coords = this.getCoords(o);
+              if (!coords) return false;
+              return coords.lat >= minLat && coords.lat <= maxLat && coords.lng >= minLng && coords.lng <= maxLng;
           }) as Order[];
   }
 
@@ -217,6 +235,8 @@ class EntityStore {
     try {
       // V5: Cache versioning. Clear old versions.
       await AsyncStorage.removeItem('entity_store_v4');
+      await AsyncStorage.removeItem('map_cache_v1');
+      await AsyncStorage.removeItem('orders_cache');
 
       const data = await AsyncStorage.getItem('entity_store_v5');
       if (!data) return false;
@@ -258,6 +278,9 @@ class EntityStore {
     this.ordersById.clear();
     this.myOrders.clear();
     this.spatialGrid.clear();
+    this.isInitialLoaded = false;
+    this.isMyOrdersLoaded = false;
+    this.persist();
   }
 }
 

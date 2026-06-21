@@ -144,9 +144,8 @@ const MapScreen = ({ navigation }: any) => {
     if (movingTimeoutRef.current) clearTimeout(movingTimeoutRef.current);
     movingTimeoutRef.current = setTimeout(() => setIsMoving(false), 300);
 
-    // Update global store (this will debounce and eventually trigger MapEngine sync)
+    // V9: Just update the camera. Engine handles the rest.
     mapViewportStore.setRegion(newRegion);
-    mapEngine.triggerMapUpdate(newRegion);
   };
 
   const centerToUser = async () => {
@@ -207,17 +206,8 @@ const MapScreen = ({ navigation }: any) => {
           onRegionChange={(newReg) => {
               if (!isFocusedRef.current) return;
               if (!isMoving) setIsMoving(true);
-              // 1. Update camera state immediately (responsive)
+              // V9: Fast camera tracking. Engine is subscribed to this store.
               mapViewportStore.setRegion(newReg);
-
-              // 2. Throttled background sync check
-              const now = Date.now();
-              if (now - lastSyncRequestRef.current > 200) {
-                  if (mapEngine.isSyncRequired(newReg)) {
-                      mapEngine.triggerMapUpdate(newReg);
-                      lastSyncRequestRef.current = now;
-                  }
-              }
           }}
           onRegionChangeComplete={handleRegionChangeComplete}
           onPanDrag={() => {

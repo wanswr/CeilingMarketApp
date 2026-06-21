@@ -25,6 +25,11 @@ class MapEngine {
       public geoClusterService: any
   ) {
       this.initPersistence();
+
+      // V9: Reactive architecture - Engine listens to Camera
+      mapViewportStore.subscribe((region) => {
+          this.triggerMapUpdate(region);
+      }, 'MapEngine_Core');
   }
 
   private initPersistence = async () => {
@@ -78,13 +83,10 @@ class MapEngine {
   }
 
   triggerNotify = () => {
-      // Re-run clustering with current region if available
+      // Re-run clustering with current region
       const region = mapViewportStore.getRegion();
-      if (region) {
-          this.triggerMapUpdate(region);
-      } else {
-          this.notifySubscribers();
-      }
+      const safeItems = this.recalculateClusteredOrders(region);
+      this.notifySubscribers(safeItems);
   };
 
   getOrdersArray = (myOnly: boolean = false): Order[] => {

@@ -30,14 +30,16 @@ class SocketService {
     this.socket.on('order.created', (payload: any) => {
       const order = payload.order || payload;
 
-      // V8 Optimization: Only add order if it's within 100km of our currently loaded area center
-      const loadedArea = mapEngine.entityStore?.loadedArea;
-      if (loadedArea) {
-          const lat = order.latitude ?? order.location?.latitude;
-          const lng = order.longitude ?? order.location?.longitude;
+      // V9 Optimization: Only add order if it's within 100km of our currently loaded area center
+      const loadedBounds = mapEngine.entityStore?.loadedBounds;
+      if (loadedBounds) {
+          const centerLat = (loadedBounds.north + loadedBounds.south) / 2;
+          const centerLng = (loadedBounds.east + loadedBounds.west) / 2;
+          const lat = order.latitude ?? order.location?.latitude ?? order.lat;
+          const lng = order.longitude ?? order.location?.longitude ?? order.lng;
           if (lat && lng) {
-              const distance = getDistance(lat, lng, loadedArea.lat, loadedArea.lng);
-              if (distance > 100) {
+              const distance = getDistance(lat, lng, centerLat, centerLng);
+              if (distance > 150) { // Increased buffer for WebSockets
                   console.log('[WebSocket] Order skipped (too far):', order.id, distance.toFixed(1) + 'km');
                   return;
               }
@@ -48,6 +50,7 @@ class SocketService {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
+      mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.created', id: order.id, countBefore, countAfter });
     });
@@ -57,6 +60,7 @@ class SocketService {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
+      mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.status.changed', id: order.id, status: order.status, countBefore, countAfter });
     });
@@ -66,6 +70,7 @@ class SocketService {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.setOrder(order);
       mapEngine.triggerNotify();
+      mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.updated', id: order.id, countBefore, countAfter });
     });
@@ -91,6 +96,7 @@ class SocketService {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.removeOrder(orderId);
       mapEngine.triggerNotify();
+      // removeOrder already persists
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.deleted', id: orderId, countBefore, countAfter });
     });
