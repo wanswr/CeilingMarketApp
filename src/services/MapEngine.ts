@@ -163,7 +163,36 @@ class MapEngine {
       }
 
       if (response.data) {
-        if (__DEV__) console.log('MAP_FETCH_END', { returnedOrders: response.data.created?.length || 0, durationMs: Date.now() - startTime });
+        const returnedOrders = response.data.created || response.data.orders || [];
+        if (__DEV__) console.log('MAP_FETCH_END', { returnedOrders: returnedOrders.length, durationMs: Date.now() - startTime });
+
+        // V9: PRUNING STALE SPATIAL DATA
+        // Before applying the new patch, find orders that should be in this region but weren't returned
+        const radiusKm = 100;
+        const existingInRegion = this.getOrdersInBounds(
+            viewRegion.latitude - 1.0,
+            viewRegion.latitude + 1.0,
+            viewRegion.longitude - 1.5,
+            viewRegion.longitude + 1.5
+        );
+
+        const newOrderIds = new Set(returnedOrders.map((o: any) => o.id));
+        const myId = this.entityStore.currentUserId;
+
+        let prunedCount = 0;
+        existingInRegion.forEach((order: Order) => {
+            // Only prune if it's NOT a "My Order" and NOT in the new response
+            const isMine = order.employerId === myId || order.executorId === myId || order.applications?.some((a: any) => a.executorId === myId);
+            if (!isMine && !newOrderIds.has(order.id)) {
+                this.entityStore.removeOrder(order.id);
+                prunedCount++;
+            }
+        });
+
+        if (prunedCount > 0 && __DEV__) {
+            console.log('MAP_PRUNED_STALE_ORDERS', { count: prunedCount });
+        }
+
         this.entityStore.applyPatch(response.data);
 
         // V9: Expanded Bounds (approx 120km to ensure buffer)
@@ -202,11 +231,16 @@ class MapEngine {
     const latPadding = region.latitudeDelta * 0.7; // Wider padding for smoother panning
     const lngPadding = region.longitudeDelta * 0.7;
 
-    const candidates = this.getOrdersInBounds(
+    const rawCandidates = this.getOrdersInBounds(
         region.latitude - latPadding,
         region.latitude + latPadding,
         region.longitude - lngPadding,
         region.longitude + lngPadding
+    );
+
+    // V9: Filter map candidates by status (Only show available orders)
+    const candidates = rawCandidates.filter((order: Order) =>
+        order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES'
     );
 
     // V9: Perform clustering but NEVER hide single orders unless they are actually in a cluster
