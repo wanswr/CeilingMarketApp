@@ -49,7 +49,7 @@ const getWorkTypeLabel = (type: string) => {
     }
 }
 
-export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string }> = ({
+export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string, onReview?: () => void }> = ({
   order,
   isEmployer,
   onPress,
@@ -60,6 +60,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
   onChat,
   onCall,
   onRestore,
+  onReview,
   onCancelApplication,
   hasApplied,
   currentUserId
@@ -195,6 +196,19 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
           <Text style={styles.infoText} numberOfLines={1}>{order.address}</Text>
         </View>
 
+        {order.status === 'COMPLETED' && !isEmployer && (
+            <TouchableOpacity style={styles.reviewReminder} onPress={onReview}>
+                <Ionicons name="star" size={16} color={COLORS.warning} />
+                <Text style={styles.reviewReminderText}>Оставить отзыв заказчику</Text>
+            </TouchableOpacity>
+        )}
+        {order.status === 'COMPLETED' && isEmployer && (
+            <TouchableOpacity style={styles.reviewReminder} onPress={onReview}>
+                <Ionicons name="star" size={16} color={COLORS.warning} />
+                <Text style={styles.reviewReminderText}>Оценить работу мастера</Text>
+            </TouchableOpacity>
+        )}
+
         <View style={styles.footer}>
           <View style={styles.metaInfo}>
             <View style={styles.metaItem}>
@@ -225,6 +239,11 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
             )}
             <TouchableOpacity style={styles.iconButton} onPress={onChat}>
                 <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
+                {(order as any).chats?.[0]?.messages?.length > 0 && (
+                    <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadText}>{(order as any).chats[0].messages.length}</Text>
+                    </View>
+                )}
             </TouchableOpacity>
           </View>
         </View>
@@ -317,7 +336,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '10',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative'
   },
+  unreadBadge: {
+      position: 'absolute',
+      top: -5,
+      right: -5,
+      backgroundColor: COLORS.danger,
+      borderRadius: 10,
+      minWidth: 18,
+      height: 18,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: '#fff'
+  },
+  unreadText: { color: '#fff', fontSize: 9, fontWeight: '900' },
   urgencyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,5 +424,21 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     marginTop: 4,
+  },
+  reviewReminder: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: COLORS.warning + '15',
+      padding: 10,
+      borderRadius: 12,
+      marginBottom: 12,
+      gap: 8,
+      borderWidth: 1,
+      borderColor: COLORS.warning + '30'
+  },
+  reviewReminderText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: '#B45309'
   }
 });

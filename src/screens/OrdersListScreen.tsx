@@ -53,6 +53,8 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [searchQuery, setSearchBarQuery] = useState('');
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
@@ -85,11 +87,20 @@ const OrdersListScreen = ({ navigation }: any) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setHasMore(true);
     await Promise.all([
-      mapEngine.syncMyOrders(),
+      mapEngine.syncMyOrders(0, 20),
       mapEngine.syncUser(true)
     ]);
     setRefreshing(false);
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const result = await mapEngine.syncMyOrders(orders.length, 20);
+    if (result.length < 20) setHasMore(false);
+    setLoadingMore(false);
   };
 
   const filteredOrders = React.useMemo(() => {
@@ -323,6 +334,9 @@ const OrdersListScreen = ({ navigation }: any) => {
 
       <FlatList
         data={filteredOrders}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: 20 }} color={COLORS.primary} /> : null}
         renderItem={({ item }) => (
           <OrderCard
             order={item}
@@ -337,6 +351,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             onChat={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: item.id } })}
             onCall={() => handleCall()}
             onRestore={() => handleRestore(item.id)}
+            onReview={() => navigation.navigate('OrderDetail', { orderId: item.id, showReview: true })}
             onCancelApplication={() => {
               Alert.alert('Отмена отклика', 'Вы уверены?', [
                 { text: 'Нет' },

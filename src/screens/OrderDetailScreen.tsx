@@ -10,7 +10,7 @@ import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
-  const { orderId } = route.params;
+  const { orderId, showReview } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
   const [loading, setLoading] = useState(!order);
   const [submitting, setSubmitting] = useState(false);
@@ -23,6 +23,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [offerPrice, setOfferPrice] = useState('');
 
   const isSubscribedRef = useRef(false);
+
+  useEffect(() => {
+      if (showReview) setShowReviewModal(true);
+  }, [showReview]);
 
   useEffect(() => {
     if (isSubscribedRef.current) return;

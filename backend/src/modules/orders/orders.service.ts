@@ -286,7 +286,7 @@ export class OrdersService {
     return order;
   }
 
-  async findMyOrders(userId: string) {
+  async findMyOrders(userId: string, skip: number = 0, take: number = 20) {
     return this.prisma.order.findMany({
       where: {
         OR: [
@@ -301,9 +301,23 @@ export class OrdersService {
         applications: {
           where: { executorId: userId },
           select: { id: true, status: true, price: true }
+        },
+        chats: {
+            where: {
+                OR: [{ employerId: userId }, { executorId: userId }]
+            },
+            select: {
+                id: true,
+                messages: {
+                    where: { senderId: { not: userId }, isRead: false },
+                    select: { id: true }
+                }
+            }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take,
     });
   }
 

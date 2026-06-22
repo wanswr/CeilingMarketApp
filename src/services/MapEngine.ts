@@ -342,10 +342,14 @@ class MapEngine {
   }
 
   getApiBaseUrl = () => this.apiService.getBaseUrl();
-  syncMyOrders = async () => {
+  syncMyOrders = async (skip: number = 0, take: number = 20) => {
     try {
-      const res = await this.apiService.getMyOrders();
-      this.entityStore.setOrders(res.data);
+      const res = await this.apiService.getMyOrders({ skip, take });
+      if (skip === 0) {
+        this.entityStore.setOrders(res.data);
+      } else {
+        res.data.forEach((o: any) => this.entityStore.setOrder(o, 'pagination'));
+      }
       this.notifySubscribers();
       return res.data;
     } catch (e) { return []; }
