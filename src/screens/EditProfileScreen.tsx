@@ -10,7 +10,8 @@ import {
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -29,6 +30,7 @@ const profileSchema = z.object({
 });
 
 export default function EditProfileScreen({ navigation }: any) {
+  const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(!mapEngine.getCurrentUser());
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -189,7 +191,10 @@ export default function EditProfileScreen({ navigation }: any) {
             <View style={styles.portfolioGrid}>
                 {profile.portfolio?.map((img: string, idx: number) => (
                     <View key={idx} style={styles.portfolioItem}>
-                        <Image source={{ uri: resolveImageUrl(img) }} style={styles.portfolioThumb} />
+                        <Image
+                            source={{ uri: resolveImageUrl(img) }}
+                            style={[styles.portfolioThumb, { width: (width - 100) / 3 }]}
+                        />
                         <TouchableOpacity style={styles.removeBtn} onPress={() => removePortfolioImage(idx)}>
                             <Ionicons name="close-circle" size={20} color={COLORS.danger} />
                         </TouchableOpacity>
@@ -224,6 +229,6 @@ const styles = StyleSheet.create({
   saveText: { color: '#fff', fontWeight: '900', fontSize: 16, letterSpacing: 0.5 },
   portfolioGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   portfolioItem: { position: 'relative' },
-  portfolioThumb: { width: (Dimensions.get('window').width - 100) / 3, height: 100, borderRadius: 12 },
+  portfolioThumb: { height: 100, borderRadius: 12 },
   removeBtn: { position: 'absolute', top: -5, right: -5, backgroundColor: '#fff', borderRadius: 10 }
 });

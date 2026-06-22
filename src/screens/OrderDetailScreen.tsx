@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal, TextInput, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal, TextInput, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { formatDate } from '../utils/date';
 import { resolveImageUrl } from '../utils/image';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
+  const { width, height } = useWindowDimensions();
   const { orderId, showReview } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
   const [loading, setLoading] = useState(!order);
@@ -224,7 +225,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 showsHorizontalScrollIndicator={false}
                 onScroll={(e) => {
                     const x = e.nativeEvent.contentOffset.x;
-                    setActiveImageIndex(Math.round(x / Dimensions.get('window').width));
+                    setActiveImageIndex(Math.round(x / width));
                 }}
                 scrollEventThrottle={16}
             >
@@ -239,7 +240,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     >
                         <Image
                             source={{ uri: resolveImageUrl(img) }}
-                            style={[styles.mainImage, { width: Dimensions.get('window').width }]}
+                            style={[styles.mainImage, { width }]}
                             resizeMode="cover"
                         />
                     </TouchableOpacity>
@@ -600,10 +601,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   horizontal
                   pagingEnabled
                   showsHorizontalScrollIndicator={false}
-                  contentOffset={{ x: activeImageIndex * Dimensions.get('window').width, y: 0 }}
+                  contentOffset={{ x: activeImageIndex * width, y: 0 }}
               >
                   {imagesToRender.map((img, idx) => (
-                      <View key={idx} style={styles.viewerSlide}>
+                      <View key={idx} style={[styles.viewerSlide, { width, height }]}>
                           <Image
                               source={{ uri: resolveImageUrl(img) }}
                               style={styles.viewerImage}
@@ -919,8 +920,6 @@ const styles = StyleSheet.create({
       padding: 10,
   },
   viewerSlide: {
-      width: Dimensions.get('window').width,
-      height: Dimensions.get('window').height,
       justifyContent: 'center',
       alignItems: 'center',
   },
