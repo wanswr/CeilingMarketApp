@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -92,7 +92,7 @@ const OrdersListScreen = ({ navigation }: any) => {
     setRefreshing(false);
   };
 
-  const filteredOrders = useMemo(() => {
+  const filteredOrders = React.useMemo(() => {
     const myId = currentUser?.uid || currentUser?.id;
     let result = orders.filter(order => {
       // 0. Trash Logic
@@ -226,7 +226,7 @@ const OrdersListScreen = ({ navigation }: any) => {
     </TouchableOpacity>
   );
 
-  const stats = useMemo(() => {
+  const stats = React.useMemo(() => {
       if (currentUser?.role !== 'WORKER') return null;
       const completedThisMonth = orders.filter(o => o.status === 'COMPLETED').length;
       const earnedThisMonth = orders.filter(o => o.status === 'COMPLETED').reduce((sum, o) => sum + o.price, 0);

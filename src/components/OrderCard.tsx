@@ -70,13 +70,13 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
 
   const myApplication = order.applications?.find(a => a.executorId === currentUserId);
 
-  const isToday = useMemo(() => {
+  const isToday = React.useMemo(() => {
     const d = new Date(order.date);
     const now = new Date();
     return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }, [order.date]);
 
-  const isTomorrow = useMemo(() => {
+  const isTomorrow = React.useMemo(() => {
     const d = new Date(order.date);
     const tom = new Date();
     tom.setDate(tom.getDate() + 1);
