@@ -14,8 +14,9 @@ import { ChatsModule } from './modules/chats/chats.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
+      rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/uploads',
+      renderPath: null,
     }),
     PrismaModule,
     AuthModule,
