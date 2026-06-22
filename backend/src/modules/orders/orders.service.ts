@@ -438,7 +438,7 @@ export class OrdersService {
   }
 
   /**
-   * SMART PARSER V2: Advanced NLP for order aggregation.
+   * SMART PARSER V3: Advanced NLP for order aggregation with Moscow context.
    */
   parseOrderText(text: string) {
     const cleanText = text.replace(/\[\d{2}\.\d{2}\.\d{4}\s\d{2}:\d{2}\].*?:/g, '').trim();
@@ -454,17 +454,18 @@ export class OrdersService {
 
     // 1. IMPROVED PRICE PARSING (Patterns: 15к, 15.000, ЗП: 20 000 руб)
     const pricePatterns = [
-        /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)(?:к|k|₽|р|руб|рублей)/i, // matches 15к or 15000р
-        /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)/i, // fallback for labels
-        /(\d[\d\s.,]*)(?:₽|р|руб|рублей)/i, // fallback for unit
+        /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)(?:к|k|₽|р|руб|рублей)/i,
+        /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)/i,
+        /(\d[\d\s.,]*)(?:₽|р|руб|рублей|к|k)/i,
     ];
 
     for (const pattern of pricePatterns) {
         const match = cleanText.match(pattern);
         if (match) {
-            let raw = match[1].replace(/[\s.,]/g, '').toLowerCase();
-            let isKilo = raw.includes('к') || raw.includes('k') || match[0].toLowerCase().includes('к') || match[0].toLowerCase().includes('k');
-            let val = parseInt(raw, 10);
+            let rawStr = match[1].replace(/[\s.,]/g, '').toLowerCase();
+            let isKilo = match[0].toLowerCase().includes('к') || match[0].toLowerCase().includes('k');
+            let val = parseInt(rawStr, 10);
+            if (isNaN(val)) continue;
             if (isKilo && val < 1000) val *= 1000;
             if (val > 0) {
                 result.price = val;
@@ -473,63 +474,88 @@ export class OrdersService {
         }
     }
 
-    // 2. EXPANDED DATE PARSING
+    // 2. DATE PARSING (Includes Weekdays)
     const today = new Date();
-    const monthNames: Record<string, number> = {
-        'янв': 0, 'фев': 1, 'мар': 2, 'апр': 3, 'май': 4, 'июн': 5,
-        'июл': 6, 'авг': 7, 'сен': 8, 'окт': 9, 'ноя': 10, 'дек': 11
+    const weekDays: Record<string, number> = {
+        'понед': 1, 'вторн': 2, 'среду': 3, 'четверг': 4, 'пятниц': 5, 'суббот': 6, 'воскр': 0,
+        'пн': 1, 'вт': 2, 'ср': 3, 'чт': 4, 'пт': 5, 'сб': 6, 'вс': 0
     };
 
     if (/завтра/i.test(cleanText)) {
-      result.date = new Date(today.getTime() + 86400000);
+        result.date = new Date(today.getTime() + 86400000);
     } else if (/послезавтра/i.test(cleanText)) {
-      result.date = new Date(today.getTime() + 172800000);
-    } else if (/через\s(\d+)\sдн/i.test(cleanText)) {
-        const match = cleanText.match(/через\s(\d+)\sдн/i);
-        if (match) result.date = new Date(today.getTime() + parseInt(match[1]) * 86400000);
+        result.date = new Date(today.getTime() + 172800000);
     } else {
-        // DD.MM.YYYY or DD.MM
-        const dateMatch = cleanText.match(/(\d{1,2})[\.\/](\d{1,2})(?:[\.\/](\d{2,4}))?/);
-        if (dateMatch) {
-            const d = parseInt(dateMatch[1]);
-            const m = parseInt(dateMatch[2]) - 1;
-            const y = dateMatch[3] ? (dateMatch[3].length === 2 ? 2000 + parseInt(dateMatch[3]) : parseInt(dateMatch[3])) : today.getFullYear();
-            result.date = new Date(y, m, d);
-            if (result.date < today && !dateMatch[3]) result.date.setFullYear(y + 1);
-        } else {
-            // Check for Month names
-            for (const [name, idx] of Object.entries(monthNames)) {
-                if (new RegExp(name, 'i').test(cleanText)) {
-                    const dMatch = cleanText.match(new RegExp(`(\\d{1,2})\\s${name}`, 'i'));
-                    if (dMatch) {
-                        result.date = new Date(today.getFullYear(), idx, parseInt(dMatch[1]));
-                        if (result.date < today) result.date.setFullYear(today.getFullYear() + 1);
-                        break;
-                    }
-                }
+        let weekdayFound = false;
+        for (const [day, dayIdx] of Object.entries(weekDays)) {
+            if (new RegExp(day, 'i').test(cleanText)) {
+                let targetDate = new Date(today);
+                let currentDay = today.getDay();
+                let diff = (dayIdx + 7 - currentDay) % 7;
+                if (diff === 0) diff = 7; // Next week if today
+                targetDate.setDate(today.getDate() + diff);
+                result.date = targetDate;
+                weekdayFound = true;
+                break;
+            }
+        }
+
+        if (!weekdayFound) {
+            const dateMatch = cleanText.match(/(\d{1,2})[\.\/](\d{1,2})(?:[\.\/](\d{2,4}))?/);
+            if (dateMatch) {
+                const d = parseInt(dateMatch[1]);
+                const m = parseInt(dateMatch[2]) - 1;
+                const y = dateMatch[3] ? (dateMatch[3].length === 2 ? 2000 + parseInt(dateMatch[3]) : parseInt(dateMatch[3])) : today.getFullYear();
+                result.date = new Date(y, m, d);
+                if (result.date < today && !dateMatch[3]) result.date.setFullYear(y + 1);
             }
         }
     }
 
     // 3. IMPROVED ADDRESS HEURISTIC (Priority: Street + House)
+    const knownLocations = [
+        'Авиамоторная', 'Раменки', 'Юго-запад', 'Люберцы', 'Химки', 'Мытищи', 'Балашиха',
+        'Одинцово', 'Красногорск', 'Видное', 'Реутов', 'Зеленоград', 'Королев', 'Домодедово',
+        'Подольск', 'Щелково', 'Серпухов', 'Коломна', 'Электросталь', 'Железнодорожный',
+        'Перово', 'Выхино', 'Новогиреево', 'Митино', 'Строгино', 'Бутово', 'Солнцево',
+        'Текстильщики', 'Кузьминки', 'Марьино', 'Люблино', 'Братиславская', 'Пражская',
+        'Отрадное', 'Бибирево', 'Алтуфьево', 'Медведково', 'Бабушкинская', 'Свиблово'
+    ];
+
     const addressPatterns = [
-        /(?:адрес|место|объект)[:\s-]*(.+?)(?:\n|$)/i, // Label-based
-        /(?:ул|улица|пр-т|проспект|бульвар|б-р|пер|переулок|шоссе|ш|наб|набережная)[\.\s]+[А-Яа-яA-Za-z\s-]+,?\s?(?:д|дом)?\.?\s?\d+[а-яА-Я]?/i, // Specific address
-        /(?:москва|химки|мытищи|подольск|люберцы|балашиха|красногорск|одинцово|видное|реутов|королев|зеленоград),?\s*(?:ул\.|улица)?\s*[А-Яа-я\s-]+,?\s*(?:д\.|дом)?\s*\d+/i // City-prefixed
+        /(?:адрес|место|объект)[:\s-]*(.+?)(?:\n|$)/i,
+        /(?:ул|улица|пр-т|проспект|бульвар|б-р|пер|переулок|шоссе|ш|наб|набережная)[\.\s]+[А-Яа-яA-Za-z\s-]+,?\s?(?:д|дом)?\.?\s?\d+[а-яА-Я]?/i,
     ];
 
     for (const pattern of addressPatterns) {
         const match = cleanText.match(pattern);
         if (match) {
-            result.address = match[1] || match[0];
+            result.address = (match[1] || match[0]).replace(/[!]{2,}/g, '').trim();
             break;
         }
     }
 
-    // Fallback: any line with a number at the end that isn't a price or date
+    if (!result.address) {
+        // Search for known locations (with fuzzy end for declensions like Люберцы/Люберцах)
+        for (const loc of knownLocations) {
+            const stem = loc.length > 5 ? loc.substring(0, loc.length - 2) : loc.substring(0, loc.length - 1);
+            if (new RegExp(stem, 'i').test(cleanText)) {
+                result.address = loc;
+                break;
+            }
+        }
+    }
+
     if (!result.address) {
         for (const line of lines) {
-            if (/\d+$/.test(line) && !line.includes('₽') && !line.includes(' руб') && !line.includes('.')) {
+            const l = line.toLowerCase();
+            // Avoid picking price, date, or common title words as address
+            if (l.includes('зп') || l.includes('цена') || l.includes('бюджет') || l.includes('выплата')) continue;
+            if (l.includes('₽') || l.includes(' руб') || l.includes(' р.')) continue;
+            if (/\d{1,2}\.\d{1,2}/.test(line)) continue;
+            if (l.includes('завтра') || l.includes('сегодня') || l.includes('монтаж') || l.includes('замер')) continue;
+
+            if (/\d+$/.test(line) || line.length > 5) {
                 result.address = line;
                 break;
             }
@@ -537,14 +563,37 @@ export class OrdersService {
     }
 
     // 4. SMART TITLE
+    const serviceKeywords = ['Монтаж', 'Замер', 'Ремонт', 'Сервис', 'Слив', 'Потолок', 'Установка'];
+    let bestTitle = '';
     for (const line of lines) {
-        if (line.includes(result.address) || line.includes(result.price.toString())) continue;
-        if (line.length > 10 && line.length < 60) {
-            result.title = line;
+        const cleanLine = line.replace(/[!?.]{2,}/g, '').trim();
+        if (serviceKeywords.some(k => new RegExp(k, 'i').test(cleanLine))) {
+            bestTitle = cleanLine;
             break;
         }
     }
+
+    if (bestTitle) {
+        result.title = bestTitle;
+    } else {
+        // Priority to non-address, non-price lines
+        for (const line of lines) {
+            const cleanLine = line.replace(/[!?.]{2,}/g, '').trim();
+            const l = cleanLine.toLowerCase();
+            if (l === 'завтра' || l === 'сегодня' || l === 'срочно') continue;
+            if (result.address && cleanLine.includes(result.address) && lines.length > 1) continue; // Skip address if there are other lines
+            if (result.price > 0 && cleanLine.includes(result.price.toString()) && lines.length > 1) continue;
+            if (cleanLine.length >= 3 && cleanLine.length < 50) {
+                result.title = cleanLine;
+                break;
+            }
+        }
+    }
+
     if (!result.title) result.title = "Монтаж натяжного потолка";
+    // Final cleanup
+    result.title = result.title.replace(/[!]{2,}/g, '!').trim();
+    if (result.address) result.address = result.address.replace(/[!]{2,}/g, '').trim();
 
     return result;
   }
