@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal, TextInput, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { Order } from '../types';
 import { mapEngine } from '../services/MapEngine';
+import { apiService } from '../services/ApiService';
 import { Button } from '../components/Button';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
+import { resolveImageUrl } from '../utils/image';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId, showReview } = route.params;
@@ -21,6 +23,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [offerPrice, setOfferPrice] = useState('');
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   const isSubscribedRef = useRef(false);
 
@@ -207,18 +211,61 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     );
   }
 
+  const imagesToRender = order.images || [];
+
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={styles.imageHeader}>
-          {order.images && order.images.length > 0 ? (
-            <Image source={{ uri: order.images[0] }} style={styles.mainImage} />
+          {imagesToRender.length > 0 ? (
+            <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onScroll={(e) => {
+                    const x = e.nativeEvent.contentOffset.x;
+                    setActiveImageIndex(Math.round(x / Dimensions.get('window').width));
+                }}
+                scrollEventThrottle={16}
+            >
+                {imagesToRender.map((img, idx) => (
+                    <TouchableOpacity
+                        key={idx}
+                        activeOpacity={0.9}
+                        onPress={() => {
+                            setActiveImageIndex(idx);
+                            setViewerVisible(true);
+                        }}
+                    >
+                        <Image
+                            source={{ uri: resolveImageUrl(img) }}
+                            style={[styles.mainImage, { width: Dimensions.get('window').width }]}
+                            resizeMode="cover"
+                        />
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
           ) : (
             <View style={styles.imagePlaceholder}>
                <Ionicons name="image-outline" size={64} color={COLORS.border} />
                <Text style={{ color: COLORS.placeholder, marginTop: 10, fontWeight: '600' }}>Фото не добавлено</Text>
             </View>
           )}
+
+          {imagesToRender.length > 1 && (
+            <View style={styles.paginationDots}>
+                {imagesToRender.map((_, i) => (
+                    <View
+                        key={i}
+                        style={[
+                            styles.dot,
+                            activeImageIndex === i && styles.activeDot
+                        ]}
+                    />
+                ))}
+            </View>
+          )}
+
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
              <BlurView intensity={80} tint="light" style={styles.backBtnBlur}>
                 <Ionicons name="chevron-back" size={24} color={COLORS.dark} />
@@ -533,6 +580,46 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           </BlurView>
         </View>
       </Modal>
+
+      <Modal
+        visible={viewerVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setViewerVisible(false)}
+      >
+          <View style={styles.viewerContainer}>
+              <BlurView intensity={100} tint="dark" style={StyleSheet.absoluteFill} />
+              <TouchableOpacity
+                  style={styles.viewerCloseBtn}
+                  onPress={() => setViewerVisible(false)}
+              >
+                  <Ionicons name="close" size={32} color="#fff" />
+              </TouchableOpacity>
+
+              <ScrollView
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  contentOffset={{ x: activeImageIndex * Dimensions.get('window').width, y: 0 }}
+              >
+                  {imagesToRender.map((img, idx) => (
+                      <View key={idx} style={styles.viewerSlide}>
+                          <Image
+                              source={{ uri: resolveImageUrl(img) }}
+                              style={styles.viewerImage}
+                              resizeMode="contain"
+                          />
+                      </View>
+                  ))}
+              </ScrollView>
+
+              <View style={styles.viewerFooter}>
+                  <Text style={styles.viewerCounter}>
+                      {activeImageIndex + 1} / {imagesToRender.length}
+                  </Text>
+              </View>
+          </View>
+      </Modal>
     </View>
   );
 };
@@ -801,6 +888,56 @@ const styles = StyleSheet.create({
       justifyContent: 'center',
       gap: 8,
       marginBottom: 20,
+  },
+  paginationDots: {
+      position: 'absolute',
+      bottom: 40,
+      width: '100%',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 6
+  },
+  dot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  activeDot: {
+      backgroundColor: '#fff',
+      width: 20,
+  },
+  viewerContainer: {
+      flex: 1,
+      backgroundColor: '#000',
+  },
+  viewerCloseBtn: {
+      position: 'absolute',
+      top: Platform.OS === 'ios' ? 60 : 30,
+      right: 20,
+      zIndex: 100,
+      padding: 10,
+  },
+  viewerSlide: {
+      width: Dimensions.get('window').width,
+      height: Dimensions.get('window').height,
+      justifyContent: 'center',
+      alignItems: 'center',
+  },
+  viewerImage: {
+      width: '100%',
+      height: '100%',
+  },
+  viewerFooter: {
+      position: 'absolute',
+      bottom: 50,
+      width: '100%',
+      alignItems: 'center',
+  },
+  viewerCounter: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '700',
   }
 });
 

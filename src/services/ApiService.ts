@@ -55,6 +55,9 @@ class ApiService {
   getSpatialOrders = (params: any, config?: any) => this.api.get('orders/spatial', { params, ...config });
 
   parseOrderText = (text: string) => this.api.post('orders/parse', { text });
+  uploadOrderImages = (formData: FormData) => this.api.post('orders/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
   createOrder = (data: any) => this.api.post('orders', data);
   getOrderDetails = (id: string) => this.api.get(`orders/${id}`);
   applyForOrder = (id: string, price?: number) => this.api.post(`orders/${id}/apply`, { price });

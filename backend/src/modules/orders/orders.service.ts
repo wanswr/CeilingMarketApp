@@ -457,6 +457,7 @@ export class OrdersService {
         /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)(?:к|k|₽|р|руб|рублей)/i,
         /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)/i,
         /(\d[\d\s.,]*)(?:₽|р|руб|рублей|к|k)/i,
+        /(\d[\d\s.,]{3,})/i, // Fallback for plain numbers
     ];
 
     for (const pattern of pricePatterns) {
@@ -468,6 +469,8 @@ export class OrdersService {
             if (isNaN(val)) continue;
             if (isKilo && val < 1000) val *= 1000;
             if (val > 0) {
+                // Heuristic: prices are usually > 500 for these jobs
+                if (val < 500) continue;
                 result.price = val;
                 break;
             }
@@ -476,6 +479,8 @@ export class OrdersService {
 
     // 2. DATE PARSING (Includes Weekdays)
     const today = new Date();
+    today.setHours(12, 0, 0, 0); // Normalize to noon
+
     const weekDays: Record<string, number> = {
         'понед': 1, 'вторн': 2, 'среду': 3, 'четверг': 4, 'пятниц': 5, 'суббот': 6, 'воскр': 0,
         'пн': 1, 'вт': 2, 'ср': 3, 'чт': 4, 'пт': 5, 'сб': 6, 'вс': 0
@@ -485,18 +490,25 @@ export class OrdersService {
         result.date = new Date(today.getTime() + 86400000);
     } else if (/послезавтра/i.test(cleanText)) {
         result.date = new Date(today.getTime() + 172800000);
+    } else if (/сегодня/i.test(cleanText)) {
+        result.date = new Date(today);
     } else {
         let weekdayFound = false;
-        for (const [day, dayIdx] of Object.entries(weekDays)) {
-            if (new RegExp(day, 'i').test(cleanText)) {
-                let targetDate = new Date(today);
-                let currentDay = today.getDay();
-                let diff = (dayIdx + 7 - currentDay) % 7;
-                if (diff === 0) diff = 7; // Next week if today
-                targetDate.setDate(today.getDate() + diff);
-                result.date = targetDate;
-                weekdayFound = true;
-                break;
+        // Search for "в субботу", "на пятницу"
+        const weekdayMatch = cleanText.match(/(?:в|на|во)?\s*(понед[а-я]*|вторн[а-я]*|сред[а-я]*|четверг[а-я]*|пятниц[а-я]*|суббот[а-я]*|воскр[а-я]*|пн|вт|ср|чт|пт|сб|вс)/i);
+        if (weekdayMatch) {
+            const foundDay = weekdayMatch[1].toLowerCase();
+            for (const [day, dayIdx] of Object.entries(weekDays)) {
+                if (foundDay.startsWith(day)) {
+                    let targetDate = new Date(today);
+                    let currentDay = today.getDay();
+                    let diff = (dayIdx + 7 - currentDay) % 7;
+                    if (diff === 0) diff = 7; // Target next week if today
+                    targetDate.setDate(today.getDate() + diff);
+                    result.date = targetDate;
+                    weekdayFound = true;
+                    break;
+                }
             }
         }
 
@@ -512,33 +524,51 @@ export class OrdersService {
         }
     }
 
-    // 3. IMPROVED ADDRESS HEURISTIC (Priority: Street + House)
+    // 3. IMPROVED ADDRESS HEURISTIC (Moscow & Regions)
     const knownLocations = [
-        'Авиамоторная', 'Раменки', 'Юго-запад', 'Люберцы', 'Химки', 'Мытищи', 'Балашиха',
+        // Metro & Districts
+        'Авиамоторная', 'Раменки', 'Юго-Запад', 'Люберцы', 'Химки', 'Мытищи', 'Балашиха',
         'Одинцово', 'Красногорск', 'Видное', 'Реутов', 'Зеленоград', 'Королев', 'Домодедово',
         'Подольск', 'Щелково', 'Серпухов', 'Коломна', 'Электросталь', 'Железнодорожный',
         'Перово', 'Выхино', 'Новогиреево', 'Митино', 'Строгино', 'Бутово', 'Солнцево',
         'Текстильщики', 'Кузьминки', 'Марьино', 'Люблино', 'Братиславская', 'Пражская',
-        'Отрадное', 'Бибирево', 'Алтуфьево', 'Медведково', 'Бабушкинская', 'Свиблово'
+        'Отрадное', 'Бибирево', 'Алтуфьево', 'Медведково', 'Бабушкинская', 'Свиблово',
+        'Царицыно', 'Орехово', 'Домодедовская', 'Красногвардейская', 'Алма-Атинская',
+        'Варшавская', 'Каширская', 'Кантемировская', 'Коломенская', 'Технопарк', 'Автозаводская',
+        'Павелецкая', 'Новокузнецкая', 'Театральная', 'Тверская', 'Маяковская', 'Белорусская',
+        'Динамо', 'Аэропорт', 'Сокол', 'Войковская', 'Водный стадион', 'Речной вокзал',
+        'Ховрино', 'Беломорская', 'Селигерская', 'Верхние Лихоборы', 'Окружная', 'Петровско-Разумовская',
+        'Тимирязевская', 'Дмитровская', 'Савеловская', 'Новослободская', 'Менделеевская', 'Чеховская',
+        'Боровицкая', 'Полянка', 'Серпуховская', 'Тульская', 'Нагатинская', 'Нагорная', 'Нахимовский',
+        'Севастопольская', 'Чертановская', 'Южная', 'Аннино', 'Янгеля', 'Бульвар Дмитрия Донского',
+        'Щербинка', 'Коммунарка', 'Рассказовка', 'Говорово', 'Солнцево', 'Боровское', 'Новопеределкино',
+        'Лобня', 'Долгопрудный', 'Ивантеевка', 'Пушкино', 'Фрязино', 'Монино', 'Старая Купавна',
+        'Электроугли', 'Бронницы', 'Раменское', 'Жуковский', 'Лыткарино', 'Котельники', 'Дзержинский',
+        'Чехов', 'Ступино', 'Кашира', 'Наро-Фоминск', 'Голицыно', 'Кубинка', 'Можайск', 'Волоколамск',
+        'Истра', 'Дедовск', 'Солнечногорск', 'Клин', 'Талдом', 'Дубна', 'Дмитров', 'Яхрома'
     ];
 
     const addressPatterns = [
-        /(?:адрес|место|объект)[:\s-]*(.+?)(?:\n|$)/i,
-        /(?:ул|улица|пр-т|проспект|бульвар|б-р|пер|переулок|шоссе|ш|наб|набережная)[\.\s]+[А-Яа-яA-Za-z\s-]+,?\s?(?:д|дом)?\.?\s?\d+[а-яА-Я]?/i,
+        /(?:адрес|место|объект)[:\s-]*([А-Яа-я0-9\s\.,-]+)(?:\n|$|\.|\s(?:цена|зп|бюджет|выплата))/i,
+        /(?:ул|улица|пр-т|проспект|бульвар|б-р|пер|переулок|шоссе|ш|наб|набережная|метро|м\b\.?\s+)[\.\s]*([А-Яа-я0-9\s-]{2,}),?\s?(?:д|дом)?\.?\s?\d*[а-яА-Я]?/i,
     ];
 
     for (const pattern of addressPatterns) {
         const match = cleanText.match(pattern);
         if (match) {
-            result.address = (match[1] || match[0]).replace(/[!]{2,}/g, '').trim();
+            let addr = (match[1] || match[0]).replace(/[!]{2,}/g, '').trim();
+            // Clean common tail words
+            addr = addr.split(/(?:сегодня|завтра|послезавтра|срочно|зп|цена|бюджет|выплата|руб|рублей)/i)[0].trim();
+            // Final polish for address (remove trailing commas/dots)
+            result.address = addr.replace(/[,\.\s]+$/, '').trim();
             break;
         }
     }
 
     if (!result.address) {
-        // Search for known locations (with fuzzy end for declensions like Люберцы/Люберцах)
+        // Search for known locations
         for (const loc of knownLocations) {
-            const stem = loc.length > 5 ? loc.substring(0, loc.length - 2) : loc.substring(0, loc.length - 1);
+            const stem = loc.length > 4 ? loc.substring(0, loc.length - 2) : loc;
             if (new RegExp(stem, 'i').test(cleanText)) {
                 result.address = loc;
                 break;
@@ -549,11 +579,11 @@ export class OrdersService {
     if (!result.address) {
         for (const line of lines) {
             const l = line.toLowerCase();
-            // Avoid picking price, date, or common title words as address
             if (l.includes('зп') || l.includes('цена') || l.includes('бюджет') || l.includes('выплата')) continue;
             if (l.includes('₽') || l.includes(' руб') || l.includes(' р.')) continue;
             if (/\d{1,2}\.\d{1,2}/.test(line)) continue;
             if (l.includes('завтра') || l.includes('сегодня') || l.includes('монтаж') || l.includes('замер')) continue;
+            if (line.length > 40) continue; // Likely details
 
             if (/\d+$/.test(line) || line.length > 5) {
                 result.address = line;
@@ -576,12 +606,11 @@ export class OrdersService {
     if (bestTitle) {
         result.title = bestTitle;
     } else {
-        // Priority to non-address, non-price lines
         for (const line of lines) {
             const cleanLine = line.replace(/[!?.]{2,}/g, '').trim();
             const l = cleanLine.toLowerCase();
-            if (l === 'завтра' || l === 'сегодня' || l === 'срочно') continue;
-            if (result.address && cleanLine.includes(result.address) && lines.length > 1) continue; // Skip address if there are other lines
+            if (l === 'завтра' || l === 'сегодня' || l === 'срочно' || l === 'послезавтра') continue;
+            if (result.address && cleanLine.includes(result.address) && lines.length > 1) continue;
             if (result.price > 0 && cleanLine.includes(result.price.toString()) && lines.length > 1) continue;
             if (cleanLine.length >= 3 && cleanLine.length < 50) {
                 result.title = cleanLine;

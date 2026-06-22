@@ -28,6 +28,7 @@ import { z } from 'zod';
 import { AppInput } from '../components/Input';
 import { Button } from '../components/Button';
 import { mapEngine } from '../services/MapEngine';
+import { apiService } from '../services/ApiService';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
@@ -105,9 +106,8 @@ export default function CreateOrderScreen({ navigation }: any) {
 
     const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.6,
+        allowsEditing: false, // Allow arbitrary sizes
+        quality: 0.8,
     };
 
     const result = useCamera
@@ -280,10 +280,25 @@ export default function CreateOrderScreen({ navigation }: any) {
     setLoading(true);
     setErrors({});
     try {
+      let uploadedImageUrls: string[] = [];
+      if (images.length > 0) {
+        const formData = new FormData();
+        images.forEach((uri, index) => {
+          const filename = uri.split('/').pop() || `image_${index}.jpg`;
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : `image`;
+          // @ts-ignore - React Native FormData is different from Web
+          formData.append('files', { uri, name: filename, type });
+        });
+
+        const uploadRes = await apiService.uploadOrderImages(formData);
+        uploadedImageUrls = uploadRes.data;
+      }
+
       const orderData = {
         ...form,
         date: form.date.toISOString(),
-        images: [],
+        images: uploadedImageUrls,
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
         price: Number(form.price),
@@ -302,6 +317,9 @@ export default function CreateOrderScreen({ navigation }: any) {
         workType: 'INSTALLATION',
         date: new Date(),
       });
+      setImages([]);
+      setCoordinates(null);
+      setNormalizedAddress(null);
       navigation.navigate('Orders');
     } catch (e: any) {
       console.error(e);
