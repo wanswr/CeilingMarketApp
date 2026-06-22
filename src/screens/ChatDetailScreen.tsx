@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -9,10 +9,14 @@ import {
   KeyboardAvoidingView, 
   Platform,
   ImageBackground,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
+import { socketService } from '../services/SocketService';
+import { apiService } from '../services/ApiService';
+import { mapEngine } from '../services/MapEngine';
 
 interface Message {
   id: string;
@@ -24,26 +28,72 @@ interface Message {
 }
 
 const ChatDetailScreen = ({ route }: any) => {
-  const { name } = route.params || { name: 'Чат' };
-  const [messages, setMessages] = useState<Message[]>([
-    { id: '1', text: 'Привет! Какие новости по заказу?', senderId: 'other', senderName: 'Александр', timestamp: '10:00', status: 'read' },
-    { id: '2', text: 'Всё по плану, скоро будем.', senderId: 'me', timestamp: '10:05', status: 'read' },
-  ]);
+  const { name, chatId, orderId, executorId } = route.params || {};
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
+  const [activeChatId, setActiveChatId] = useState(chatId);
   const flatListRef = useRef<FlatList>(null);
+  const currentUser = mapEngine.getCurrentUser();
+  const myId = currentUser?.id || currentUser?.uid;
 
-  const sendMessage = () => {
-    if (inputText.trim() === '') return;
-    const now = new Date();
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      text: inputText,
-      senderId: 'me',
-      timestamp: `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`,
-      status: 'sent'
+  useEffect(() => {
+    const initChat = async () => {
+      try {
+        let currentChatId = chatId;
+        if (!currentChatId && orderId && executorId) {
+          // @ts-ignore
+          const res = await apiService.getOrCreateChat(orderId, executorId);
+          currentChatId = res.data.id;
+          setActiveChatId(currentChatId);
+          setMessages(res.data.messages || []);
+        } else if (currentChatId) {
+          // @ts-ignore
+          const res = await apiService.getChatMessages(currentChatId);
+          setMessages(res.data);
+        }
+      } catch (e) {
+        console.error('Chat init error:', e);
+      } finally {
+        setLoading(false);
+      }
     };
-    setMessages([...messages, newMessage]);
+
+    initChat();
+
+    // Socket listeners
+    const onNewMessage = (msg: any) => {
+        if (msg.chatId === activeChatId) {
+            setMessages(prev => [...prev, msg]);
+        }
+    };
+
+    const socket = (socketService as any).socket;
+    if (socket) {
+        socket.on('message.new', onNewMessage);
+        if (activeChatId) socket.emit('chat.join', activeChatId);
+    }
+
+    return () => {
+        if (socket) {
+            socket.off('message.new', onNewMessage);
+            if (activeChatId) socket.emit('chat.leave', activeChatId);
+        }
+    };
+  }, [chatId, activeChatId]);
+
+  const sendMessage = async () => {
+    if (inputText.trim() === '' || !activeChatId) return;
+
+    const textToSend = inputText;
     setInputText('');
+
+    try {
+        // @ts-ignore
+        await apiService.sendMessage(activeChatId, textToSend);
+    } catch (e) {
+        console.error('Send error:', e);
+    }
   };
 
   const renderMessage = ({ item }: { item: Message }) => {

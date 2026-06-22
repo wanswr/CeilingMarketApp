@@ -17,6 +17,9 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [showApplications, setShowApplications] = useState(false);
   const [showPriceModal, setShowPriceModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [reviewText, setReviewText] = useState('');
   const [offerPrice, setOfferPrice] = useState('');
 
   const isSubscribedRef = useRef(false);
@@ -138,13 +141,34 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     setSubmitting(true);
     try {
       await mapEngine.completeOrder(orderId);
-      Alert.alert('Успех', 'Заказ выполнен!');
+      Alert.alert('Успех', 'Заказ выполнен!', [
+          { text: 'Оставить отзыв', onPress: () => setShowReviewModal(true) },
+          { text: 'Позже' }
+      ]);
     } catch (error: any) {
       Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось завершить работу');
     } finally {
       setSubmitting(false);
     }
   };
+
+  const submitReview = async () => {
+      setSubmitting(true);
+      try {
+          // @ts-ignore
+          await apiService.api.post(`/users/${isEmployer ? order?.executorId : order?.employerId}/reviews`, {
+              rating,
+              text: reviewText,
+              orderId
+          });
+          Alert.alert('Спасибо!', 'Ваш отзыв важен для нас');
+          setShowReviewModal(false);
+      } catch (e) {
+          Alert.alert('Ошибка', 'Не удалось отправить отзыв');
+      } finally {
+          setSubmitting(false);
+      }
+  }
 
   const myId = currentUser?.uid || currentUser?.id;
   const isEmployer = myId === order?.employerId;
@@ -413,6 +437,38 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 </View>
             </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={showReviewModal}
+        transparent
+        animationType="slide"
+      >
+          <View style={styles.modalOverlayCenter}>
+              <BlurView intensity={30} style={StyleSheet.absoluteFill}>
+                  <TouchableOpacity style={{flex: 1}} onPress={() => setShowReviewModal(false)} />
+              </BlurView>
+              <View style={styles.priceModalContent}>
+                  <Text style={styles.modalTitleSmall}>Оцените работу</Text>
+                  <View style={styles.starsRow}>
+                      {[1, 2, 3, 4, 5].map(s => (
+                          <TouchableOpacity key={s} onPress={() => setRating(s)}>
+                              <Ionicons name={s <= rating ? "star" : "star-outline"} size={32} color={COLORS.warning} />
+                          </TouchableOpacity>
+                      ))}
+                  </View>
+                  <TextInput
+                      style={[styles.priceInput, { height: 100, textAlignVertical: 'top' }]}
+                      placeholder="Напишите пару слов о мастере..."
+                      multiline
+                      value={reviewText}
+                      onChangeText={setReviewText}
+                  />
+                  <TouchableOpacity style={styles.modalApplyBtn} onPress={submitReview} disabled={submitting}>
+                      {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalApplyBtnText}>Отправить отзыв</Text>}
+                  </TouchableOpacity>
+              </View>
+          </View>
       </Modal>
 
       <Modal
@@ -736,6 +792,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
+  starsRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 8,
+      marginBottom: 20,
+  }
 });
 
 export default OrderDetailScreen;

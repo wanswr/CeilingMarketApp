@@ -22,4 +22,16 @@ export class UsersController {
   updateProfile(@Body() updateDto: any, @Req() req) {
     return this.usersService.update(req.user.id, updateDto);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/reviews')
+  async createReview(@Param('id') id: string, @Body() body: { rating: number, text: string, orderId: string }, @Req() req) {
+    // V9: Simple review implementation - update user rating
+    const user = await this.usersService.findOne(id);
+    const newRating = (user.rating + body.rating) / 2; // Very simple average logic for MVP
+    return this.usersService.update(id, {
+        rating: newRating,
+        completedOrders: user.completedOrders + 1
+    });
+  }
 }

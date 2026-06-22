@@ -30,6 +30,8 @@ const MapScreen = ({ navigation }: any) => {
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState<Region>(mapViewportStore.getRegion());
+  const [radius, setRadius] = useState(100);
+  const [showFilters, setShowFilters] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPanDragRef = useRef<number>(0);
@@ -283,17 +285,69 @@ const MapScreen = ({ navigation }: any) => {
         </MapView>
 
         <SafeAreaView style={styles.headerOverlay} pointerEvents="box-none">
-          <BlurView intensity={80} tint="light" style={styles.searchBar}>
-            <Ionicons name="search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
-            <TextInput
-              placeholder="Поиск заказов..."
-              style={styles.searchInput}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TouchableOpacity style={styles.filterBtn} onPress={() => mapEngine.forceRefresh()}>
-              <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
-            </TouchableOpacity>
-          </BlurView>
+          <View style={styles.topContainer}>
+            <BlurView intensity={80} tint="light" style={styles.searchBar}>
+              <Ionicons name="search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
+              <TextInput
+                placeholder="Поиск заказов..."
+                style={styles.searchInput}
+                placeholderTextColor={COLORS.gray}
+              />
+              <TouchableOpacity style={styles.filterBtn} onPress={() => setShowFilters(!showFilters)}>
+                <Ionicons name="options-outline" size={22} color={COLORS.primary} />
+              </TouchableOpacity>
+            </BlurView>
+
+            {showFilters && (
+              <BlurView intensity={90} tint="light" style={styles.filtersPanel}>
+                <Text style={styles.filterTitle}>Радиус поиска: {radius} км</Text>
+                <View style={styles.radiusContainer}>
+                  {[5, 10, 20, 50, 100].map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      style={[styles.radiusBtn, radius === r && styles.radiusBtnActive]}
+                      onPress={() => {
+                        setRadius(r);
+                        // @ts-ignore - we'll add this to MapEngine
+                        mapEngine.setSearchRadius?.(r);
+                        mapEngine.forceRefresh();
+                      }}
+                    >
+                      <Text style={[styles.radiusText, radius === r && styles.radiusTextActive]}>{r}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.filterTitle}>Быстрый переход</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.citiesScroll}>
+                  {[
+                    { name: 'Москва', lat: 55.7558, lng: 37.6173 },
+                    { name: 'Химки', lat: 55.897, lng: 37.429 },
+                    { name: 'Подольск', lat: 55.431, lng: 37.545 },
+                    { name: 'Балашиха', lat: 55.798, lng: 37.941 },
+                  ].map((city) => (
+                    <TouchableOpacity
+                      key={city.name}
+                      style={styles.cityChip}
+                      onPress={() => {
+                        const newRegion = {
+                          latitude: city.lat,
+                          longitude: city.lng,
+                          latitudeDelta: 0.2,
+                          longitudeDelta: 0.2
+                        };
+                        mapRef.current?.animateToRegion(newRegion, 1000);
+                        mapViewportStore.setRegion(newRegion);
+                        mapEngine.forceRefresh();
+                      }}
+                    >
+                      <Text style={styles.cityText}>{city.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </BlurView>
+            )}
+          </View>
         </SafeAreaView>
 
         <TouchableOpacity style={styles.myLocationBtn} onPress={centerToUser}>
@@ -399,9 +453,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   map: { flex: 1, ...StyleSheet.absoluteFillObject },
   headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
-  searchBar: {
+  topContainer: {
     marginHorizontal: 20,
     marginTop: 10,
+  },
+  searchBar: {
     height: 54,
     borderRadius: 27,
     flexDirection: 'row',
@@ -410,6 +466,61 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)'
+  },
+  filtersPanel: {
+    marginTop: 10,
+    padding: 16,
+    borderRadius: 24,
+    ...SHADOWS.medium,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    overflow: 'hidden'
+  },
+  filterTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.dark,
+    marginBottom: 10
+  },
+  radiusContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16
+  },
+  radiusBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: COLORS.border
+  },
+  radiusBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary
+  },
+  radiusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray
+  },
+  radiusTextActive: {
+    color: '#fff'
+  },
+  citiesScroll: {
+    flexDirection: 'row'
+  },
+  cityChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: 'rgba(45, 91, 255, 0.08)',
+    marginRight: 8
+  },
+  cityText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.primary
   },
   searchInput: { flex: 1, fontSize: 16, color: COLORS.dark, paddingHorizontal: 10 },
   filterBtn: { padding: 10, marginRight: 5 },

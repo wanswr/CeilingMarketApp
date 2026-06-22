@@ -74,6 +74,12 @@ class ApiService {
   login = (phone: string) => this.api.post('auth/login', { phone });
   register = (data: any) => this.api.post('auth/register', data);
 
+  // Chats
+  getMyChats = () => this.api.get('chats');
+  getChatMessages = (chatId: string) => this.api.get(`chats/${chatId}/messages`);
+  getOrCreateChat = (orderId: string, executorId: string) => this.api.post('chats', { orderId, executorId });
+  sendMessage = (chatId: string, text: string) => this.api.post(`chats/${chatId}/messages`, { text });
+
   // Subscriptions
   activateSubscription = (days: number) => this.api.post('subscriptions/activate', { days });
 

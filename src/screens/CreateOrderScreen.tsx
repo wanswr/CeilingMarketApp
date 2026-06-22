@@ -563,20 +563,40 @@ export default function CreateOrderScreen({ navigation }: any) {
                             <View style={styles.previewContainer}>
                                 <Text style={styles.previewHeading}>Вот что я нашел:</Text>
                                 <View style={styles.previewItem}>
-                                    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
-                                    <Text style={styles.previewText} numberOfLines={1}>{parsedData.title}</Text>
+                                        <View style={styles.previewIconWrapper}>
+                                            <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+                                        </View>
+                                        <View style={styles.previewTextColumn}>
+                                            <Text style={styles.previewLabel}>Заголовок</Text>
+                                            <Text style={styles.previewText} numberOfLines={1}>{parsedData.title}</Text>
+                                        </View>
                                 </View>
                                 <View style={styles.previewItem}>
-                                    <Ionicons name="location-outline" size={18} color={COLORS.primary} />
-                                    <Text style={styles.previewText} numberOfLines={1}>{parsedData.address || 'Адрес не найден'}</Text>
+                                        <View style={styles.previewIconWrapper}>
+                                            <Ionicons name="location-outline" size={18} color={COLORS.primary} />
+                                        </View>
+                                        <View style={styles.previewTextColumn}>
+                                            <Text style={styles.previewLabel}>Адрес</Text>
+                                            <Text style={styles.previewText} numberOfLines={1}>{parsedData.address || 'Адрес не найден'}</Text>
+                                        </View>
                                 </View>
                                 <View style={styles.previewItem}>
-                                    <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
-                                    <Text style={styles.previewText}>{parsedData.price} ₽</Text>
+                                        <View style={styles.previewIconWrapper}>
+                                            <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
+                                        </View>
+                                        <View style={styles.previewTextColumn}>
+                                            <Text style={styles.previewLabel}>Бюджет</Text>
+                                            <Text style={styles.previewText}>{parsedData.price} ₽</Text>
+                                        </View>
                                 </View>
                                 <View style={styles.previewItem}>
-                                    <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
-                                    <Text style={styles.previewText}>{formatDate(new Date(parsedData.date))}</Text>
+                                        <View style={styles.previewIconWrapper}>
+                                            <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
+                                        </View>
+                                        <View style={styles.previewTextColumn}>
+                                            <Text style={styles.previewLabel}>Дата</Text>
+                                            <Text style={styles.previewText}>{formatDate(new Date(parsedData.date))}</Text>
+                                        </View>
                                 </View>
 
                                 <View style={styles.previewActions}>
@@ -775,8 +795,19 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(45, 91, 255, 0.1)'
   },
   previewHeading: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 15 },
-  previewItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  previewText: { fontSize: 15, color: COLORS.dark, marginLeft: 10, fontWeight: '600' },
+  previewItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  previewIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12
+  },
+  previewTextColumn: { flex: 1 },
+  previewLabel: { fontSize: 11, fontWeight: '700', color: COLORS.gray, textTransform: 'uppercase', marginBottom: 2 },
+  previewText: { fontSize: 15, color: COLORS.dark, fontWeight: '700' },
   previewActions: { flexDirection: 'row', marginTop: 15 },
   previewBackBtn: { flex: 1, paddingVertical: 15, alignItems: 'center' },
   previewBackText: { color: COLORS.gray, fontWeight: '700' },

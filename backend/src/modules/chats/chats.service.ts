@@ -77,4 +77,16 @@ export class ChatsService {
       orderBy: { updatedAt: 'desc' }
     });
   }
+
+  async getMessages(chatId: string, userId: string) {
+    const chat = await this.prisma.chat.findUnique({ where: { id: chatId } });
+    if (!chat) throw new NotFoundException();
+    if (chat.employerId !== userId && chat.executorId !== userId) throw new ForbiddenException();
+
+    return this.prisma.message.findMany({
+      where: { chatId },
+      orderBy: { createdAt: 'asc' },
+      include: { sender: { select: { id: true, name: true, avatar: true } } }
+    });
+  }
 }

@@ -151,15 +151,16 @@ const OrdersListScreen = ({ navigation }: any) => {
   const handleDelete = (orderId: string) => {
     Alert.alert(
       'Удаление заказа',
-      'Вы уверены, что хотите удалить этот заказ?',
+      'Заказ будет перенесен в корзину и окончательно удален через 10 дней. Продолжить?',
       [
         { text: 'Отмена', style: 'cancel' },
         {
-          text: 'Удалить',
+          text: 'В корзину',
           style: 'destructive',
           onPress: async () => {
             try {
-              await mapEngine.updateOrder(orderId, { status: 'CANCELLED' });
+              // V9: Soft Delete implementation
+              await mapEngine.updateOrder(orderId, { status: 'CANCELLED', deletedAt: new Date().toISOString() });
             } catch (e) {
               Alert.alert('Ошибка', 'Не удалось удалить заказ');
             }
