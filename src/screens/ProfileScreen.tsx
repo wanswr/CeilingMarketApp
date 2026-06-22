@@ -6,7 +6,6 @@ import { BlurView } from 'expo-blur';
 import { mapEngine } from '../services/MapEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS } from '../constants/theme';
-import { Button } from '../components/Button';
 import { resolveImageUrl } from '../utils/image';
 
 const ProfileScreen = ({ route, navigation }: any) => {

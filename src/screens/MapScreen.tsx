@@ -16,6 +16,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { COLORS, SHADOWS } from '../constants/theme';
+import { Button as AppButton } from '../components/Button';
 import { mapEngine } from '../services/MapEngine';
 import { mapViewportStore } from '../services/MapViewportStore';
 import { formatDate } from '../utils/date';
@@ -215,7 +216,7 @@ const MapScreen = ({ navigation }: any) => {
                   <Text style={styles.employerModeSubtitle}>
                       Карта доступна только в режиме Исполнителя для поиска новых заказов.
                   </Text>
-                  <Button
+                  <AppButton
                       title="Создать новый заказ"
                       onPress={() => navigation.navigate('CreateOrder')}
                       style={{ marginTop: 20, width: '80%' }}

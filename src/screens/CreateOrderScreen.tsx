@@ -26,7 +26,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { z } from 'zod';
 import { AppInput } from '../components/Input';
-import { Button } from '../components/Button';
+import { Button as AppButton } from '../components/Button';
 import { mapEngine } from '../services/MapEngine';
 import { apiService } from '../services/ApiService';
 import { COLORS, SHADOWS } from '../constants/theme';
@@ -399,7 +399,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                   <Text style={{ fontSize: 15, color: COLORS.gray, textAlign: 'center', marginTop: 10, lineHeight: 22 }}>
                       Создание заказов доступно только в режиме Заказчика.
                   </Text>
-                  <Button
+                  <AppButton
                       title="К списку заказов"
                       onPress={() => navigation.navigate('Orders')}
                       style={{ marginTop: 20, width: '80%' }}
