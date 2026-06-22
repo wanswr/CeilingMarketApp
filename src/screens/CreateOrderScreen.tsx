@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -48,6 +49,38 @@ export default function CreateOrderScreen({ navigation }: any) {
     workType: 'INSTALLATION',
     date: new Date(),
   });
+
+  const DRAFT_KEY = 'order_draft_v1';
+  const isHydratedRef = useRef(false);
+
+  useEffect(() => {
+    const loadDraft = async () => {
+      try {
+        const draft = await AsyncStorage.getItem(DRAFT_KEY);
+        if (draft) {
+          const parsed = JSON.parse(draft);
+          setForm({
+            ...parsed,
+            date: new Date(parsed.date)
+          });
+        }
+      } catch (e) {}
+      finally {
+          isHydratedRef.current = true;
+      }
+    };
+    loadDraft();
+  }, []);
+
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    const saveDraft = async () => {
+      try {
+        await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+      } catch (e) {}
+    };
+    saveDraft();
+  }, [form]);
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [importText, setImportText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
@@ -61,19 +94,25 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [errors, setErrors] = useState<any>({});
 
-  const pickImage = async () => {
+  const pickImage = async (useCamera: boolean = false) => {
     const { status: libStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (libStatus !== 'granted') {
-      Alert.alert('Доступ запрещен', 'Для выбора фото требуется разрешение на доступ к галерее. Вы можете включить его в настройках.');
+    const { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (libStatus !== 'granted' || camStatus !== 'granted') {
+      Alert.alert('Доступ запрещен', 'Требуется разрешение на доступ к камере и галерее.');
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.7,
-    });
+    const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.6,
+    };
+
+    const result = useCamera
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
 
     if (!result.canceled) {
       setImages([...images, result.assets[0].uri]);
@@ -252,8 +291,17 @@ export default function CreateOrderScreen({ navigation }: any) {
       };
 
       await mapEngine.createOrder(orderData);
+      await AsyncStorage.removeItem(DRAFT_KEY);
 
       Alert.alert("Успех", "Заказ опубликован!");
+      setForm({
+        title: '',
+        address: '',
+        price: '',
+        details: '',
+        workType: 'INSTALLATION',
+        date: new Date(),
+      });
       navigation.navigate('Orders');
     } catch (e: any) {
       console.error(e);
@@ -383,6 +431,30 @@ export default function CreateOrderScreen({ navigation }: any) {
                 onChangeText={(t:any)=>setForm({...form, details:t})}
                 error={errors.details}
               />
+
+              <Text style={styles.label}>Фотографии объекта</Text>
+              <View style={styles.photoRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <TouchableOpacity style={styles.addPhotoBtn} onPress={() => {
+                        Alert.alert("Добавить фото", "Выберите источник", [
+                            { text: "Камера", onPress: () => pickImage(true) },
+                            { text: "Галерея", onPress: () => pickImage(false) },
+                            { text: "Отмена", style: "cancel" }
+                        ])
+                    }}>
+                        <Ionicons name="camera-outline" size={28} color={COLORS.primary} />
+                        <Text style={styles.addPhotoText}>Добавить</Text>
+                    </TouchableOpacity>
+                    {images.map((uri, index) => (
+                        <View key={index} style={styles.photoWrapper}>
+                            <Image source={{ uri }} style={styles.photoThumb} />
+                            <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removeImage(index)}>
+                                <Ionicons name="close-circle" size={20} color={COLORS.danger} />
+                            </TouchableOpacity>
+                        </View>
+                    ))}
+                </ScrollView>
+              </View>
             </View>
 
             <View style={styles.card}>
@@ -444,18 +516,29 @@ export default function CreateOrderScreen({ navigation }: any) {
                     latitudeDelta: 0.1,
                     longitudeDelta: 0.1,
                   }}
-                  onPress={(e) => setCoordinates(e.nativeEvent.coordinate)}
-                >
-                  {coordinates && (
-                    <Marker
-                      coordinate={coordinates}
-                      draggable
-                      onDragEnd={(e) => setCoordinates(e.nativeEvent.coordinate)}
-                      pinColor={COLORS.primary}
-                    />
-                  )}
-                </MapView>
+                  onRegionChangeComplete={(reg) => {
+                      // Only update coordinates if user explicitly moved the map
+                      const newCoords = { latitude: reg.latitude, longitude: reg.longitude };
+                      setCoordinates(newCoords);
+                      // Reverse geocode to get approximate address
+                      Location.reverseGeocodeAsync(newCoords).then(rev => {
+                          if (rev.length > 0) {
+                              const r = rev[0];
+                              const addr = [r.city, r.street, r.name].filter(Boolean).join(', ');
+                              setNormalizedAddress(addr);
+                          }
+                      });
+                  }}
+                />
+                <View style={styles.crosshairContainer} pointerEvents="none">
+                    <Ionicons name="add" size={30} color={COLORS.primary} />
+                </View>
               </View>
+              {normalizedAddress && (
+                  <Text style={styles.normalizedAddrText}>
+                      Точка на карте: <Text style={{fontWeight: '700'}}>{normalizedAddress}</Text>
+                  </Text>
+              )}
             </View>
 
             <View style={styles.card}>
@@ -499,6 +582,10 @@ export default function CreateOrderScreen({ navigation }: any) {
                 <Text style={styles.publishText}>{i18n.t('orders.publish')}</Text>
               )}
             </TouchableOpacity>
+
+            <Text style={styles.legalDisclaimer}>
+                Нажимая кнопку, вы соглашаетесь с передачей адреса объекта и деталей заказа исполнителям маркетплейса.
+            </Text>
 
             <View style={{ height: 60 }} />
           </ScrollView>
@@ -691,6 +778,20 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border
   },
   mapPreview: { width: '100%', height: '100%' },
+  crosshairContainer: {
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      marginTop: -15,
+      marginLeft: -15,
+      zIndex: 10,
+  },
+  normalizedAddrText: {
+      fontSize: 12,
+      color: COLORS.gray,
+      marginTop: 8,
+      paddingHorizontal: 4
+  },
   label: { fontSize: 14, fontWeight: '800', color: COLORS.dark, marginBottom: 10, marginLeft: 4 },
   workTypeGrid: {
     flexDirection: 'row',
@@ -741,6 +842,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3
   },
   publishText: { color: '#fff', fontWeight: '900', fontSize: 18, letterSpacing: 0.5 },
+  photoRow: { flexDirection: 'row', marginTop: 10 },
+  addPhotoBtn: {
+      width: 100,
+      height: 100,
+      borderRadius: 16,
+      backgroundColor: '#F1F5F9',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+      borderWidth: 1,
+      borderColor: '#E2E8F0',
+      borderStyle: 'dashed'
+  },
+  addPhotoText: { fontSize: 11, color: COLORS.primary, fontWeight: '700', marginTop: 4 },
+  photoWrapper: { position: 'relative', marginRight: 12 },
+  photoThumb: { width: 100, height: 100, borderRadius: 16 },
+  removePhotoBtn: { position: 'absolute', top: -8, right: -8, backgroundColor: '#fff', borderRadius: 10 },
   modalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 32,
@@ -819,5 +937,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     ...SHADOWS.medium
   },
-  previewApplyText: { color: '#fff', fontWeight: '900' }
+  previewApplyText: { color: '#fff', fontWeight: '900' },
+  legalDisclaimer: {
+      fontSize: 11,
+      color: COLORS.gray,
+      textAlign: 'center',
+      marginTop: 15,
+      lineHeight: 16,
+      paddingHorizontal: 10
+  }
 });
