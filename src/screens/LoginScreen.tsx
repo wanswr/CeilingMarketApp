@@ -12,8 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }: any) {
   const [phone, setPhone] = useState('+7');
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isAgreed, setIsAgreed] = useState(false);
   const { signIn } = useAuth();
 
   const handleLogin = async () => {
@@ -21,9 +21,9 @@ export default function LoginScreen({ navigation }: any) {
       Alert.alert("Ошибка", "Введите номер в формате +79991234567");
       return;
     }
-    if (!acceptedTerms) {
-      Alert.alert("Согласие", "Пожалуйста, подтвердите согласие с политикой конфиденциальности");
-      return;
+    if (!isAgreed) {
+        Alert.alert("Внимание", "Для продолжения необходимо согласиться с условиями обработки персональных данных.");
+        return;
     }
     setLoading(true);
     try {
@@ -74,24 +74,28 @@ export default function LoginScreen({ navigation }: any) {
                   icon={<Ionicons name="call-outline" size={20} color={COLORS.primary} />}
                 />
                 <TouchableOpacity
-                  style={styles.termsRow}
-                  onPress={() => setAcceptedTerms(!acceptedTerms)}
-                  activeOpacity={0.7}
+                    style={styles.checkboxRow}
+                    onPress={() => setIsAgreed(!isAgreed)}
+                    activeOpacity={0.7}
                 >
-                  <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-                    {acceptedTerms && <Ionicons name="checkmark" size={16} color="#fff" />}
-                  </View>
-                  <Text style={styles.termsTextLabel}>
-                    Согласен с <Text style={styles.termsLink}>Политикой конфиденциальности</Text> и обработкой персональных данных
-                  </Text>
+                    <View style={[styles.checkbox, isAgreed && styles.checkboxChecked]}>
+                        {isAgreed && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    </View>
+                    <Text style={styles.checkboxLabel}>
+                        Я согласен на <Text style={styles.termsLink}>обработку персональных данных</Text>
+                    </Text>
                 </TouchableOpacity>
 
                 <Button
                   title="Продолжить"
                   onPress={handleLogin}
                   loading={loading}
-                  style={[styles.loginBtn, !acceptedTerms && { opacity: 0.6 }]}
+                  style={styles.loginBtn}
                 />
+                <Text style={styles.termsText}>
+                  Нажимая кнопку, вы соглашаетесь с условиями{"\n"}
+                  <Text style={styles.termsLink}>Публичной оферты</Text>
+                </Text>
               </BlurView>
             </KeyboardAvoidingView>
           </SafeAreaView>
@@ -121,9 +125,10 @@ const styles = StyleSheet.create({
   },
   formTitle: { fontSize: 20, fontWeight: '800', color: COLORS.dark, marginBottom: 24, textAlign: 'center' },
   loginBtn: { marginTop: 10, height: 60, borderRadius: 18 },
-  termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, marginBottom: 10 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: COLORS.primary, marginRight: 10, justifyContent: 'center', alignItems: 'center' },
-  checkboxChecked: { backgroundColor: COLORS.primary },
-  termsTextLabel: { flex: 1, fontSize: 12, color: COLORS.gray, lineHeight: 16 },
-  termsLink: { color: COLORS.primary, fontWeight: '700' }
+  termsText: { fontSize: 12, color: COLORS.gray, textAlign: 'center', marginTop: 20, lineHeight: 18 },
+  termsLink: { color: COLORS.primary, fontWeight: '700' },
+  checkboxRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: COLORS.border, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  checkboxChecked: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  checkboxLabel: { flex: 1, fontSize: 13, color: COLORS.gray }
 });

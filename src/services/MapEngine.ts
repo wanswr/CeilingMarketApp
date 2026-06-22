@@ -14,10 +14,6 @@ class MapEngine {
   private currentAbortController: AbortController | null = null;
   private requestCounter: number = 0;
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
-  private searchRadius: number = 100;
-  setSearchRadius = (radius: number) => {
-    this.searchRadius = radius;
-  }
   public spatialManager = spatialManager;
   private isHydrated = false;
   private lastClusteredOrders: any[] = [];
@@ -174,7 +170,7 @@ class MapEngine {
       const response = await this.apiService.getSpatialOrders({
           lat: viewRegion.latitude,
           lng: viewRegion.longitude,
-          radius: this.searchRadius
+          radius: 100
       }, { signal: this.currentAbortController?.signal });
 
       if (requestId !== this.requestCounter) {

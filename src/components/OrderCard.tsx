@@ -15,8 +15,6 @@ interface OrderCardProps {
   onStart?: () => void;
   onComplete?: () => void;
   onChat?: () => void;
-  onCall?: () => void;
-  onRestore?: () => void;
 }
 
 const getStatusDetails = (status: OrderStatus) => {
@@ -49,7 +47,7 @@ const getWorkTypeLabel = (type: string) => {
     }
 }
 
-export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string, onReview?: () => void }> = ({
+export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string, onRestore?: () => void, onReview?: () => void, onCall?: () => void }> = ({
   order,
   isEmployer,
   onPress,
@@ -58,12 +56,12 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
   onStart,
   onComplete,
   onChat,
-  onCall,
-  onRestore,
-  onReview,
   onCancelApplication,
   hasApplied,
-  currentUserId
+  currentUserId,
+  onRestore,
+  onReview,
+  onCall
 }) => {
   const statusInfo = getStatusDetails(order.status);
   const amIExecutor = order.executorId === currentUserId;
@@ -239,11 +237,6 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
             )}
             <TouchableOpacity style={styles.iconButton} onPress={onChat}>
                 <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
-                {(order as any).chats?.[0]?.messages?.length > 0 && (
-                    <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadText}>{(order as any).chats[0].messages.length}</Text>
-                    </View>
-                )}
             </TouchableOpacity>
           </View>
         </View>
@@ -336,44 +329,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '10',
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'relative'
   },
-  unreadBadge: {
-      position: 'absolute',
-      top: -5,
-      right: -5,
-      backgroundColor: COLORS.danger,
-      borderRadius: 10,
-      minWidth: 18,
-      height: 18,
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 2,
-      borderColor: '#fff'
-  },
-  unreadText: { color: '#fff', fontSize: 9, fontWeight: '900' },
-  urgencyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  todayBadge: { backgroundColor: '#EF444410' },
-  tomorrowBadge: { backgroundColor: '#F59E0B10' },
-  urgencyText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-  pulseDot: { width: 6, height: 6, borderRadius: 3 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  myBidBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary + '10'
-  },
-  myBidText: { fontSize: 10, fontWeight: '700', color: COLORS.primary },
   restoreAction: {
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
@@ -419,6 +375,28 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginRight: 10,
   },
+  urgencyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  todayBadge: { backgroundColor: '#EF444410' },
+  tomorrowBadge: { backgroundColor: '#F59E0B10' },
+  urgencyText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  pulseDot: { width: 6, height: 6, borderRadius: 3 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  myBidBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '10'
+  },
+  myBidText: { fontSize: 10, fontWeight: '700', color: COLORS.primary },
   actionText: {
     color: '#fff',
     fontSize: 10,

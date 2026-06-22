@@ -13,25 +13,18 @@ import { resolveImageUrl } from '../utils/image';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { width, height } = useWindowDimensions();
-  const { orderId, showReview } = route.params;
+  const { orderId } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
   const [loading, setLoading] = useState(!order);
   const [submitting, setSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [showApplications, setShowApplications] = useState(false);
   const [showPriceModal, setShowPriceModal] = useState(false);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [rating, setRating] = useState(5);
-  const [reviewText, setReviewText] = useState('');
   const [offerPrice, setOfferPrice] = useState('');
   const [viewerVisible, setViewerVisible] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   const isSubscribedRef = useRef(false);
-
-  useEffect(() => {
-      if (showReview) setShowReviewModal(true);
-  }, [showReview]);
 
   useEffect(() => {
     if (isSubscribedRef.current) return;
@@ -150,34 +143,13 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     setSubmitting(true);
     try {
       await mapEngine.completeOrder(orderId);
-      Alert.alert('Успех', 'Заказ выполнен!', [
-          { text: 'Оставить отзыв', onPress: () => setShowReviewModal(true) },
-          { text: 'Позже' }
-      ]);
+      Alert.alert('Успех', 'Заказ выполнен!');
     } catch (error: any) {
       Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось завершить работу');
     } finally {
       setSubmitting(false);
     }
   };
-
-  const submitReview = async () => {
-      setSubmitting(true);
-      try {
-          // @ts-ignore
-          await apiService.api.post(`/users/${isEmployer ? order?.executorId : order?.employerId}/reviews`, {
-              rating,
-              text: reviewText,
-              orderId
-          });
-          Alert.alert('Спасибо!', 'Ваш отзыв важен для нас');
-          setShowReviewModal(false);
-      } catch (e) {
-          Alert.alert('Ошибка', 'Не удалось отправить отзыв');
-      } finally {
-          setSubmitting(false);
-      }
-  }
 
   const myId = currentUser?.uid || currentUser?.id;
   const isEmployer = myId === order?.employerId;
@@ -391,13 +363,24 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       <BlurView intensity={90} tint="light" style={styles.footer}>
         <SafeAreaView edges={['bottom']} style={{ flexDirection: 'row', gap: 12 }}>
           {isEmployer ? (
-            <TouchableOpacity
-              style={styles.chatButtonFooter}
-              onPress={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: order.id } })}
-            >
-              <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
-              <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
-            </TouchableOpacity>
+            <View style={{ flex: 1, flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                    style={styles.chatButtonFooter}
+                    onPress={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: order.id } })}
+                >
+                    <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+                    <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
+                </TouchableOpacity>
+
+                {order.status === 'PUBLISHED' && (
+                    <TouchableOpacity
+                        style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.secondary }]}
+                        onPress={() => navigation.navigate('EditOrder', { orderId: order.id })}
+                    >
+                        <Text style={styles.applyBtnText}>Изменить</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
           ) : isExecutor ? (
             <>
               <TouchableOpacity
@@ -436,24 +419,33 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               )}
             </>
           ) : (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={[
-                styles.applyBtn,
-                hasApplied && { backgroundColor: '#FF4757' },
-                order.status === 'CLAIMED' && !hasApplied && { backgroundColor: COLORS.gray }
-              ]}
-              onPress={hasApplied ? handleCancelApplication : handleApply}
-              disabled={submitting || (order.status === 'CLAIMED' && !hasApplied)}
-            >
-              {submitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.applyBtnText}>
-                  {hasApplied ? 'Отказаться' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Откликнуться'}
-                </Text>
-              )}
-            </TouchableOpacity>
+            <View style={{ flex: 1, flexDirection: 'row', gap: 12 }}>
+                {currentUser?.role === 'WORKER' ? (
+                    <TouchableOpacity
+                        activeOpacity={0.9}
+                        style={[
+                            styles.applyBtn,
+                            { flex: 1 },
+                            hasApplied && { backgroundColor: '#FF4757' },
+                            order.status === 'CLAIMED' && !hasApplied && { backgroundColor: COLORS.gray }
+                        ]}
+                        onPress={hasApplied ? handleCancelApplication : handleApply}
+                        disabled={submitting || (order.status === 'CLAIMED' && !hasApplied)}
+                    >
+                        {submitting ? (
+                            <ActivityIndicator color="#fff" />
+                        ) : (
+                            <Text style={styles.applyBtnText}>
+                                {hasApplied ? 'Отказаться' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Откликнуться'}
+                            </Text>
+                        )}
+                    </TouchableOpacity>
+                ) : (
+                    <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.5 }]}>
+                        <Text style={styles.applyBtnText}>Переключитесь на Мастера</Text>
+                    </View>
+                )}
+            </View>
           )}
         </SafeAreaView>
       </BlurView>
@@ -489,38 +481,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 </View>
             </View>
         </View>
-      </Modal>
-
-      <Modal
-        visible={showReviewModal}
-        transparent
-        animationType="slide"
-      >
-          <View style={styles.modalOverlayCenter}>
-              <BlurView intensity={30} style={StyleSheet.absoluteFill}>
-                  <TouchableOpacity style={{flex: 1}} onPress={() => setShowReviewModal(false)} />
-              </BlurView>
-              <View style={styles.priceModalContent}>
-                  <Text style={styles.modalTitleSmall}>Оцените работу</Text>
-                  <View style={styles.starsRow}>
-                      {[1, 2, 3, 4, 5].map(s => (
-                          <TouchableOpacity key={s} onPress={() => setRating(s)}>
-                              <Ionicons name={s <= rating ? "star" : "star-outline"} size={32} color={COLORS.warning} />
-                          </TouchableOpacity>
-                      ))}
-                  </View>
-                  <TextInput
-                      style={[styles.priceInput, { height: 100, textAlignVertical: 'top' }]}
-                      placeholder="Напишите пару слов о мастере..."
-                      multiline
-                      value={reviewText}
-                      onChangeText={setReviewText}
-                  />
-                  <TouchableOpacity style={styles.modalApplyBtn} onPress={submitReview} disabled={submitting}>
-                      {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalApplyBtnText}>Отправить отзыв</Text>}
-                  </TouchableOpacity>
-              </View>
-          </View>
       </Modal>
 
       <Modal
@@ -884,60 +844,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
-  starsRow: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 8,
-      marginBottom: 20,
-  },
-  paginationDots: {
-      position: 'absolute',
-      bottom: 40,
-      width: '100%',
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 6
-  },
-  dot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: 'rgba(255,255,255,0.4)',
-  },
-  activeDot: {
-      backgroundColor: '#fff',
-      width: 20,
-  },
-  viewerContainer: {
-      flex: 1,
-      backgroundColor: '#000',
-  },
-  viewerCloseBtn: {
-      position: 'absolute',
-      top: Platform.OS === 'ios' ? 60 : 30,
-      right: 20,
-      zIndex: 100,
-      padding: 10,
-  },
-  viewerSlide: {
-      justifyContent: 'center',
-      alignItems: 'center',
-  },
-  viewerImage: {
-      width: '100%',
-      height: '100%',
-  },
-  viewerFooter: {
-      position: 'absolute',
-      bottom: 50,
-      width: '100%',
-      alignItems: 'center',
-  },
-  viewerCounter: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: '700',
-  }
 });
 
 export default OrderDetailScreen;

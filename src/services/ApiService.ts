@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-const DEFAULT_API_URL = 'http://192.168.1.229:3000/api/'; // Replace with your machine's IP
+const DEFAULT_API_URL = 'http://192.168.100.10:3000/api/'; // Replace with your machine's IP
 
 class ApiService {
   private api: AxiosInstance;
@@ -51,7 +51,7 @@ class ApiService {
 
   // Orders
   getOrders = (params: any) => this.api.get('orders', { params });
-  getMyOrders = (params?: { skip?: number, take?: number }) => this.api.get('orders/my', { params });
+  getMyOrders = () => this.api.get('orders/my');
   getSpatialOrders = (params: any, config?: any) => this.api.get('orders/spatial', { params, ...config });
 
   parseOrderText = (text: string) => this.api.post('orders/parse', { text });
@@ -76,12 +76,6 @@ class ApiService {
   // Auth
   login = (phone: string) => this.api.post('auth/login', { phone });
   register = (data: any) => this.api.post('auth/register', data);
-
-  // Chats
-  getMyChats = () => this.api.get('chats');
-  getChatMessages = (chatId: string) => this.api.get(`chats/${chatId}/messages`);
-  getOrCreateChat = (orderId: string, executorId: string) => this.api.post('chats', { orderId, executorId });
-  sendMessage = (chatId: string, text: string) => this.api.post(`chats/${chatId}/messages`, { text });
 
   // Subscriptions
   activateSubscription = (days: number) => this.api.post('subscriptions/activate', { days });

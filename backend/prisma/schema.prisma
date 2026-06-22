@@ -52,7 +52,6 @@ model User {
   isVerified        Boolean        @default(false)
   isTrialUsed       Boolean        @default(false)
   pushToken         String?
-  portfolio         String[]       @default([])
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 

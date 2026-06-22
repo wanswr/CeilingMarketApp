@@ -286,7 +286,7 @@ export class OrdersService {
     return order;
   }
 
-  async findMyOrders(userId: string, skip: number = 0, take: number = 20) {
+  async findMyOrders(userId: string) {
     return this.prisma.order.findMany({
       where: {
         OR: [
@@ -301,23 +301,9 @@ export class OrdersService {
         applications: {
           where: { executorId: userId },
           select: { id: true, status: true, price: true }
-        },
-        chats: {
-            where: {
-                OR: [{ employerId: userId }, { executorId: userId }]
-            },
-            select: {
-                id: true,
-                messages: {
-                    where: { senderId: { not: userId }, isRead: false },
-                    select: { id: true }
-                }
-            }
         }
       },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take,
+      orderBy: { createdAt: 'desc' }
     });
   }
 
@@ -438,7 +424,7 @@ export class OrdersService {
   }
 
   /**
-   * SMART PARSER V3: Advanced NLP for order aggregation with Moscow context.
+   * SMART PARSER V4: Advanced NLP for ceiling order texts with Moscow region context.
    */
   parseOrderText(text: string) {
     const cleanText = text.replace(/\[\d{2}\.\d{2}\.\d{4}\s\d{2}:\d{2}\].*?:/g, '').trim();
@@ -452,7 +438,7 @@ export class OrdersService {
       date: new Date(),
     };
 
-    // 1. IMPROVED PRICE PARSING (Patterns: 15к, 15.000, ЗП: 20 000 руб)
+    // 1. PRICE PARSING (Patterns: 15к, 15.000, ЗП: 20 000 руб)
     const pricePatterns = [
         /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)(?:к|k|₽|р|руб|рублей)/i,
         /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)/i,
@@ -468,9 +454,7 @@ export class OrdersService {
             let val = parseInt(rawStr, 10);
             if (isNaN(val)) continue;
             if (isKilo && val < 1000) val *= 1000;
-            if (val > 0) {
-                // Heuristic: prices are usually > 500 for these jobs
-                if (val < 500) continue;
+            if (val >= 500) { // Heuristic: prices are usually > 500 for these jobs
                 result.price = val;
                 break;
             }
@@ -494,7 +478,6 @@ export class OrdersService {
         result.date = new Date(today);
     } else {
         let weekdayFound = false;
-        // Search for "в субботу", "на пятницу"
         const weekdayMatch = cleanText.match(/(?:в|на|во)?\s*(понед[а-я]*|вторн[а-я]*|сред[а-я]*|четверг[а-я]*|пятниц[а-я]*|суббот[а-я]*|воскр[а-я]*|пн|вт|ср|чт|пт|сб|вс)/i);
         if (weekdayMatch) {
             const foundDay = weekdayMatch[1].toLowerCase();
@@ -524,9 +507,8 @@ export class OrdersService {
         }
     }
 
-    // 3. IMPROVED ADDRESS HEURISTIC (Moscow & Regions)
+    // 3. ADDRESS HEURISTIC (Moscow & Regions)
     const knownLocations = [
-        // Metro & Districts
         'Авиамоторная', 'Раменки', 'Юго-Запад', 'Люберцы', 'Химки', 'Мытищи', 'Балашиха',
         'Одинцово', 'Красногорск', 'Видное', 'Реутов', 'Зеленоград', 'Королев', 'Домодедово',
         'Подольск', 'Щелково', 'Серпухов', 'Коломна', 'Электросталь', 'Железнодорожный',
@@ -541,7 +523,7 @@ export class OrdersService {
         'Тимирязевская', 'Дмитровская', 'Савеловская', 'Новослободская', 'Менделеевская', 'Чеховская',
         'Боровицкая', 'Полянка', 'Серпуховская', 'Тульская', 'Нагатинская', 'Нагорная', 'Нахимовский',
         'Севастопольская', 'Чертановская', 'Южная', 'Аннино', 'Янгеля', 'Бульвар Дмитрия Донского',
-        'Щербинка', 'Коммунарка', 'Рассказовка', 'Говорово', 'Солнцево', 'Боровское', 'Новопеределкино',
+        'Щербинка', 'Коммунарка', 'Рассказовка', 'Говорово', 'Боровское', 'Новопеределкино',
         'Лобня', 'Долгопрудный', 'Ивантеевка', 'Пушкино', 'Фрязино', 'Монино', 'Старая Купавна',
         'Электроугли', 'Бронницы', 'Раменское', 'Жуковский', 'Лыткарино', 'Котельники', 'Дзержинский',
         'Чехов', 'Ступино', 'Кашира', 'Наро-Фоминск', 'Голицыно', 'Кубинка', 'Можайск', 'Волоколамск',
@@ -557,36 +539,17 @@ export class OrdersService {
         const match = cleanText.match(pattern);
         if (match) {
             let addr = (match[1] || match[0]).replace(/[!]{2,}/g, '').trim();
-            // Clean common tail words
             addr = addr.split(/(?:сегодня|завтра|послезавтра|срочно|зп|цена|бюджет|выплата|руб|рублей)/i)[0].trim();
-            // Final polish for address (remove trailing commas/dots)
             result.address = addr.replace(/[,\.\s]+$/, '').trim();
             break;
         }
     }
 
     if (!result.address) {
-        // Search for known locations
         for (const loc of knownLocations) {
             const stem = loc.length > 4 ? loc.substring(0, loc.length - 2) : loc;
             if (new RegExp(stem, 'i').test(cleanText)) {
                 result.address = loc;
-                break;
-            }
-        }
-    }
-
-    if (!result.address) {
-        for (const line of lines) {
-            const l = line.toLowerCase();
-            if (l.includes('зп') || l.includes('цена') || l.includes('бюджет') || l.includes('выплата')) continue;
-            if (l.includes('₽') || l.includes(' руб') || l.includes(' р.')) continue;
-            if (/\d{1,2}\.\d{1,2}/.test(line)) continue;
-            if (l.includes('завтра') || l.includes('сегодня') || l.includes('монтаж') || l.includes('замер')) continue;
-            if (line.length > 40) continue; // Likely details
-
-            if (/\d+$/.test(line) || line.length > 5) {
-                result.address = line;
                 break;
             }
         }
@@ -620,9 +583,6 @@ export class OrdersService {
     }
 
     if (!result.title) result.title = "Монтаж натяжного потолка";
-    // Final cleanup
-    result.title = result.title.replace(/[!]{2,}/g, '!').trim();
-    if (result.address) result.address = result.address.replace(/[!]{2,}/g, '').trim();
 
     return result;
   }

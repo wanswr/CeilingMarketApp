@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ScrollView,
   TextInput,
   Linking,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -103,7 +104,7 @@ const OrdersListScreen = ({ navigation }: any) => {
     setLoadingMore(false);
   };
 
-  const filteredOrders = React.useMemo(() => {
+  const filteredOrders = useMemo(() => {
     const myId = currentUser?.uid || currentUser?.id;
     let result = orders.filter(order => {
       // 0. Trash Logic
@@ -184,7 +185,6 @@ const OrdersListScreen = ({ navigation }: any) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              // V9: Soft Delete implementation
               await mapEngine.updateOrder(orderId, { status: 'CANCELLED' });
             } catch (e) {
               Alert.alert('Ошибка', 'Не удалось удалить заказ');
@@ -238,10 +238,16 @@ const OrdersListScreen = ({ navigation }: any) => {
   );
 
   const stats = React.useMemo(() => {
-      if (currentUser?.role !== 'WORKER') return null;
-      const completedThisMonth = orders.filter(o => o.status === 'COMPLETED').length;
-      const earnedThisMonth = orders.filter(o => o.status === 'COMPLETED').reduce((sum, o) => sum + o.price, 0);
-      return { count: completedThisMonth, sum: earnedThisMonth };
+      // Show stats for Workers (Completed/Earned) and Employers (Placed/Active)
+      if (currentUser?.role === 'WORKER') {
+          const completed = orders.filter(o => o.status === 'COMPLETED').length;
+          const earned = orders.filter(o => o.status === 'COMPLETED').reduce((sum, o) => sum + o.price, 0);
+          return { label: 'Мастер', count: completed, sum: earned, countLabel: 'вып.' };
+      } else {
+          const placed = orders.filter(o => o.employerId === (currentUser?.uid || currentUser?.id)).length;
+          const active = orders.filter(o => o.employerId === (currentUser?.uid || currentUser?.id) && o.status !== 'COMPLETED' && o.status !== 'CANCELLED').length;
+          return { label: 'Заказчик', count: placed, sum: active, countLabel: 'всего', sumLabel: 'активных' };
+      }
   }, [orders, currentUser]);
 
   return (
@@ -251,7 +257,9 @@ const OrdersListScreen = ({ navigation }: any) => {
             <Text style={styles.headerTitle}>Мои заказы</Text>
             {stats && (
                 <View style={styles.statsBadge}>
-                    <Text style={styles.statsText}>{stats.count} вып. • {stats.sum.toLocaleString()} ₽</Text>
+                    <Text style={styles.statsText}>
+                        {stats.count} {stats.countLabel} • {stats.sum.toLocaleString()} {stats.sumLabel || '₽'}
+                    </Text>
                 </View>
             )}
         </View>
@@ -374,7 +382,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             </Text>
             <TouchableOpacity
                 style={styles.emptyBtn}
-                onPress={() => activeTab === 'active' && currentUser?.role === 'WORKER' ? navigation.navigate('Map') : navigation.navigate('CreateOrder')}
+                onPress={() => activeTab === 'active' && currentUser?.role === 'WORKER' ? navigation.navigate('Map') : navigation.navigate('Add')}
             >
                 <Text style={styles.emptyBtnText}>
                     {currentUser?.role === 'WORKER' ? 'Найти заказы на карте' : 'Создать новый заказ'}
@@ -470,6 +478,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     marginHorizontal: 4,
   },
+  list: { padding: 16, paddingBottom: 100 },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 100,
+    paddingHorizontal: 40
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.dark,
+    marginTop: 20
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -487,20 +509,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.dark,
     fontWeight: '500',
-  },
-  list: { padding: 16, paddingBottom: 100 },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 100,
-    paddingHorizontal: 40
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.dark,
-    marginTop: 20
   },
   emptySubtext: {
     fontSize: 15,

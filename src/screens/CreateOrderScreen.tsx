@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -45,7 +44,7 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
 
   useEffect(() => {
-      mapEngine.syncUser().then(setCurrentUser);
+    mapEngine.syncUser().then(setCurrentUser);
   }, []);
 
   const [form, setForm] = useState({
@@ -56,38 +55,6 @@ export default function CreateOrderScreen({ navigation }: any) {
     workType: 'INSTALLATION',
     date: new Date(),
   });
-
-  const DRAFT_KEY = 'order_draft_v1';
-  const isHydratedRef = useRef(false);
-
-  useEffect(() => {
-    const loadDraft = async () => {
-      try {
-        const draft = await AsyncStorage.getItem(DRAFT_KEY);
-        if (draft) {
-          const parsed = JSON.parse(draft);
-          setForm({
-            ...parsed,
-            date: new Date(parsed.date)
-          });
-        }
-      } catch (e) {}
-      finally {
-          isHydratedRef.current = true;
-      }
-    };
-    loadDraft();
-  }, []);
-
-  useEffect(() => {
-    if (!isHydratedRef.current) return;
-    const saveDraft = async () => {
-      try {
-        await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(form));
-      } catch (e) {}
-    };
-    saveDraft();
-  }, [form]);
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [importText, setImportText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
@@ -101,24 +68,19 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [errors, setErrors] = useState<any>({});
 
-  const pickImage = async (useCamera: boolean = false) => {
+  const pickImage = async () => {
     const { status: libStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    const { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (libStatus !== 'granted' || camStatus !== 'granted') {
-      Alert.alert('Доступ запрещен', 'Требуется разрешение на доступ к камере и галерее.');
+    if (libStatus !== 'granted') {
+      Alert.alert('Доступ запрещен', 'Для выбора фото требуется разрешение на доступ к галерее. Вы можете включить его в настройках.');
       return;
     }
 
-    const options: ImagePicker.ImagePickerOptions = {
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false, // Allow arbitrary sizes
-        quality: 0.8,
-    };
-
-    const result = useCamera
-        ? await ImagePicker.launchCameraAsync(options)
-        : await ImagePicker.launchImageLibraryAsync(options);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.7,
+    });
 
     if (!result.canceled) {
       setImages([...images, result.assets[0].uri]);
@@ -293,7 +255,7 @@ export default function CreateOrderScreen({ navigation }: any) {
           const filename = uri.split('/').pop() || `image_${index}.jpg`;
           const match = /\.(\w+)$/.exec(filename);
           const type = match ? `image/${match[1]}` : `image`;
-          // @ts-ignore - React Native FormData is different from Web
+          // @ts-ignore
           formData.append('files', { uri, name: filename, type });
         });
 
@@ -312,7 +274,6 @@ export default function CreateOrderScreen({ navigation }: any) {
       };
 
       await mapEngine.createOrder(orderData);
-      await AsyncStorage.removeItem(DRAFT_KEY);
 
       Alert.alert("Успех", "Заказ опубликован!");
       setForm({
@@ -479,30 +440,6 @@ export default function CreateOrderScreen({ navigation }: any) {
                 onChangeText={(t:any)=>setForm({...form, details:t})}
                 error={errors.details}
               />
-
-              <Text style={styles.label}>Фотографии объекта</Text>
-              <View style={styles.photoRow}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <TouchableOpacity style={styles.addPhotoBtn} onPress={() => {
-                        Alert.alert("Добавить фото", "Выберите источник", [
-                            { text: "Камера", onPress: () => pickImage(true) },
-                            { text: "Галерея", onPress: () => pickImage(false) },
-                            { text: "Отмена", style: "cancel" }
-                        ])
-                    }}>
-                        <Ionicons name="camera-outline" size={28} color={COLORS.primary} />
-                        <Text style={styles.addPhotoText}>Добавить</Text>
-                    </TouchableOpacity>
-                    {images.map((uri, index) => (
-                        <View key={index} style={styles.photoWrapper}>
-                            <Image source={{ uri }} style={styles.photoThumb} />
-                            <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removeImage(index)}>
-                                <Ionicons name="close-circle" size={20} color={COLORS.danger} />
-                            </TouchableOpacity>
-                        </View>
-                    ))}
-                </ScrollView>
-              </View>
             </View>
 
             <View style={styles.card}>
@@ -564,29 +501,18 @@ export default function CreateOrderScreen({ navigation }: any) {
                     latitudeDelta: 0.1,
                     longitudeDelta: 0.1,
                   }}
-                  onRegionChangeComplete={(reg) => {
-                      // Only update coordinates if user explicitly moved the map
-                      const newCoords = { latitude: reg.latitude, longitude: reg.longitude };
-                      setCoordinates(newCoords);
-                      // Reverse geocode to get approximate address
-                      Location.reverseGeocodeAsync(newCoords).then(rev => {
-                          if (rev.length > 0) {
-                              const r = rev[0];
-                              const addr = [r.city, r.street, r.name].filter(Boolean).join(', ');
-                              setNormalizedAddress(addr);
-                          }
-                      });
-                  }}
-                />
-                <View style={styles.crosshairContainer} pointerEvents="none">
-                    <Ionicons name="add" size={30} color={COLORS.primary} />
-                </View>
+                  onPress={(e) => setCoordinates(e.nativeEvent.coordinate)}
+                >
+                  {coordinates && (
+                    <Marker
+                      coordinate={coordinates}
+                      draggable
+                      onDragEnd={(e) => setCoordinates(e.nativeEvent.coordinate)}
+                      pinColor={COLORS.primary}
+                    />
+                  )}
+                </MapView>
               </View>
-              {normalizedAddress && (
-                  <Text style={styles.normalizedAddrText}>
-                      Точка на карте: <Text style={{fontWeight: '700'}}>{normalizedAddress}</Text>
-                  </Text>
-              )}
             </View>
 
             <View style={styles.card}>
@@ -698,40 +624,20 @@ export default function CreateOrderScreen({ navigation }: any) {
                             <View style={styles.previewContainer}>
                                 <Text style={styles.previewHeading}>Вот что я нашел:</Text>
                                 <View style={styles.previewItem}>
-                                        <View style={styles.previewIconWrapper}>
-                                            <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
-                                        </View>
-                                        <View style={styles.previewTextColumn}>
-                                            <Text style={styles.previewLabel}>Заголовок</Text>
-                                            <Text style={styles.previewText} numberOfLines={1}>{parsedData.title}</Text>
-                                        </View>
+                                    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+                                    <Text style={styles.previewText} numberOfLines={1}>{parsedData.title}</Text>
                                 </View>
                                 <View style={styles.previewItem}>
-                                        <View style={styles.previewIconWrapper}>
-                                            <Ionicons name="location-outline" size={18} color={COLORS.primary} />
-                                        </View>
-                                        <View style={styles.previewTextColumn}>
-                                            <Text style={styles.previewLabel}>Адрес</Text>
-                                            <Text style={styles.previewText} numberOfLines={1}>{parsedData.address || 'Адрес не найден'}</Text>
-                                        </View>
+                                    <Ionicons name="location-outline" size={18} color={COLORS.primary} />
+                                    <Text style={styles.previewText} numberOfLines={1}>{parsedData.address || 'Адрес не найден'}</Text>
                                 </View>
                                 <View style={styles.previewItem}>
-                                        <View style={styles.previewIconWrapper}>
-                                            <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
-                                        </View>
-                                        <View style={styles.previewTextColumn}>
-                                            <Text style={styles.previewLabel}>Бюджет</Text>
-                                            <Text style={styles.previewText}>{parsedData.price} ₽</Text>
-                                        </View>
+                                    <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
+                                    <Text style={styles.previewText}>{parsedData.price} ₽</Text>
                                 </View>
                                 <View style={styles.previewItem}>
-                                        <View style={styles.previewIconWrapper}>
-                                            <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
-                                        </View>
-                                        <View style={styles.previewTextColumn}>
-                                            <Text style={styles.previewLabel}>Дата</Text>
-                                            <Text style={styles.previewText}>{formatDate(new Date(parsedData.date))}</Text>
-                                        </View>
+                                    <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
+                                    <Text style={styles.previewText}>{formatDate(new Date(parsedData.date))}</Text>
                                 </View>
 
                                 <View style={styles.previewActions}>
@@ -826,20 +732,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border
   },
   mapPreview: { width: '100%', height: '100%' },
-  crosshairContainer: {
-      position: 'absolute',
-      top: '50%',
-      left: '50%',
-      marginTop: -15,
-      marginLeft: -15,
-      zIndex: 10,
-  },
-  normalizedAddrText: {
-      fontSize: 12,
-      color: COLORS.gray,
-      marginTop: 8,
-      paddingHorizontal: 4
-  },
   label: { fontSize: 14, fontWeight: '800', color: COLORS.dark, marginBottom: 10, marginLeft: 4 },
   workTypeGrid: {
     flexDirection: 'row',
@@ -890,23 +782,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3
   },
   publishText: { color: '#fff', fontWeight: '900', fontSize: 18, letterSpacing: 0.5 },
-  photoRow: { flexDirection: 'row', marginTop: 10 },
-  addPhotoBtn: {
-      width: 100,
-      height: 100,
-      borderRadius: 16,
-      backgroundColor: '#F1F5F9',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 12,
-      borderWidth: 1,
-      borderColor: '#E2E8F0',
-      borderStyle: 'dashed'
+  legalDisclaimer: {
+      fontSize: 11,
+      color: COLORS.gray,
+      textAlign: 'center',
+      marginTop: 15,
+      lineHeight: 16,
+      paddingHorizontal: 10
   },
-  addPhotoText: { fontSize: 11, color: COLORS.primary, fontWeight: '700', marginTop: 4 },
-  photoWrapper: { position: 'relative', marginRight: 12 },
-  photoThumb: { width: 100, height: 100, borderRadius: 16 },
-  removePhotoBtn: { position: 'absolute', top: -8, right: -8, backgroundColor: '#fff', borderRadius: 10 },
   modalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 32,
@@ -961,19 +844,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(45, 91, 255, 0.1)'
   },
   previewHeading: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 15 },
-  previewItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  previewIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: COLORS.primary + '10',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12
-  },
-  previewTextColumn: { flex: 1 },
-  previewLabel: { fontSize: 11, fontWeight: '700', color: COLORS.gray, textTransform: 'uppercase', marginBottom: 2 },
-  previewText: { fontSize: 15, color: COLORS.dark, fontWeight: '700' },
+  previewItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  previewText: { fontSize: 15, color: COLORS.dark, marginLeft: 10, fontWeight: '600' },
   previewActions: { flexDirection: 'row', marginTop: 15 },
   previewBackBtn: { flex: 1, paddingVertical: 15, alignItems: 'center' },
   previewBackText: { color: COLORS.gray, fontWeight: '700' },
@@ -985,13 +857,5 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     ...SHADOWS.medium
   },
-  previewApplyText: { color: '#fff', fontWeight: '900' },
-  legalDisclaimer: {
-      fontSize: 11,
-      color: COLORS.gray,
-      textAlign: 'center',
-      marginTop: 15,
-      lineHeight: 16,
-      paddingHorizontal: 10
-  }
+  previewApplyText: { color: '#fff', fontWeight: '900' }
 });
