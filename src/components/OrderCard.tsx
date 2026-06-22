@@ -15,6 +15,8 @@ interface OrderCardProps {
   onStart?: () => void;
   onComplete?: () => void;
   onChat?: () => void;
+  onCall?: () => void;
+  onRestore?: () => void;
 }
 
 const getStatusDetails = (status: OrderStatus) => {
@@ -56,14 +58,40 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
   onStart,
   onComplete,
   onChat,
+  onCall,
+  onRestore,
   onCancelApplication,
   hasApplied,
   currentUserId
 }) => {
   const statusInfo = getStatusDetails(order.status);
   const amIExecutor = order.executorId === currentUserId;
+  const isDeleted = order.status === 'CANCELLED';
+
+  const myApplication = order.applications?.find(a => a.executorId === currentUserId);
+
+  const isToday = useMemo(() => {
+    const d = new Date(order.date);
+    const now = new Date();
+    return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }, [order.date]);
+
+  const isTomorrow = useMemo(() => {
+    const d = new Date(order.date);
+    const tom = new Date();
+    tom.setDate(tom.getDate() + 1);
+    return d.getDate() === tom.getDate() && d.getMonth() === tom.getMonth() && d.getFullYear() === tom.getFullYear();
+  }, [order.date]);
 
   const renderRightActions = (progress: any, dragX: any) => {
+    if (isDeleted) {
+        return (
+            <TouchableOpacity style={styles.restoreAction} onPress={onRestore}>
+              <Ionicons name="refresh-outline" size={24} color="#fff" />
+              <Text style={styles.actionText}>Восстановить</Text>
+            </TouchableOpacity>
+        );
+    }
     if (isEmployer) {
       return (
         <TouchableOpacity style={styles.deleteAction} onPress={onDelete}>
@@ -127,14 +155,40 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
         onPress={onPress}
       >
         <View style={styles.header}>
-          <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '15' }]}>
-            <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
-            <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '15' }]}>
+                <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
+                <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+            </View>
+            {(isToday || isTomorrow) && !isDeleted && (
+                <View style={[styles.urgencyBadge, isToday ? styles.todayBadge : styles.tomorrowBadge]}>
+                    <View style={[styles.pulseDot, isToday ? { backgroundColor: '#EF4444' } : { backgroundColor: '#F59E0B' }]} />
+                    <Text style={styles.urgencyText}>{isToday ? 'Сегодня' : 'Завтра'}</Text>
+                </View>
+            )}
           </View>
           <Text style={styles.price}>{order.price} ₽</Text>
         </View>
 
-        <Text style={styles.title} numberOfLines={1}>{order.title}</Text>
+        <View style={styles.titleRow}>
+            <Text style={styles.title} numberOfLines={1}>{order.title}</Text>
+            {!isEmployer && myApplication && !isDeleted && (
+                <View style={[
+                    styles.myBidBadge,
+                    myApplication.status === 'ACCEPTED' && { backgroundColor: '#10B98120', borderColor: '#10B981' },
+                    myApplication.status === 'REJECTED' && { backgroundColor: '#EF444420', borderColor: '#EF4444' }
+                ]}>
+                    <Text style={[
+                        styles.myBidText,
+                        myApplication.status === 'ACCEPTED' && { color: '#10B981' },
+                        myApplication.status === 'REJECTED' && { color: '#EF4444' }
+                    ]}>
+                        {myApplication.status === 'ACCEPTED' ? 'Вы одобрены' :
+                         myApplication.status === 'REJECTED' ? 'Отклонено' : 'Ваш отклик'}
+                    </Text>
+                </View>
+            )}
+        </View>
 
         <View style={styles.infoRow}>
           <Ionicons name="location-outline" size={16} color={COLORS.gray} />
@@ -163,9 +217,16 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
             )}
           </View>
 
-          <TouchableOpacity style={styles.chatButton} onPress={onChat}>
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
+          <View style={styles.actionButtons}>
+            {(amIExecutor || isEmployer) && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS') && (
+                <TouchableOpacity style={[styles.iconButton, { backgroundColor: '#10B98115' }]} onPress={onCall}>
+                    <Ionicons name="call-outline" size={20} color="#10B981" />
+                </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.iconButton} onPress={onChat}>
+                <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
       </TouchableOpacity>
     </Swipeable>
@@ -245,13 +306,48 @@ const styles = StyleSheet.create({
     color: COLORS.gray,
     fontWeight: '500',
   },
-  chatButton: {
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     backgroundColor: COLORS.primary + '10',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  urgencyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  todayBadge: { backgroundColor: '#EF444410' },
+  tomorrowBadge: { backgroundColor: '#F59E0B10' },
+  urgencyText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  pulseDot: { width: 6, height: 6, borderRadius: 3 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  myBidBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '10'
+  },
+  myBidText: { fontSize: 10, fontWeight: '700', color: COLORS.primary },
+  restoreAction: {
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 100,
+    height: '92%',
+    borderRadius: 20,
+    marginLeft: 10,
   },
   deleteAction: {
     backgroundColor: '#EF4444',

@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  TextInput,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -46,8 +48,9 @@ const FILTERS = {
 };
 
 const OrdersListScreen = ({ navigation }: any) => {
-  const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'archive' | 'trash'>('active');
   const [orders, setOrders] = useState<Order[]>(mapEngine.getOrders(true));
+  const [searchQuery, setSearchBarQuery] = useState('');
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -92,8 +95,19 @@ const OrdersListScreen = ({ navigation }: any) => {
   const filteredOrders = useMemo(() => {
     const myId = currentUser?.uid || currentUser?.id;
     let result = orders.filter(order => {
-      // In-memory filter based on visibility rules
-      if (order.status === 'CANCELLED') return false;
+      // 0. Trash Logic
+      if (activeTab === 'trash') {
+          if (order.status !== 'CANCELLED') return false;
+      } else {
+          if (order.status === 'CANCELLED') return false;
+      }
+
+      // 1. Search Query
+      if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matches = order.title.toLowerCase().includes(q) || order.address.toLowerCase().includes(q);
+          if (!matches) return false;
+      }
 
       const isMyOrder = order.employerId === myId;
       const amIExecutor = order.executorId === myId;
@@ -160,7 +174,7 @@ const OrdersListScreen = ({ navigation }: any) => {
           onPress: async () => {
             try {
               // V9: Soft Delete implementation
-              await mapEngine.updateOrder(orderId, { status: 'CANCELLED', deletedAt: new Date().toISOString() });
+              await mapEngine.updateOrder(orderId, { status: 'CANCELLED' });
             } catch (e) {
               Alert.alert('Ошибка', 'Не удалось удалить заказ');
             }
@@ -169,6 +183,20 @@ const OrdersListScreen = ({ navigation }: any) => {
       ]
     );
   };
+
+  const handleRestore = async (orderId: string) => {
+      try {
+          await mapEngine.updateOrder(orderId, { status: 'PUBLISHED' });
+          Alert.alert('Успех', 'Заказ восстановлен');
+      } catch (e) {
+          Alert.alert('Ошибка', 'Не удалось восстановить заказ');
+      }
+  };
+
+  const handleCall = (phone?: string) => {
+      const tel = phone || '+79991234567'; // Placeholder for testing
+      Linking.openURL(`tel:${tel}`);
+  }
 
   const handleStartWork = async (orderId: string) => {
     try {
@@ -198,10 +226,25 @@ const OrdersListScreen = ({ navigation }: any) => {
     </TouchableOpacity>
   );
 
+  const stats = useMemo(() => {
+      if (currentUser?.role !== 'WORKER') return null;
+      const completedThisMonth = orders.filter(o => o.status === 'COMPLETED').length;
+      const earnedThisMonth = orders.filter(o => o.status === 'COMPLETED').reduce((sum, o) => sum + o.price, 0);
+      return { count: completedThisMonth, sum: earnedThisMonth };
+  }, [orders, currentUser]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Мои заказы</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <Text style={styles.headerTitle}>Мои заказы</Text>
+            {stats && (
+                <View style={styles.statsBadge}>
+                    <Text style={styles.statsText}>{stats.count} вып. • {stats.sum.toLocaleString()} ₽</Text>
+                </View>
+            )}
+        </View>
+
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'active' && styles.tabActive]}
@@ -221,6 +264,30 @@ const OrdersListScreen = ({ navigation }: any) => {
           >
             <Text style={[styles.tabText, activeTab === 'archive' && styles.tabTextActive]}>Архив</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'trash' && styles.tabActive]}
+            onPress={() => {
+                setActiveTab('trash');
+                setStatusFilter('all');
+            }}
+          >
+            <Ionicons name="trash-outline" size={18} color={activeTab === 'trash' ? COLORS.primary : COLORS.gray} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchContainer}>
+            <Ionicons name="search" size={18} color={COLORS.gray} />
+            <TextInput
+                style={styles.searchInput}
+                placeholder="Поиск по названию или адресу..."
+                value={searchQuery}
+                onChangeText={setSearchBarQuery}
+            />
+            {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchBarQuery('')}>
+                    <Ionicons name="close-circle" size={18} color={COLORS.gray} />
+                </TouchableOpacity>
+            )}
         </View>
       </View>
 
@@ -268,6 +335,8 @@ const OrdersListScreen = ({ navigation }: any) => {
             onStart={() => handleStartWork(item.id)}
             onComplete={() => handleCompleteWork(item.id)}
             onChat={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: item.id } })}
+            onCall={() => handleCall()}
+            onRestore={() => handleRestore(item.id)}
             onCancelApplication={() => {
               Alert.alert('Отмена отклика', 'Вы уверены?', [
                 { text: 'Нет' },
@@ -285,7 +354,17 @@ const OrdersListScreen = ({ navigation }: any) => {
           <View style={styles.empty}>
             <Ionicons name="documents-outline" size={64} color={COLORS.border} />
             <Text style={styles.emptyText}>Заказов не найдено</Text>
-            <Text style={styles.emptySubtext}>Попробуйте изменить фильтры или вкладку</Text>
+            <Text style={styles.emptySubtext}>
+                {activeTab === 'trash' ? 'В корзине пока пусто' : 'Попробуйте изменить фильтры или вкладку'}
+            </Text>
+            <TouchableOpacity
+                style={styles.emptyBtn}
+                onPress={() => activeTab === 'active' && currentUser?.role === 'WORKER' ? navigation.navigate('Map') : navigation.navigate('CreateOrder')}
+            >
+                <Text style={styles.emptyBtnText}>
+                    {currentUser?.role === 'WORKER' ? 'Найти заказы на карте' : 'Создать новый заказ'}
+                </Text>
+            </TouchableOpacity>
           </View>
         }
       />
@@ -295,8 +374,10 @@ const OrdersListScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: '#fff' },
-  headerTitle: { fontSize: 28, fontWeight: '900', color: COLORS.dark, marginBottom: 15, letterSpacing: -0.5 },
+  header: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  headerTitle: { fontSize: 28, fontWeight: '900', color: COLORS.dark, letterSpacing: -1 },
+  statsBadge: { backgroundColor: COLORS.primary + '10', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  statsText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#F1F5F9',
@@ -374,6 +455,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     marginHorizontal: 4,
   },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 14,
+    color: COLORS.dark,
+    fontWeight: '500',
+  },
   list: { padding: 16, paddingBottom: 100 },
   empty: {
     flex: 1,
@@ -392,7 +491,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.gray,
     textAlign: 'center',
-    marginTop: 8
+    marginTop: 8,
+    marginBottom: 24
+  },
+  emptyBtn: {
+      backgroundColor: COLORS.primary,
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+      borderRadius: 16,
+      ...SHADOWS.medium
+  },
+  emptyBtnText: {
+      color: '#fff',
+      fontWeight: '800',
+      fontSize: 15
   }
 });
 
