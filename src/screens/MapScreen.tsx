@@ -26,6 +26,7 @@ const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
   const isFocusedRef = useRef(true);
   const [displayedOrders, setDisplayedOrders] = useState<any[]>(mapEngine.getOrders());
+  const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -81,6 +82,8 @@ const MapScreen = ({ navigation }: any) => {
       setRegion(newRegion);
     }, 'MapScreen');
 
+    mapEngine.syncUser().then(setCurrentUser);
+
     isSubscribedRef.current = true;
 
     return () => {
@@ -99,6 +102,7 @@ const MapScreen = ({ navigation }: any) => {
       // Refresh state from store on focus (in case we missed updates while backgrounded)
       setDisplayedOrders([...mapEngine.getOrders()]);
       setRegion(mapViewportStore.getRegion());
+      mapEngine.syncUser().then(setCurrentUser);
 
       // --- Init Logic ---
       const orders = mapEngine.getOrders();
@@ -201,6 +205,28 @@ const MapScreen = ({ navigation }: any) => {
           });
       }
   }, [displayedOrders.length, loading, isMoving, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
+
+  if (currentUser?.role === 'EMPLOYER') {
+      return (
+          <SafeAreaView style={styles.container}>
+              <View style={styles.employerModeContainer}>
+                  <Ionicons name="map-outline" size={80} color={COLORS.border} />
+                  <Text style={styles.employerModeTitle}>Режим Заказчика</Text>
+                  <Text style={styles.employerModeSubtitle}>
+                      Карта доступна только в режиме Исполнителя для поиска новых заказов.
+                  </Text>
+                  <Button
+                      title="Создать новый заказ"
+                      onPress={() => navigation.navigate('CreateOrder')}
+                      style={{ marginTop: 20, width: '80%' }}
+                  />
+                  <TouchableOpacity style={styles.switchLink} onPress={() => navigation.navigate('MainTabs', { screen: 'Profile' })}>
+                      <Text style={styles.switchLinkText}>Переключить на Исполнителя в профиле</Text>
+                  </TouchableOpacity>
+              </View>
+          </SafeAreaView>
+      );
+  }
 
   return (
     <ErrorBoundary>
@@ -629,6 +655,17 @@ const styles = StyleSheet.create({
     ...SHADOWS.medium,
   },
   mainActionText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  employerModeContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 40,
+      backgroundColor: COLORS.background
+  },
+  employerModeTitle: { fontSize: 22, fontWeight: '900', color: COLORS.dark, marginTop: 20 },
+  employerModeSubtitle: { fontSize: 15, color: COLORS.gray, textAlign: 'center', marginTop: 10, lineHeight: 22 },
+  switchLink: { marginTop: 30 },
+  switchLinkText: { color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' }
 });
 
 export default MapScreen;

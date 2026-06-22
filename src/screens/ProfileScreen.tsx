@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Image, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Image, ScrollView, Platform, Linking, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -7,6 +7,7 @@ import { mapEngine } from '../services/MapEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Button } from '../components/Button';
+import { resolveImageUrl } from '../utils/image';
 
 const ProfileScreen = ({ route, navigation }: any) => {
   const userId = route.params?.userId;
@@ -33,6 +34,22 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const handleLogout = async () => {
     await AsyncStorage.clear();
     navigation.replace('Auth');
+  };
+
+  const toggleRole = async () => {
+      const newRole = user?.role === 'WORKER' ? 'EMPLOYER' : 'WORKER';
+      try {
+          await mapEngine.updateProfile({ role: newRole });
+          setUser({ ...user, role: newRole });
+          Alert.alert('Роль изменена', `Вы переключились в режим ${newRole === 'WORKER' ? 'Исполнителя' : 'Заказчика'}`);
+      } catch (e) {
+          Alert.alert('Ошибка', 'Не удалось изменить роль');
+      }
+  };
+
+  const openSocial = (type: 'tg' | 'inst') => {
+      const url = type === 'tg' ? `https://t.me/${user?.telegram}` : `https://instagram.com/${user?.instagram}`;
+      Linking.openURL(url).catch(() => Alert.alert('Ошибка', 'Не удалось открыть ссылку'));
   };
 
   if (loading) {
@@ -65,7 +82,13 @@ const ProfileScreen = ({ route, navigation }: any) => {
           </View>
 
           <Text style={styles.name}>{user?.name || 'Пользователь'}</Text>
-          <Text style={styles.phone}>{user?.phone}</Text>
+          <View style={styles.roleContainer}>
+              <View style={[styles.roleBadge, { backgroundColor: user?.role === 'WORKER' ? COLORS.primary + '20' : COLORS.secondary + '20' }]}>
+                  <Text style={[styles.roleText, { color: user?.role === 'WORKER' ? COLORS.primary : COLORS.secondary }]}>
+                      {user?.role === 'WORKER' ? 'Исполнитель' : 'Заказчик'}
+                  </Text>
+              </View>
+          </View>
 
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
@@ -75,17 +98,62 @@ const ProfileScreen = ({ route, navigation }: any) => {
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{user?.completedOrders || 0}</Text>
-              <Text style={styles.statLabel}>Заказы</Text>
+              <Text style={styles.statLabel}>Выполнено</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{user?.experience || 0}</Text>
-              <Text style={styles.statLabel}>Опыт (лет)</Text>
+              <Text style={styles.statValue}>{user?.ordersCount || 0}</Text>
+              <Text style={styles.statLabel}>Размещено</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.content}>
+          {!userId && (
+              <View style={styles.roleToggleCard}>
+                  <View>
+                      <Text style={styles.roleToggleTitle}>Сменить роль</Text>
+                      <Text style={styles.roleToggleSubtitle}>Сейчас вы {user?.role === 'WORKER' ? 'мастер' : 'заказчик'}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.toggleBtn} onPress={toggleRole}>
+                      <View style={[styles.toggleTrack, { backgroundColor: user?.role === 'WORKER' ? COLORS.primary : COLORS.secondary }]}>
+                          <View style={[styles.toggleThumb, user?.role === 'EMPLOYER' && { transform: [{ translateX: 26 }] }]} />
+                      </View>
+                  </TouchableOpacity>
+              </View>
+          )}
+
+          {user?.role === 'WORKER' && user?.portfolio?.length > 0 && (
+              <View style={styles.portfolioSection}>
+                  <Text style={styles.sectionTitle}>Портфолио</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.portfolioScroll}>
+                      {user.portfolio.map((img: string, idx: number) => (
+                          <Image key={idx} source={{ uri: resolveImageUrl(img) }} style={styles.portfolioImg} />
+                      ))}
+                  </ScrollView>
+              </View>
+          )}
+
+          {(user?.telegram || user?.instagram) && (
+              <View style={styles.socialSection}>
+                  <Text style={styles.sectionTitle}>Социальные сети</Text>
+                  <View style={styles.socialGrid}>
+                      {user.telegram && (
+                          <TouchableOpacity style={styles.socialBtn} onPress={() => openSocial('tg')}>
+                              <Ionicons name="paper-plane" size={24} color="#0088cc" />
+                              <Text style={styles.socialBtnText}>Telegram</Text>
+                          </TouchableOpacity>
+                      )}
+                      {user.instagram && (
+                          <TouchableOpacity style={[styles.socialBtn, { marginLeft: 12 }]} onPress={() => openSocial('inst')}>
+                              <Ionicons name="logo-instagram" size={24} color="#E1306C" />
+                              <Text style={styles.socialBtnText}>Instagram</Text>
+                          </TouchableOpacity>
+                      )}
+                  </View>
+              </View>
+          )}
+
           <Text style={styles.sectionTitle}>Управление</Text>
           <View style={styles.menuCard}>
             <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('EditProfile')}>
@@ -154,6 +222,9 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 40, fontWeight: '900' },
   verifiedBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: COLORS.white, borderRadius: 12, padding: 2, ...SHADOWS.soft },
   name: { fontSize: 24, fontWeight: '900', color: COLORS.dark, letterSpacing: -0.5 },
+  roleContainer: { marginTop: 8 },
+  roleBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
+  roleText: { fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
   phone: { fontSize: 15, color: COLORS.gray, marginTop: 4, fontWeight: '500' },
   statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 25, paddingHorizontal: 30 },
   statItem: { flex: 1, alignItems: 'center' },
@@ -169,7 +240,39 @@ const styles = StyleSheet.create({
   menuSubtext: { fontSize: 13, fontWeight: '600', marginTop: 2 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 30, padding: 20, borderRadius: 20, backgroundColor: 'rgba(255, 71, 87, 0.05)' },
   logoutText: { marginLeft: 10, fontSize: 16, fontWeight: '700', color: COLORS.danger },
-  version: { textAlign: 'center', marginTop: 30, color: COLORS.placeholder, fontSize: 12, fontWeight: '500' }
+  version: { textAlign: 'center', marginTop: 30, color: COLORS.placeholder, fontSize: 12, fontWeight: '500' },
+  roleToggleCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: COLORS.white,
+      padding: 20,
+      borderRadius: 24,
+      marginBottom: 24,
+      ...SHADOWS.soft
+  },
+  roleToggleTitle: { fontSize: 16, fontWeight: '800', color: COLORS.dark },
+  roleToggleSubtitle: { fontSize: 13, color: COLORS.gray, marginTop: 2, fontWeight: '500' },
+  toggleBtn: { padding: 4 },
+  toggleTrack: { width: 56, height: 30, borderRadius: 15, padding: 4, justifyContent: 'center' },
+  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', ...SHADOWS.small },
+  portfolioSection: { marginBottom: 24 },
+  portfolioScroll: { gap: 12 },
+  portfolioImg: { width: 140, height: 140, borderRadius: 20, backgroundColor: '#f0f0f0' },
+  socialSection: { marginBottom: 24 },
+  socialGrid: { flexDirection: 'row' },
+  socialBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: COLORS.white,
+      padding: 14,
+      borderRadius: 18,
+      ...SHADOWS.soft,
+      gap: 8
+  },
+  socialBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.dark }
 });
 
 export default ProfileScreen;

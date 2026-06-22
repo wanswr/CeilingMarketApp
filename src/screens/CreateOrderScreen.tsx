@@ -42,6 +42,12 @@ const orderSchema = z.object({
 });
 
 export default function CreateOrderScreen({ navigation }: any) {
+  const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
+
+  useEffect(() => {
+      mapEngine.syncUser().then(setCurrentUser);
+  }, []);
+
   const [form, setForm] = useState({
     title: '',
     address: '',
@@ -383,6 +389,30 @@ export default function CreateOrderScreen({ navigation }: any) {
     setImportText('');
     setIsImportModalVisible(false);
   };
+
+  if (currentUser?.role === 'WORKER') {
+      return (
+          <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 }}>
+                  <Ionicons name="construct-outline" size={80} color={COLORS.border} />
+                  <Text style={{ fontSize: 22, fontWeight: '900', color: COLORS.dark, marginTop: 20 }}>Режим Исполнителя</Text>
+                  <Text style={{ fontSize: 15, color: COLORS.gray, textAlign: 'center', marginTop: 10, lineHeight: 22 }}>
+                      Создание заказов доступно только в режиме Заказчика.
+                  </Text>
+                  <Button
+                      title="К списку заказов"
+                      onPress={() => navigation.navigate('Orders')}
+                      style={{ marginTop: 20, width: '80%' }}
+                  />
+                  <TouchableOpacity style={{ marginTop: 30 }} onPress={() => navigation.navigate('MainTabs', { screen: 'Profile' })}>
+                      <Text style={{ color: COLORS.primary, fontWeight: '700', textDecorationLine: 'underline' }}>
+                          Переключить на Заказчика в профиле
+                      </Text>
+                  </TouchableOpacity>
+              </View>
+          </SafeAreaView>
+      );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
