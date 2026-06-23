@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Platform, Image, Modal, TextInput, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -53,7 +53,23 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     };
   }, [orderId]);
 
+  const canCancel = useMemo(() => {
+    if (!order) return false;
+    const now = new Date();
+    const orderDate = new Date(order.date);
+    const diffHours = (orderDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    return diffHours >= 24;
+  }, [order]);
+
   const handleCancelApplication = async () => {
+    if (!canCancel) {
+      Alert.alert(
+        'Отказ невозможен',
+        'До начала работ осталось менее 24 часов. Согласно правилам, отмена в это время невозможна. Пожалуйста, свяжитесь с заказчиком через чат.'
+      );
+      return;
+    }
+
     Alert.alert(
       'Отмена отклика',
       'Вы уверены, что хотите отозвать свой отклик?',
@@ -67,7 +83,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               await mapEngine.cancelApplication(orderId);
               Alert.alert('Успех', 'Отклик отозван');
             } catch (error: any) {
-              Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отозвать отклик (возможно, до начала осталось менее 24 часов)');
+              Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отозвать отклик');
             } finally {
               setSubmitting(false);
             }
@@ -79,8 +95,21 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const handleApply = async () => {
     if (submitting || hasApplied) return;
-    setOfferPrice(order?.price.toString() || '');
-    setShowPriceModal(true);
+
+    Alert.alert(
+      'Условия работы',
+      'Нажимая "Выполнить", вы подтверждаете свою квалификацию и готовность прибыть на объект вовремя. Ваши контактные данные будут доступны заказчику после выбора вас исполнителем.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Согласен',
+          onPress: () => {
+            setOfferPrice(order?.price.toString() || '');
+            setShowPriceModal(true);
+          }
+        }
+      ]
+    );
   };
 
   const submitOffer = async () => {
@@ -421,6 +450,14 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           ) : (
             <View style={{ flex: 1, flexDirection: 'row', gap: 12 }}>
                 {currentUser?.role === 'WORKER' ? (
+                  <>
+                    <TouchableOpacity
+                      style={styles.iconChatBtn}
+                      onPress={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: order.id } })}
+                    >
+                      <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+                    </TouchableOpacity>
+
                     <TouchableOpacity
                         activeOpacity={0.9}
                         style={[
@@ -436,10 +473,11 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                             <ActivityIndicator color="#fff" />
                         ) : (
                             <Text style={styles.applyBtnText}>
-                                {hasApplied ? 'Отказаться' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Откликнуться'}
+                                {hasApplied ? 'Отказаться' : order.status === 'CLAIMED' ? 'Заказ занят' : 'Выполнить'}
                             </Text>
                         )}
                     </TouchableOpacity>
+                  </>
                 ) : (
                     <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.5 }]}>
                         <Text style={styles.applyBtnText}>Переключитесь на Мастера</Text>
