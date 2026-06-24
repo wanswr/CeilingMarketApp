@@ -90,6 +90,22 @@ export class OrdersController {
     return this.ordersService.create(createOrderDto, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('sync')
+  syncGlobal(@Query('since') since: string, @Req() req: any) {
+    const timestamp = Number(since);
+    if (isNaN(timestamp)) return [];
+    return this.ordersService.syncGlobal(new Date(timestamp), req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/sync')
+  syncEvents(@Param('id') id: string, @Query('since') since: string) {
+    const timestamp = Number(since);
+    if (isNaN(timestamp)) return [];
+    return this.ordersService.syncEvents(id, new Date(timestamp));
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
@@ -145,15 +161,4 @@ export class OrdersController {
     return this.ordersService.transitionStatus(id, status as any, req.user.id);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('sync')
-  syncGlobal(@Query('since') since: string, @Req() req: any) {
-    return this.ordersService.syncGlobal(new Date(Number(since)), req.user.id);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get(':id/sync')
-  syncEvents(@Param('id') id: string, @Query('since') since: string) {
-    return this.ordersService.syncEvents(id, new Date(Number(since)));
-  }
 }

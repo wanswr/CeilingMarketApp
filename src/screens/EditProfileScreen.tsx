@@ -61,7 +61,7 @@ export default function EditProfileScreen({ navigation }: any) {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaType.Images,
       allowsMultipleSelection: true,
       selectionLimit: 10 - (profile.portfolio?.length || 0),
       quality: 0.7,

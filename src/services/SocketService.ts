@@ -1,5 +1,4 @@
 import { io, Socket } from 'socket.io-client';
-import { mapEngine } from './MapEngine';
 import { getDistance } from '../utils/geo';
 
 class SocketService {
@@ -26,6 +25,9 @@ class SocketService {
     this.socket.on('connect', () => {
       console.log('WEBSOCKET_CONNECTED', { id: this.socket?.id });
 
+      // Dynamic access to break circular dependency
+      const { mapEngine } = require('./MapEngine');
+
       // Join personal room
       const user = mapEngine.getCurrentUser();
       const userId = user?.uid || user?.id;
@@ -46,6 +48,7 @@ class SocketService {
     });
 
     this.socket.on('order.created', (payload: any) => {
+      const { mapEngine } = require('./MapEngine');
       const order = payload.order || payload;
       const eventId = payload.eventId;
 
@@ -75,6 +78,7 @@ class SocketService {
     });
 
     this.socket.on('order.status.changed', (payload: any) => {
+      const { mapEngine } = require('./MapEngine');
       const order = payload.order || payload;
       const eventId = payload.eventId;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
@@ -87,6 +91,7 @@ class SocketService {
     });
 
     this.socket.on('order.updated', (payload: any) => {
+      const { mapEngine } = require('./MapEngine');
       const order = payload.order || payload;
       const eventId = payload.eventId;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
@@ -99,12 +104,14 @@ class SocketService {
     });
 
     this.socket.on('application.new', (application: any) => {
+      const { mapEngine } = require('./MapEngine');
       mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'application.new', orderId: application.orderId });
       mapEngine.syncOrder(application.orderId);
     });
 
     this.socket.on('order.completed', (payload: any) => {
+      const { mapEngine } = require('./MapEngine');
       const order = payload.order || payload;
       const eventId = payload.eventId;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
@@ -117,6 +124,7 @@ class SocketService {
     });
 
     this.socket.on('order.deleted', (payload: any) => {
+      const { mapEngine } = require('./MapEngine');
       const orderId = payload.id || payload.orderId || payload;
       const eventId = payload.eventId;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;

@@ -3,9 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AppGateway } from '../gateway/app.gateway';
 import { v4 as uuidv4 } from 'uuid';
-
-// V10: Strategic use of 'any' to bypass local environment Prisma sync issues
-// while maintaining full business logic functionality.
+import { OrderStatus, WorkType, ApplicationStatus } from '@prisma/client';
 
 @Injectable()
 export class OrdersService {
@@ -21,18 +19,15 @@ export class OrdersService {
     const eventId = uuidv4();
     const eventPayload = { ...payload, eventId, type };
 
-    // 1. Log to Database - using any to bypass temporary sync issues with prisma client generation
+    // 1. Log to Database
     try {
-        const db = this.prisma as any;
-        if (db.orderEvent) {
-            await db.orderEvent.create({
-                data: {
-                    orderId,
-                    type,
-                    payload: eventPayload,
-                }
-            });
-        }
+        await this.prisma.orderEvent.create({
+            data: {
+                orderId,
+                type,
+                payload: eventPayload,
+            }
+        });
     } catch (e) {
         console.error(`[OrderEvent] Failed to log ${type}:`, (e as any).message);
     }
@@ -54,12 +49,12 @@ export class OrdersService {
     return eventId;
   }
 
-  private readonly transitions: Record<string, string[]> = {
-    'PENDING': ['PUBLISHED'],
-    'PUBLISHED': ['HAS_RESPONSES', 'CANCELLED'],
-    'HAS_RESPONSES': ['CLAIMED', 'CANCELLED'],
-    'CLAIMED': ['IN_PROGRESS', 'CANCELLED'],
-    'IN_PROGRESS': ['COMPLETED', 'CANCELLED'],
+  private readonly transitions: Record<string, OrderStatus[]> = {
+    'PENDING': [OrderStatus.PUBLISHED],
+    'PUBLISHED': [OrderStatus.HAS_RESPONSES, OrderStatus.CANCELLED],
+    'HAS_RESPONSES': [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
+    'CLAIMED': [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
+    'IN_PROGRESS': [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
     'COMPLETED': [],
     'CANCELLED': [],
     'DISPUTE': [],
@@ -81,12 +76,12 @@ export class OrdersService {
         longitude: dto.longitude,
         price: dto.price,
         details: dto.details,
-        workType: dto.workType as any,
+        workType: dto.workType as WorkType,
         date: new Date(dto.date),
         images: dto.images || [],
         employerId,
         idempotencyKey: dto.idempotencyKey,
-        status: 'PUBLISHED' as any,
+        status: OrderStatus.PUBLISHED,
       },
     });
 
@@ -102,7 +97,7 @@ export class OrdersService {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new NotFoundException('Order not found');
 
-      if (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES') {
+      if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
         throw new ConflictException('Order is no longer available for applications');
       }
 
@@ -127,10 +122,10 @@ export class OrdersService {
       });
 
       let updatedOrder = order;
-      if (order.status === 'PUBLISHED') {
+      if (order.status === OrderStatus.PUBLISHED) {
         updatedOrder = await tx.order.update({
           where: { id: orderId },
-          data: { status: 'HAS_RESPONSES' as any }
+          data: { status: OrderStatus.HAS_RESPONSES }
         });
       }
 
@@ -139,7 +134,7 @@ export class OrdersService {
 
     await this.logAndEmit(orderId, 'application.new', result.application, { userId: [result.order.employerId, executorId] });
 
-    if (result.order.status === 'HAS_RESPONSES') {
+    if (result.order.status === OrderStatus.HAS_RESPONSES) {
         await this.logAndEmit(orderId, 'order.status.changed', result.order, {
             userId: [result.order.employerId, executorId],
             geo: { lat: result.order.latitude, lng: result.order.longitude }
@@ -161,7 +156,7 @@ export class OrdersService {
 
       await tx.application.update({
         where: { id: applicationId },
-        data: { status: 'ACCEPTED' as any }
+        data: { status: ApplicationStatus.ACCEPTED }
       });
 
       const otherApplications = await tx.application.findMany({
@@ -171,13 +166,13 @@ export class OrdersService {
 
       await tx.application.updateMany({
         where: { orderId: application.orderId, id: { not: applicationId } },
-        data: { status: 'REJECTED' as any }
+        data: { status: ApplicationStatus.REJECTED }
       });
 
       const updatedOrder = await tx.order.update({
         where: { id: application.orderId },
         data: {
-          status: 'CLAIMED' as any,
+          status: OrderStatus.CLAIMED,
           executorId: application.executorId,
           claimedAt: new Date(),
         },
@@ -218,13 +213,13 @@ export class OrdersService {
     if (!order) throw new NotFoundException();
     if (order.executorId !== userId) throw new ForbiddenException();
 
-    if (order.status !== 'CLAIMED') {
+    if (order.status !== OrderStatus.CLAIMED) {
       throw new ConflictException('Order must be in CLAIMED status to start work');
     }
 
     const result = await this.prisma.order.update({
       where: { id: orderId },
-      data: { status: 'IN_PROGRESS' as any },
+      data: { status: OrderStatus.IN_PROGRESS },
       include: {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
         executor: { select: { id: true, name: true, avatar: true } }
@@ -241,13 +236,13 @@ export class OrdersService {
 
     if (order.executorId !== userId) throw new ForbiddenException();
 
-    if (order.status !== 'IN_PROGRESS') {
+    if (order.status !== OrderStatus.IN_PROGRESS) {
       throw new ConflictException('Order must be IN_PROGRESS to be completed');
     }
 
     const result = await this.prisma.order.update({
       where: { id: orderId },
-      data: { status: 'COMPLETED' as any },
+      data: { status: OrderStatus.COMPLETED },
       include: {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
         executor: { select: { id: true, name: true, avatar: true } }
@@ -266,14 +261,14 @@ export class OrdersService {
     const isExecutor = order.executorId === userId;
     if (!isEmployer && !isExecutor) throw new ForbiddenException();
 
-    const currentStatus: string = order.status;
-    if (!this.transitions[currentStatus]?.includes(newStatus)) {
+    const currentStatus: OrderStatus = order.status;
+    if (!this.transitions[currentStatus]?.includes(newStatus as OrderStatus)) {
       throw new ConflictException(`Transition ${currentStatus} -> ${newStatus} not allowed`);
     }
 
     const result = await this.prisma.order.update({
       where: { id: orderId },
-      data: { status: newStatus as any }
+      data: { status: newStatus as OrderStatus }
     });
 
     await this.logAndEmit(orderId, 'order.status.changed', result, {
@@ -288,7 +283,7 @@ export class OrdersService {
 
     const where: any = {};
     if (minPrice) where.price = { gte: minPrice };
-    if (status) where.status = status as any;
+    if (status) where.status = status as OrderStatus;
 
     if (lat && lng && radius) {
       const R = 6371;
@@ -351,9 +346,9 @@ export class OrdersService {
     if (!order) throw new NotFoundException();
     if (order.employerId !== userId) throw new ForbiddenException();
 
-    const currentStatus: string = order.status;
+    const currentStatus: OrderStatus = order.status;
     if (dto.status && dto.status !== currentStatus) {
-      if (!this.transitions[currentStatus]?.includes(dto.status)) {
+      if (!this.transitions[currentStatus]?.includes(dto.status as OrderStatus)) {
         throw new ConflictException(`Transition ${currentStatus} -> ${dto.status} not allowed`);
       }
     }
@@ -407,10 +402,10 @@ export class OrdersService {
       where: { orderId }
     });
 
-    if (remainingApps === 0 && order.status === 'HAS_RESPONSES') {
+    if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
       const updated = await this.prisma.order.update({
         where: { id: orderId },
-        data: { status: 'PUBLISHED' as any }
+        data: { status: OrderStatus.PUBLISHED }
       });
       await this.logAndEmit(orderId, 'order.status.changed', updated, { geo: { lat: updated.latitude, lng: updated.longitude } });
     }
@@ -446,7 +441,7 @@ export class OrdersService {
 
     const orders = await this.prisma.order.findMany({
       where: {
-        status: { in: ['PUBLISHED' as any, 'HAS_RESPONSES' as any] },
+        status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] },
         latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
         longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
         updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
@@ -462,9 +457,7 @@ export class OrdersService {
   }
 
   async syncEvents(orderId: string, since: Date) {
-      const db = this.prisma as any;
-      if (!db.orderEvent) return [];
-      return db.orderEvent.findMany({
+      return this.prisma.orderEvent.findMany({
           where: {
               orderId,
               createdAt: { gt: since }
@@ -474,9 +467,7 @@ export class OrdersService {
   }
 
   async syncGlobal(since: Date, userId: string) {
-      const db = this.prisma as any;
-      if (!db.orderEvent) return [];
-      return db.orderEvent.findMany({
+      return this.prisma.orderEvent.findMany({
           where: {
               createdAt: { gt: since },
               order: {

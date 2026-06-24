@@ -2,7 +2,6 @@ import { Order } from '../types';
 import { apiService } from './ApiService';
 import { requestRouter } from './RequestRouter';
 import { entityStore } from './EntityStore';
-import { socketService } from './SocketService';
 import { GeoClusterService } from './GeoClusterService';
 import { spatialManager } from '../map/SpatialManager';
 
@@ -292,7 +291,8 @@ class MapEngine {
         this.notifySubscribers(safeItems);
         this.syncMap(false, region);
 
-        // V10: Sync Geo WebSocket Room
+        // V10: Sync Geo WebSocket Room - dynamic access to break cycle
+        const { socketService } = require('./SocketService');
         socketService.updateGeoRoom(region.latitude, region.longitude);
     }, 200);
   }
@@ -338,7 +338,7 @@ class MapEngine {
 
   syncOrder = async (orderId: string) => {
     const data = (await this.apiService.getOrderDetails(orderId)).data;
-    this.entityStore.setOrder(data);
+    this.entityStore.setOrder(data, 'api_details');
     return data;
   }
 
@@ -349,7 +349,7 @@ class MapEngine {
       if (skip === 0) {
         this.entityStore.setOrders(res.data);
       } else {
-        res.data.forEach((o: any) => this.entityStore.setOrder(o, 'pagination'));
+        res.data.forEach((o: any) => this.entityStore.setOrder(o, 'api_pagination'));
       }
       this.notifySubscribers();
       return res.data;
