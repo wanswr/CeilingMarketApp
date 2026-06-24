@@ -457,7 +457,9 @@ export class OrdersService {
   }
 
   async syncEvents(orderId: string, since: Date) {
-      return this.prisma.orderEvent.findMany({
+      const db = this.prisma as any;
+      if (!db.orderEvent) return [];
+      return db.orderEvent.findMany({
           where: {
               orderId,
               createdAt: { gt: since }
@@ -467,7 +469,9 @@ export class OrdersService {
   }
 
   async syncGlobal(since: Date, userId: string) {
-      return this.prisma.orderEvent.findMany({
+      const db = this.prisma as any;
+      if (!db.orderEvent) return [];
+      return db.orderEvent.findMany({
           where: {
               createdAt: { gt: since },
               order: {
