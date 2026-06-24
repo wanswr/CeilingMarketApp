@@ -144,4 +144,16 @@ export class OrdersController {
   ) {
     return this.ordersService.transitionStatus(id, status as any, req.user.id);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('sync')
+  syncGlobal(@Query('since') since: string, @Req() req: any) {
+    return this.ordersService.syncGlobal(new Date(Number(since)), req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/sync')
+  syncEvents(@Param('id') id: string, @Query('since') since: string) {
+    return this.ordersService.syncEvents(id, new Date(Number(since)));
+  }
 }

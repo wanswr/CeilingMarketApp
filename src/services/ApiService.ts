@@ -53,6 +53,7 @@ class ApiService {
   getOrders = (params: any) => this.api.get('orders', { params });
   getMyOrders = () => this.api.get('orders/my');
   getSpatialOrders = (params: any, config?: any) => this.api.get('orders/spatial', { params, ...config });
+  syncEvents = (since: number) => this.api.get('orders/sync', { params: { since } });
 
   parseOrderText = (text: string) => this.api.post('orders/parse', { text });
   uploadOrderImages = (formData: FormData) => this.api.post('orders/upload', formData, {

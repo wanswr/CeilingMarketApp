@@ -11,6 +11,7 @@ interface StoreMeta {
   writes: number;
   spatialSyncs: number;
   lastClusterTime?: number;
+  lastSyncTime?: number;
 }
 
 class EntityStore {
@@ -19,6 +20,7 @@ class EntityStore {
   public usersById: Map<string, UserProfile> = new Map();
 
   private spatialGrid: Map<string, Set<string>> = new Map();
+  public seenEvents: Set<string> = new Set();
   public currentUserId: string | null = null;
 
   public loadedBounds: { north: number; south: number; east: number; west: number } | null = null;
@@ -68,8 +70,16 @@ class EntityStore {
       return { lat, lng };
   }
 
-  setOrder = (order: Order, source: string = 'unknown') => {
+  setOrder = (order: Order, source: string = 'unknown', eventId?: string) => {
     if (!order?.id) return;
+
+    if (eventId) {
+        if (this.seenEvents.has(eventId)) {
+            if (__DEV__) console.log('STORE_UPSERT_SKIP (Duplicate Event)', { id: order.id, eventId });
+            return;
+        }
+        this.seenEvents.add(eventId);
+    }
 
     const coords = this.getCoords(order);
     if (!coords) return;

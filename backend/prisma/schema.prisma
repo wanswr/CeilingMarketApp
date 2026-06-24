@@ -95,6 +95,7 @@ model Order {
   executor          User?          @relation("ExecutorOrders", fields: [executorId], references: [id])
   applications      Application[]
   chats             Chat[]
+  events            OrderEvent[]
 }
 
 model Chat {
@@ -149,4 +150,17 @@ model Subscription {
   updatedAt         DateTime       @updatedAt
 
   user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OrderEvent {
+  id                String         @id @default(uuid())
+  orderId           String
+  type              String
+  payload           Json?
+  createdAt         DateTime       @default(now())
+
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
 }

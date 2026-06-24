@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, WorkType } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class OrdersService {
@@ -12,8 +13,33 @@ export class OrdersService {
   ) {}
 
   /**
-   * Status transitions map: defines legal state changes.
+   * Helper to log events and emit via WebSocket with eventId.
    */
+  private async logAndEmit(orderId: string, type: string, payload: any, options: { userId?: string, geo?: { lat: number, lng: number } } = {}) {
+    const eventId = uuidv4();
+    const eventPayload = { ...payload, eventId, type };
+
+    // 1. Log to Database
+    await this.prisma.orderEvent.create({
+      data: {
+        orderId,
+        type,
+        payload: eventPayload,
+      }
+    });
+
+    // 2. Emit via WebSocket
+    if (options.userId) {
+      this.gateway.emitToUser(options.userId, type, eventPayload);
+    } else if (options.geo) {
+      this.gateway.emitToGeo(options.geo.lat, options.geo.lng, type, eventPayload);
+    } else {
+      this.gateway.broadcast(type, eventPayload);
+    }
+
+    return eventId;
+  }
+
   private readonly transitions: Record<OrderStatus, OrderStatus[]> = {
     [OrderStatus.PENDING]: [OrderStatus.PUBLISHED],
     [OrderStatus.PUBLISHED]: [OrderStatus.HAS_RESPONSES, OrderStatus.CANCELLED],
@@ -25,9 +51,6 @@ export class OrdersService {
     [OrderStatus.DISPUTE]: [],
   };
 
-  /**
-   * CREATE: Implements idempotency and sets initial status.
-   */
   async create(dto: CreateOrderDto, employerId: string) {
     if (dto.idempotencyKey) {
       const existing = await this.prisma.order.findUnique({
@@ -36,7 +59,6 @@ export class OrdersService {
       if (existing) return existing;
     }
 
-    console.log(`[OrdersService] Creating order for employer: ${employerId}`);
     const order = await this.prisma.order.create({
       data: {
         title: dto.title,
@@ -45,22 +67,19 @@ export class OrdersService {
         longitude: dto.longitude,
         price: dto.price,
         details: dto.details,
-        workType: dto.workType,
+        workType: dto.workType as WorkType,
         date: new Date(dto.date),
         images: dto.images || [],
         employerId,
         idempotencyKey: dto.idempotencyKey,
-        status: OrderStatus.PUBLISHED, // Target status for new orders
+        status: OrderStatus.PUBLISHED,
       },
     });
 
-    this.gateway.broadcast('order.created', { order, orderId: order.id, employerId: order.employerId });
+    await this.logAndEmit(order.id, 'order.created', order, { geo: { lat: order.latitude, lng: order.longitude } });
     return order;
   }
 
-  /**
-   * APPLY for order: Creates an Application and updates order status if needed.
-   */
   async apply(orderId: string, executorId: string, price?: number) {
     const result = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
@@ -70,7 +89,6 @@ export class OrdersService {
         throw new ConflictException('Order is no longer available for applications');
       }
 
-      // 2. Check for existing application (idempotency)
       const existingApp = await tx.application.findUnique({
         where: { orderId_executorId: { orderId, executorId } },
         include: {
@@ -80,7 +98,6 @@ export class OrdersService {
 
       if (existingApp) return { application: existingApp, order };
 
-      // 3. Create application
       const application = await tx.application.create({
         data: {
           orderId,
@@ -92,7 +109,6 @@ export class OrdersService {
         }
       });
 
-      // Update order status if first application
       let updatedOrder = order;
       if (order.status === OrderStatus.PUBLISHED) {
         updatedOrder = await tx.order.update({
@@ -104,14 +120,14 @@ export class OrdersService {
       return { application, order: updatedOrder };
     });
 
-    this.gateway.broadcast('application.new', result.application);
-    this.gateway.broadcast('order.status.changed', result.order);
+    await this.logAndEmit(orderId, 'application.new', result.application, { userId: result.order.employerId });
+    if (result.order.status === OrderStatus.HAS_RESPONSES) {
+        await this.logAndEmit(orderId, 'order.status.changed', result.order, { geo: { lat: result.order.latitude, lng: result.order.longitude } });
+    }
+
     return result;
   }
 
-  /**
-   * ACCEPT APPLICATION: Employer selects an executor.
-   */
   async acceptApplication(applicationId: string, employerId: string) {
     const result = await this.prisma.$transaction(async (tx) => {
       const application = await tx.application.findUnique({
@@ -122,13 +138,11 @@ export class OrdersService {
       if (!application) throw new NotFoundException('Application not found');
       if (application.order.employerId !== employerId) throw new ForbiddenException();
 
-      // Update application status
       await tx.application.update({
         where: { id: applicationId },
         data: { status: 'ACCEPTED' }
       });
 
-      // Reject other applications
       const otherApplications = await tx.application.findMany({
         where: { orderId: application.orderId, id: { not: applicationId } },
         select: { id: true, executorId: true }
@@ -139,7 +153,6 @@ export class OrdersService {
         data: { status: 'REJECTED' }
       });
 
-      // Update order
       const updatedOrder = await tx.order.update({
         where: { id: application.orderId },
         data: {
@@ -156,15 +169,22 @@ export class OrdersService {
       return {
         order: updatedOrder,
         acceptedApplicationId: applicationId,
-        rejectedApplicationIds: otherApplications.map(a => a.id)
+        rejectedApplicationIds: otherApplications.map(a => a.id),
+        executorId: application.executorId
       };
     });
 
-    this.gateway.broadcast('order.status.changed', result.order);
-    this.gateway.broadcast('application.accepted', { id: result.acceptedApplicationId });
-    result.rejectedApplicationIds.forEach(id => {
-      this.gateway.broadcast('application.rejected', { id });
-    });
+    await this.logAndEmit(result.order.id, 'order.status.changed', result.order, { userId: result.executorId });
+    await this.logAndEmit(result.order.id, 'application.accepted', { id: result.acceptedApplicationId }, { userId: result.executorId });
+
+    for (const id of result.rejectedApplicationIds) {
+        // Need to find executorId for each rejected app to emit personally
+        const app = await this.prisma.application.findUnique({ where: { id } });
+        if (app) {
+            await this.logAndEmit(result.order.id, 'application.rejected', { id }, { userId: app.executorId });
+        }
+    }
+
     return result;
   }
 
@@ -186,7 +206,7 @@ export class OrdersService {
       }
     });
 
-    this.gateway.broadcast('order.status.changed', result);
+    await this.logAndEmit(orderId, 'order.status.changed', result, { userId: result.employerId });
     return result;
   }
 
@@ -194,7 +214,6 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
 
-    // Only executor can complete
     if (order.executorId !== userId) throw new ForbiddenException();
 
     if (order.status !== OrderStatus.IN_PROGRESS) {
@@ -210,23 +229,18 @@ export class OrdersService {
       }
     });
 
-    this.gateway.broadcast('order.status.changed', result);
+    await this.logAndEmit(orderId, 'order.status.changed', result, { userId: result.employerId });
     return result;
   }
 
-  /**
-   * TRANSITION: Guarded status changes using centralized transition map
-   */
   async transitionStatus(orderId: string, newStatus: OrderStatus, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
 
-    // Permissions check
     const isEmployer = order.employerId === userId;
     const isExecutor = order.executorId === userId;
     if (!isEmployer && !isExecutor) throw new ForbiddenException();
 
-    // State Machine Rules
     if (!this.canTransition(order.status, newStatus)) {
       throw new ConflictException(`Transition ${order.status} -> ${newStatus} not allowed`);
     }
@@ -236,7 +250,8 @@ export class OrdersService {
       data: { status: newStatus }
     });
 
-    this.gateway.broadcast('order.status.changed', result);
+    const targetUser = isEmployer ? order.executorId : order.employerId;
+    await this.logAndEmit(orderId, 'order.status.changed', result, targetUser ? { userId: targetUser } : {});
     return result;
   }
 
@@ -312,7 +327,6 @@ export class OrdersService {
     if (!order) throw new NotFoundException();
     if (order.employerId !== userId) throw new ForbiddenException();
 
-    // If status is being changed, validate transition
     if (dto.status && dto.status !== order.status) {
       if (!this.canTransition(order.status, dto.status)) {
         throw new ConflictException(`Transition ${order.status} -> ${dto.status} not allowed`);
@@ -324,15 +338,17 @@ export class OrdersService {
       data: dto
     });
 
-    this.gateway.broadcast('order.status.changed', result);
+    await this.logAndEmit(id, 'order.updated', result, { geo: { lat: result.latitude, lng: result.longitude } });
     return result;
   }
 
   async remove(id: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
+
+    await this.logAndEmit(id, 'order.deleted', { id }, { geo: { lat: order.latitude, lng: order.longitude } });
     await this.prisma.order.delete({ where: { id } });
-    this.gateway.broadcast('order.deleted', { id });
+
     return { id };
   }
 
@@ -345,7 +361,6 @@ export class OrdersService {
     });
     if (!app) throw new NotFoundException('Application not found');
 
-    // Rule: Cannot cancel if less than 24h before монтаж
     const now = new Date();
     const orderDate = new Date(order.date);
     const diffHours = (orderDate.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -358,24 +373,23 @@ export class OrdersService {
       where: { id: app.id }
     });
 
-    // Check if HAS_RESPONSES status should be reverted
+    await this.logAndEmit(orderId, 'application.deleted', { id: app.id, orderId }, { userId: order.employerId });
+
     const remainingApps = await this.prisma.application.count({
       where: { orderId }
     });
 
     if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
-      await this.prisma.order.update({
+      const updated = await this.prisma.order.update({
         where: { id: orderId },
         data: { status: OrderStatus.PUBLISHED }
       });
+      await this.logAndEmit(orderId, 'order.status.changed', updated, { geo: { lat: updated.latitude, lng: updated.longitude } });
     }
 
     return { success: true };
   }
 
-  /**
-   * SPATIAL ENGINE V6: Universal spatial search supporting Radius and BBOX modes.
-   */
   async findSpatial(params: {
     lat?: number; lng?: number; radius?: number;
     minLat?: number; maxLat?: number; minLng?: number; maxLng?: number;
@@ -385,9 +399,8 @@ export class OrdersService {
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
 
-    // Mode A: Radius Search (approximate via bounding box for performance)
     if (lat !== undefined && lng !== undefined && radius !== undefined) {
-      const R = 6371; // Earth radius in km
+      const R = 6371;
       const deltaLat = (radius / R) * (180 / Math.PI);
       const deltaLng = (radius / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
 
@@ -398,7 +411,6 @@ export class OrdersService {
         maxLng: lng + deltaLng,
       };
     } else if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
-      // Mode B: BBOX Search
       searchBounds = { minLat, maxLat, minLng, maxLng };
     }
 
@@ -409,8 +421,6 @@ export class OrdersService {
         status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] },
         latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
         longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
-        // If updatedAfter is provided, we only want those changed.
-        // If not, we are doing a full region sync, so we rely on the pruning logic on frontend.
         updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
       },
       take: 1000,
@@ -423,9 +433,33 @@ export class OrdersService {
     return { created: orders, updated: [], deleted: [] };
   }
 
-  /**
-   * SMART PARSER V4: Advanced NLP for ceiling order texts with Moscow region context.
-   */
+  async syncEvents(orderId: string, since: Date) {
+      return this.prisma.orderEvent.findMany({
+          where: {
+              orderId,
+              createdAt: { gt: since }
+          },
+          orderBy: { createdAt: 'asc' }
+      });
+  }
+
+  async syncGlobal(since: Date, userId: string) {
+      // Find events for orders I'm involved in
+      return this.prisma.orderEvent.findMany({
+          where: {
+              createdAt: { gt: since },
+              order: {
+                  OR: [
+                      { employerId: userId },
+                      { executorId: userId },
+                      { applications: { some: { executorId: userId } } }
+                  ]
+              }
+          },
+          orderBy: { createdAt: 'asc' }
+      });
+  }
+
   parseOrderText(text: string) {
     const cleanText = text.replace(/\[\d{2}\.\d{2}\.\d{4}\s\d{2}:\d{2}\].*?:/g, '').trim();
     const lines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
@@ -438,12 +472,11 @@ export class OrdersService {
       date: new Date(),
     };
 
-    // 1. PRICE PARSING (Patterns: 15к, 15.000, ЗП: 20 000 руб)
     const pricePatterns = [
         /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)(?:к|k|₽|р|руб|рублей)/i,
         /(?:зп|зарплата|цена|стоимость|выплата|бюджет)[:\s-]*(\d[\d\s.,]*)/i,
         /(\d[\d\s.,]*)(?:₽|р|руб|рублей|к|k)/i,
-        /(\d[\d\s.,]{3,})/i, // Fallback for plain numbers
+        /(\d[\d\s.,]{3,})/i,
     ];
 
     for (const pattern of pricePatterns) {
@@ -454,16 +487,15 @@ export class OrdersService {
             let val = parseInt(rawStr, 10);
             if (isNaN(val)) continue;
             if (isKilo && val < 1000) val *= 1000;
-            if (val >= 500) { // Heuristic: prices are usually > 500 for these jobs
+            if (val >= 500) {
                 result.price = val;
                 break;
             }
         }
     }
 
-    // 2. DATE PARSING (Includes Weekdays)
     const today = new Date();
-    today.setHours(12, 0, 0, 0); // Normalize to noon
+    today.setHours(12, 0, 0, 0);
 
     const weekDays: Record<string, number> = {
         'понед': 1, 'вторн': 2, 'среду': 3, 'четверг': 4, 'пятниц': 5, 'суббот': 6, 'воскр': 0,
@@ -486,7 +518,7 @@ export class OrdersService {
                     let targetDate = new Date(today);
                     let currentDay = today.getDay();
                     let diff = (dayIdx + 7 - currentDay) % 7;
-                    if (diff === 0) diff = 7; // Target next week if today
+                    if (diff === 0) diff = 7;
                     targetDate.setDate(today.getDate() + diff);
                     result.date = targetDate;
                     weekdayFound = true;
@@ -507,7 +539,6 @@ export class OrdersService {
         }
     }
 
-    // 3. ADDRESS HEURISTIC (Moscow & Regions)
     const knownLocations = [
         'Авиамоторная', 'Раменки', 'Юго-Запад', 'Люберцы', 'Химки', 'Мытищи', 'Балашиха',
         'Одинцово', 'Красногорск', 'Видное', 'Реутов', 'Зеленоград', 'Королев', 'Домодедово',
@@ -555,7 +586,6 @@ export class OrdersService {
         }
     }
 
-    // 4. SMART TITLE
     const serviceKeywords = ['Монтаж', 'Замер', 'Ремонт', 'Сервис', 'Слив', 'Потолок', 'Установка'];
     let bestTitle = '';
     for (const line of lines) {

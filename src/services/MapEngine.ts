@@ -2,6 +2,7 @@ import { Order } from '../types';
 import { apiService } from './ApiService';
 import { requestRouter } from './RequestRouter';
 import { entityStore } from './EntityStore';
+import { socketService } from './SocketService';
 import { GeoClusterService } from './GeoClusterService';
 import { spatialManager } from '../map/SpatialManager';
 
@@ -217,6 +218,7 @@ class MapEngine {
             east: viewRegion.longitude + 1.3,
             west: viewRegion.longitude - 1.3,
         };
+      this.entityStore.meta.lastSyncTime = Date.now();
         this.entityStore.isInitialLoaded = true;
         this.lastSyncRegion = {
             latitude: viewRegion.latitude,
@@ -289,6 +291,9 @@ class MapEngine {
         const safeItems = this.recalculateClusteredOrders(region);
         this.notifySubscribers(safeItems);
         this.syncMap(false, region);
+
+        // V10: Sync Geo WebSocket Room
+        socketService.updateGeoRoom(region.latitude, region.longitude);
     }, 200);
   }
 
@@ -405,6 +410,41 @@ class MapEngine {
   forceRefresh = async () => {
     this.entityStore?.clear();
     return this.syncMap(true, mapViewportStore.getRegion());
+  }
+
+  syncAfterReconnect = async () => {
+      const lastUpdate = this.entityStore.meta.lastSyncTime || Date.now() - 1000 * 60 * 5; // Fallback to 5 mins
+      try {
+          const events = await this.apiService.syncEvents(lastUpdate);
+          if (events.data && events.data.length > 0) {
+              console.log('[MapEngine] Reconnect sync: applying', events.data.length, 'events');
+              for (const event of events.data) {
+                  this.handleSyncEvent(event);
+              }
+              this.triggerNotify();
+          }
+          this.entityStore.meta.lastSyncTime = Date.now();
+          this.entityStore.persist();
+      } catch (e) {
+          console.warn('[MapEngine] Reconnect sync failed');
+      }
+  }
+
+  private handleSyncEvent(event: any) {
+      const { type, payload } = event;
+      const eventId = payload?.eventId || event.id;
+
+      switch (type) {
+          case 'order.created':
+          case 'order.updated':
+          case 'order.status.changed':
+          case 'order.completed':
+              this.entityStore.setOrder(payload, 'reconnect_sync', eventId);
+              break;
+          case 'order.deleted':
+              this.entityStore.removeOrder(payload.id || payload.orderId, 'reconnect_sync');
+              break;
+      }
   }
 }
 

@@ -25,10 +25,29 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('WEBSOCKET_CONNECTED', { id: this.socket?.id });
+
+      // Join personal room
+      const user = mapEngine.getCurrentUser();
+      const userId = user?.uid || user?.id;
+      if (userId) {
+          this.socket?.emit('user.join', userId);
+      }
+
+      // Join geo room based on current map center
+      const region = mapEngine.entityStore.loadedBounds;
+      if (region) {
+          const lat = (region.north + region.south) / 2;
+          const lng = (region.east + region.west) / 2;
+          this.socket?.emit('geo.join', { lat, lng });
+      }
+
+      // V10: Sync missed events after reconnection
+      mapEngine.syncAfterReconnect();
     });
 
     this.socket.on('order.created', (payload: any) => {
       const order = payload.order || payload;
+      const eventId = payload.eventId;
 
       // V9 Optimization: Only add order if it's within 100km of our currently loaded area center
       const loadedBounds = mapEngine.entityStore?.loadedBounds;
@@ -48,31 +67,35 @@ class SocketService {
 
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
+      mapEngine.entityStore?.setOrder(order, 'websocket', eventId);
       mapEngine.triggerNotify();
       mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.created', id: order.id, countBefore, countAfter });
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.created', id: order.id, countBefore, countAfter, eventId });
     });
 
-    this.socket.on('order.status.changed', (order: any) => {
+    this.socket.on('order.status.changed', (payload: any) => {
+      const order = payload.order || payload;
+      const eventId = payload.eventId;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
+      mapEngine.entityStore?.setOrder(order, 'websocket', eventId);
       mapEngine.triggerNotify();
       mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.status.changed', id: order.id, status: order.status, countBefore, countAfter });
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.status.changed', id: order.id, status: order.status, countBefore, countAfter, eventId });
     });
 
-    this.socket.on('order.updated', (order: any) => {
+    this.socket.on('order.updated', (payload: any) => {
+      const order = payload.order || payload;
+      const eventId = payload.eventId;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
+      mapEngine.entityStore?.setOrder(order, 'websocket', eventId);
       mapEngine.triggerNotify();
       mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.updated', id: order.id, countBefore, countAfter });
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.updated', id: order.id, countBefore, countAfter, eventId });
     });
 
     this.socket.on('application.new', (application: any) => {
@@ -81,25 +104,34 @@ class SocketService {
       mapEngine.syncOrder(application.orderId);
     });
 
-    this.socket.on('order.completed', (order: any) => {
+    this.socket.on('order.completed', (payload: any) => {
+      const order = payload.order || payload;
+      const eventId = payload.eventId;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
+      mapEngine.entityStore?.setOrder(order, 'websocket', eventId);
       mapEngine.triggerNotify();
       mapEngine.entityStore?.persist();
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.completed', id: order.id, countBefore, countAfter });
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.completed', id: order.id, countBefore, countAfter, eventId });
     });
 
     this.socket.on('order.deleted', (payload: any) => {
       const orderId = payload.id || payload.orderId || payload;
+      const eventId = payload.eventId;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
+
+      if (eventId) {
+          if (mapEngine.entityStore.seenEvents.has(eventId)) return;
+          mapEngine.entityStore.seenEvents.add(eventId);
+      }
+
       mapEngine.entityStore?.removeOrder(orderId);
       mapEngine.triggerNotify();
       // removeOrder already persists
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.deleted', id: orderId, countBefore, countAfter });
+      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.deleted', id: orderId, countBefore, countAfter, eventId });
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -115,6 +147,12 @@ class SocketService {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
+    }
+  }
+
+  updateGeoRoom(lat: number, lng: number) {
+    if (this.socket?.connected) {
+      this.socket.emit('geo.join', { lat, lng });
     }
   }
 }
