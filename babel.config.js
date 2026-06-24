@@ -6,5 +6,7 @@ module.exports = function(api) {
       ['module:react-native-dotenv'],
       'react-native-reanimated/plugin',
     ],
+    // V9 Optimization: Ignore non-frontend code
+    ignore: [/backend/],
   };
 };
