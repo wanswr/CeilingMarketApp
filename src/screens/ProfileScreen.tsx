@@ -1,32 +1,62 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Image, ScrollView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  Platform
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { mapEngine } from '../services/MapEngine';
+import { useAuth } from '../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Button } from '../components/Button';
 
 const ProfileScreen = ({ route, navigation }: any) => {
   const userId = route.params?.userId;
+  const { updateUser } = useAuth();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [switchingRole, setSwitchingRole] = useState(false);
 
   useEffect(() => {
     fetchProfile();
   }, [userId]);
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (force: boolean = false) => {
     try {
       const responseData = userId
         ? await mapEngine.getExternalUser(userId)
-        : await mapEngine.syncUser();
+        : await mapEngine.syncUser(force);
       setUser(responseData);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleRole = async () => {
+    if (userId) return; // Cannot toggle role for external user
+    const newRole = user?.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
+
+    setSwitchingRole(true);
+    try {
+      const updatedUser = await mapEngine.updateProfile({ role: newRole });
+      setUser(updatedUser);
+      updateUser(updatedUser);
+      Alert.alert('Роль изменена', `Теперь вы используете приложение как ${newRole === 'EMPLOYER' ? 'Заказчик' : 'Исполнитель'}`);
+    } catch (error) {
+      Alert.alert('Ошибка', 'Не удалось сменить роль');
+    } finally {
+      setSwitchingRole(false);
     }
   };
 
@@ -86,6 +116,36 @@ const ProfileScreen = ({ route, navigation }: any) => {
         </View>
 
         <View style={styles.content}>
+          {!userId && (
+            <>
+              <Text style={styles.sectionTitle}>Текущая роль</Text>
+              <TouchableOpacity
+                style={styles.roleCard}
+                onPress={toggleRole}
+                disabled={switchingRole}
+              >
+                <View style={[styles.iconBox, { backgroundColor: user?.role === 'EMPLOYER' ? 'rgba(45, 91, 255, 0.1)' : 'rgba(16, 185, 129, 0.1)' }]}>
+                  <Ionicons
+                    name={user?.role === 'EMPLOYER' ? "briefcase" : "construct"}
+                    size={20}
+                    color={user?.role === 'EMPLOYER' ? COLORS.primary : "#10B981"}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuText}>
+                    {user?.role === 'EMPLOYER' ? 'Я Заказчик' : 'Я Исполнитель'}
+                  </Text>
+                  <Text style={styles.menuSubtext}>Нажмите, чтобы переключить</Text>
+                </View>
+                {switchingRole ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <Ionicons name="swap-horizontal" size={20} color={COLORS.placeholder} />
+                )}
+              </TouchableOpacity>
+            </>
+          )}
+
           <Text style={styles.sectionTitle}>Управление</Text>
           <View style={styles.menuCard}>
             <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('EditProfile')}>
@@ -161,7 +221,16 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: COLORS.gray, marginTop: 4, fontWeight: '700', textTransform: 'uppercase' },
   statDivider: { width: 1, height: 24, backgroundColor: COLORS.border, marginHorizontal: 10 },
   content: { padding: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 16, letterSpacing: -0.5 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 16, marginTop: 10, letterSpacing: -0.5 },
+  roleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    marginBottom: 20,
+    ...SHADOWS.soft
+  },
   menuCard: { backgroundColor: COLORS.white, borderRadius: 28, padding: 10, ...SHADOWS.soft },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.background },
   iconBox: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 16 },

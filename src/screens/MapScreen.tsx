@@ -37,11 +37,6 @@ const MapScreen = ({ navigation }: any) => {
   const lastPanDragRef = useRef<number>(0);
   const lastSyncRequestRef = useRef<number>(0);
 
-  // 0. Lifecycle Logging
-  useEffect(() => {
-    console.log('MAP_SCREEN_MOUNT');
-    return () => console.log('MAP_SCREEN_UNMOUNT');
-  }, []);
 
 
   const fitToOrders = useCallback((orders: Order[]) => {
@@ -69,7 +64,7 @@ const MapScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (isSubscribedRef.current) return;
-    console.log('MAP_SCREEN_MOUNT');
+    if (__DEV__) console.log('MAP_SCREEN_MOUNT');
 
     const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
       // V9: Ensure we always use a fresh array reference to trigger React re-render

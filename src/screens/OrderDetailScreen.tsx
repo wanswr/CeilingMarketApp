@@ -38,12 +38,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
     isSubscribedRef.current = true;
 
-    mapEngine.syncOrder(orderId).catch(() => {
-      if (!order) {
-        Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
-        navigation.goBack();
-      }
-    });
+    if (!order) {
+        mapEngine.syncOrder(orderId).catch(() => {
+            Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
+            navigation.goBack();
+        });
+    }
 
     return () => {
       unsubscribe();

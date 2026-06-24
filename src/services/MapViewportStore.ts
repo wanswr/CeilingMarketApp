@@ -43,10 +43,11 @@ class MapViewportStore {
 
     subscribe(callback: (region: Region) => void, source: string) {
         this.subscribers.set(source, callback);
-        console.log('MAP_VIEWPORT_SUBSCRIBE', { source, total: this.subscribers.size });
+        if (__DEV__) console.log('MAP_VIEWPORT_SUBSCRIBE', { source, total: this.subscribers.size });
         return () => {
-            this.subscribers.delete(source);
-            console.log('MAP_VIEWPORT_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
+            if (this.subscribers.delete(source)) {
+                if (__DEV__) console.log('MAP_VIEWPORT_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
+            }
         };
     }
 

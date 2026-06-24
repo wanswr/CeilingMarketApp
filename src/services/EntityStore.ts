@@ -99,6 +99,8 @@ class EntityStore {
     const mergedOrder = existing ? { ...existing, ...normalizedOrder } : normalizedOrder;
 
     // Skip if no change (stable reference optimization)
+    // We use a faster check for simple equality first
+    if (existing === mergedOrder) return;
     if (existing && JSON.stringify(existing) === JSON.stringify(mergedOrder)) return;
 
     if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status, source });
@@ -110,8 +112,6 @@ class EntityStore {
             this.removeFromGrid(existing);
         }
     }
-
-    if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status });
     this.ordersById.set(order.id, mergedOrder);
     this.updateOrderInGrid(mergedOrder);
 

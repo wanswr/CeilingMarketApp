@@ -31,6 +31,9 @@ class MapEngine {
       this.initPersistence();
 
       // V9: Reactive architecture - Engine listens to Camera
+      // Note: As MapEngine is a singleton, we only subscribe once.
+      // In Dev environment with Fast Refresh, we might want to check if already subscribed
+      // but mapViewportStore.subscribe implementation handles overwriting by source key.
       mapViewportStore.subscribe((region) => {
           this.triggerMapUpdate(region);
       }, 'MapEngine_Core');
@@ -318,55 +321,64 @@ class MapEngine {
 
   // --- Actions ---
   syncUser = async (force: boolean = false) => {
-    if (!force) {
-      const cached = this.entityStore.getCurrentUser();
-      if (cached) {
-        return cached;
-      }
+    const res = await this.requestRouter.request('user:profile', () => this.apiService.getProfile(), force ? 0 : 30000);
+    if (res && res.data) {
+        this.entityStore.setUser({ ...res.data, isMe: true });
+        return res.data;
     }
-    const data = (await this.apiService.getProfile()).data;
-    this.entityStore.setUser({ ...data, isMe: true });
-    return data;
+    return this.entityStore.getCurrentUser();
   }
 
   getExternalUser = async (userId: string) => {
-    const data = (await this.apiService.getUserProfile(userId)).data;
-    this.entityStore.setUser(data);
-    return data;
+    const res = await this.requestRouter.request(`user:${userId}`, () => this.apiService.getUserProfile(userId), 60000);
+    if (res && res.data) {
+        this.entityStore.setUser(res.data);
+        return res.data;
+    }
+    return this.entityStore.getUser(userId);
   }
 
   syncOrder = async (orderId: string) => {
-    const data = (await this.apiService.getOrderDetails(orderId)).data;
-    this.entityStore.setOrder(data);
-    return data;
+    const res = await this.requestRouter.request(`order:${orderId}`, () => this.apiService.getOrderDetails(orderId), 10000);
+    if (res && res.data) {
+        this.entityStore.setOrder(res.data, 'api_sync');
+        return res.data;
+    }
+    return this.entityStore.getOrder(orderId);
   }
 
   getApiBaseUrl = () => this.apiService.getBaseUrl();
   syncMyOrders = async () => {
     try {
-      const res = await this.apiService.getMyOrders();
-      this.entityStore.setOrders(res.data);
-      this.notifySubscribers();
-      return res.data;
+      const res = await this.requestRouter.request('orders:my', () => this.apiService.getMyOrders(), 10000);
+      if (res && res.data) {
+          this.entityStore.setOrders(res.data);
+          this.notifySubscribers();
+          return res.data;
+      }
+      return this.entityStore.getMyOrders();
     } catch (e) { return []; }
   }
 
   updateProfile = async (data: any) => {
     const res = await this.apiService.updateProfile(data);
+    this.requestRouter.invalidate('user:profile');
     this.entityStore?.setUser({ ...res.data, isMe: true });
     return res.data;
   }
 
   createOrder = async (data: any) => {
     const res = await this.apiService.createOrder(data);
-    this.entityStore?.setOrder(res.data);
+    this.requestRouter.invalidate('orders:my');
+    this.entityStore?.setOrder(res.data, 'api_create');
     this.notifySubscribers();
     return res.data;
   }
 
   updateOrder = async (id: string, data: any) => {
     const res = await this.apiService.updateOrder(id, data);
-    this.entityStore?.setOrder(res.data);
+    this.requestRouter.invalidate(`order:${id}`);
+    this.entityStore?.setOrder(res.data, 'api_update');
     this.notifySubscribers();
     return res.data;
   }
@@ -374,27 +386,52 @@ class MapEngine {
   applyForOrder = async (id: string, price?: number) => {
     const res = await this.apiService.applyForOrder(id, price);
     if (res.data?.order) {
-        this.entityStore.setOrder(res.data.order);
+        this.requestRouter.invalidate(`order:${id}`);
+        this.entityStore.setOrder(res.data.order, 'api_apply');
         this.notifySubscribers();
     }
     return res.data;
   }
 
-  cancelApplication = async (id: string) => this.apiService.cancelApplication(id);
-  acceptApplication = async (id: string) => this.apiService.acceptApplication(id);
-  startOrder = async (id: string) => this.apiService.startOrder(id);
-  completeOrder = async (id: string) => this.apiService.completeOrder(id);
+  cancelApplication = async (id: string) => {
+    const res = await this.apiService.cancelApplication(id);
+    this.requestRouter.invalidate(`order:${id}`);
+    this.syncOrder(id);
+    return res;
+  };
+  acceptApplication = async (applicationId: string) => {
+    const res = await this.apiService.acceptApplication(applicationId);
+    if (res.data?.orderId) {
+        this.requestRouter.invalidate(`order:${res.data.orderId}`);
+        this.syncOrder(res.data.orderId);
+    }
+    return res;
+  };
+  startOrder = async (id: string) => {
+    const res = await this.apiService.startOrder(id);
+    this.requestRouter.invalidate(`order:${id}`);
+    this.syncOrder(id);
+    return res;
+  };
+  completeOrder = async (id: string) => {
+    const res = await this.apiService.completeOrder(id);
+    this.requestRouter.invalidate(`order:${id}`);
+    this.syncOrder(id);
+    return res;
+  };
   deleteOrder = async (id: string) => {
     const res = await this.apiService.deleteOrder(id);
-    this.entityStore.removeOrder(id);
+    this.requestRouter.invalidate(`order:${id}`);
+    this.requestRouter.invalidate('orders:my');
+    this.entityStore.removeOrder(id, 'api_delete');
     this.triggerNotify();
     return res.data;
   };
   activateSubscription = async (days: number) => {
     const res = await this.apiService.activateSubscription(days);
-    const profile = await this.apiService.getProfile();
-    this.entityStore.setUser({ ...profile.data, isMe: true });
-    return res.data;
+    this.requestRouter.invalidate('user:profile');
+    const profile = await this.syncUser(true);
+    return { ...res.data, user: profile };
   }
   login = async (phone: string) => {
     const res = await this.apiService.login(phone);
