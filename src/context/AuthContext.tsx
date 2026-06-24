@@ -30,6 +30,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userData = await mapEngine.syncUser();
         setUser(userData);
         socketService.connect(apiService.getBaseUrl());
+        const userId = userData.uid || userData.id;
+        if (userId) socketService.identifyUser(userId);
       } else {
         setUser(null);
       }
@@ -46,6 +48,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await SecureStore.setItemAsync('userToken', token);
     setUser(userData);
     socketService.connect(apiService.getBaseUrl());
+    const userId = userData.uid || userData.id;
+    if (userId) socketService.identifyUser(userId);
   };
 
   const signOut = async () => {

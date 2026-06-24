@@ -155,6 +155,12 @@ class SocketService {
       this.socket.emit('geo.join', { lat, lng });
     }
   }
+
+  identifyUser(userId: string) {
+    if (this.socket?.connected) {
+      this.socket.emit('user.join', userId);
+    }
+  }
 }
 
 export const socketService = new SocketService();
