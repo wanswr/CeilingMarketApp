@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, WorkType } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
 
 @Injectable()
@@ -45,7 +45,7 @@ export class OrdersService {
         longitude: dto.longitude,
         price: dto.price,
         details: dto.details,
-        workType: dto.workType,
+        workType: dto.workType as WorkType,
         date: new Date(dto.date),
         images: dto.images || [],
         employerId,
