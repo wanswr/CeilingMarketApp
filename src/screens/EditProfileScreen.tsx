@@ -23,10 +23,10 @@ import { resolveImageUrl } from '../utils/image';
 
 const profileSchema = z.object({
   name: z.string().min(2, "Имя слишком короткое"),
-  experience: z.preprocess((v) => Number(v), z.number().min(0).max(50)).optional(),
+  experience: z.preprocess((v) => v === '' ? 0 : Number(v), z.number().min(0).max(50)).optional(),
   instagram: z.string().optional(),
   telegram: z.string().optional(),
-  portfolio: z.array(z.string()).optional(),
+  portfolio: z.array(z.string()).max(10, "Максимум 10 фото").optional(),
 });
 
 export default function EditProfileScreen({ navigation }: any) {

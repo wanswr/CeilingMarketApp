@@ -49,6 +49,7 @@ model User {
   completedOrders   Int            @default(0)
   instagram         String?
   telegram          String?
+  portfolio         String[]       @default([])
   isVerified        Boolean        @default(false)
   isTrialUsed       Boolean        @default(false)
   pushToken         String?
