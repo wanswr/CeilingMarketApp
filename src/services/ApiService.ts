@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-const DEFAULT_API_URL = 'http://192.168.100.10:3000/api/'; // Replace with your machine's IP
+const DEFAULT_API_URL = 'http://192.168.1.229:3000/api/'; // Replace with your machine's IP
 
 class ApiService {
   private api: AxiosInstance;
