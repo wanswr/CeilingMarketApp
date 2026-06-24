@@ -24,20 +24,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const checkAuth = async () => {
+    console.log('[AuthContext] Initializing auth check...');
     try {
       const token = await SecureStore.getItemAsync('userToken');
+      console.log('[AuthContext] Token status:', token ? 'Found' : 'Not found');
+
       if (token) {
-        const userData = await mapEngine.syncUser();
-        setUser(userData);
-        socketService.connect(apiService.getBaseUrl());
+        // V9: Added timeout to profile sync to prevent infinite hang if IP is unreachable
+        console.log('[AuthContext] Attempting profile sync...');
+        const profilePromise = mapEngine.syncUser();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Sync Timeout')), 5000)
+        );
+
+        try {
+          const userData = await Promise.race([profilePromise, timeoutPromise]);
+          console.log('[AuthContext] Profile synced successfully');
+          setUser(userData);
+          socketService.connect(apiService.getBaseUrl());
+        } catch (syncError: any) {
+          console.warn('[AuthContext] Profile sync failed or timed out:', syncError.message);
+          // Fallback: try to use cached user if sync fails
+          const cachedUser = mapEngine.entityStore.getCurrentUser();
+          if (cachedUser) {
+              console.log('[AuthContext] Using cached user data');
+              setUser(cachedUser);
+          } else {
+              // If no cache, we might need to re-login, but stay authed for now
+              setUser({ id: 'pending', role: null });
+          }
+        }
       } else {
         setUser(null);
       }
     } catch (e) {
-      console.error("Auth check failed:", e);
-      await SecureStore.deleteItemAsync('userToken');
+      console.error("[AuthContext] Fatal auth error:", e);
       setUser(null);
     } finally {
+      console.log('[AuthContext] Auth check finished');
       setLoading(false);
     }
   };
