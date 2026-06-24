@@ -4,6 +4,7 @@ import { requestRouter } from './RequestRouter';
 import { entityStore } from './EntityStore';
 import { GeoClusterService } from './GeoClusterService';
 import { spatialManager } from '../map/SpatialManager';
+import { mapViewportStore } from './MapViewportStore';
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -31,9 +32,6 @@ class MapEngine {
       this.initPersistence();
 
       // V9: Reactive architecture - Engine listens to Camera
-      // Note: As MapEngine is a singleton, we only subscribe once.
-      // In Dev environment with Fast Refresh, we might want to check if already subscribed
-      // but mapViewportStore.subscribe implementation handles overwriting by source key.
       mapViewportStore.subscribe((region) => {
           this.triggerMapUpdate(region);
       }, 'MapEngine_Core');
@@ -445,6 +443,5 @@ class MapEngine {
   }
 }
 
-import { mapViewportStore } from './MapViewportStore';
 export const mapEngine = new MapEngine(apiService, entityStore, requestRouter, GeoClusterService);
 export const orderOrchestrator = mapEngine;
