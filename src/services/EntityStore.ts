@@ -166,7 +166,7 @@ class EntityStore {
       });
 
       if (__DEV__) console.log('STORE_REPLACE', { count: orders.length, source: 'sync' });
-      orders.forEach(o => this.setOrder(o));
+      orders.forEach(o => this.setOrder(o, 'sync_reconciliation'));
       this.isMyOrdersLoaded = true;
       this.persist();
   }
