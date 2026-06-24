@@ -27,18 +27,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const token = await SecureStore.getItemAsync('userToken');
       if (token) {
-        const userData = await mapEngine.syncUser();
-        setUser(userData);
-        socketService.connect(apiService.getBaseUrl());
-        const userId = userData.uid || userData.id;
-        if (userId) socketService.identifyUser(userId);
+        try {
+          const userData = await mapEngine.syncUser();
+          setUser(userData);
+          socketService.connect(apiService.getBaseUrl());
+          const userId = userData.uid || userData.id;
+          if (userId) socketService.identifyUser(userId);
+        } catch (e: any) {
+          // If profile fetch fails with 404, it means the user was deleted from DB
+          // or the token is definitely invalid/stale.
+          if (e.response?.status === 404 || e.response?.status === 401) {
+            await signOut();
+          } else {
+            throw e; // Retry on next cycle if it's just a network error
+          }
+        }
       } else {
         setUser(null);
       }
     } catch (e) {
       console.error("Auth check failed:", e);
-      await SecureStore.deleteItemAsync('userToken');
-      setUser(null);
+      // Don't auto-delete token on general network errors (timeout),
+      // only on specific auth/existence errors handled above.
     } finally {
       setLoading(false);
     }

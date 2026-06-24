@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -71,7 +71,7 @@ const OrdersListScreen = ({ navigation }: any) => {
   }, []);
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       // Sync UI state on focus
       setOrders(mapEngine.getOrders(true));
 

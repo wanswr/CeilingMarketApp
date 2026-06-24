@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -69,13 +69,13 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
 
   const myApplication = order.applications?.find(a => a.executorId === currentUserId);
 
-  const isToday = React.useMemo(() => {
+  const isToday = useMemo(() => {
     const d = new Date(order.date);
     const now = new Date();
     return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   }, [order.date]);
 
-  const isTomorrow = React.useMemo(() => {
+  const isTomorrow = useMemo(() => {
     const d = new Date(order.date);
     const tom = new Date();
     tom.setDate(tom.getDate() + 1);

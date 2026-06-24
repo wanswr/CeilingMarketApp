@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -91,7 +91,7 @@ export default function CreateOrderScreen({ navigation }: any) {
     setImages(images.filter((_, i) => i !== index));
   };
 
-  const mapRef = React.useRef<MapView>(null);
+  const mapRef = useRef<MapView>(null);
 
   const handleAddressChange = async (text: string) => {
     setForm({ ...form, address: text });
