@@ -1,8 +1,8 @@
 import { Order, UserProfile } from '../types';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storageService } from './StorageService';
 
 /**
- * EntityStore V9: Normalized Single Source of Truth with Camera-Data Decoupling.
+ * EntityStore V11: Normalized Single Source of Truth with Synchronous MMKV Storage.
  */
 
 interface StoreMeta {
@@ -245,19 +245,15 @@ class EntityStore {
           }) as Order[];
   }
 
-  hydrate = async () => {
+  hydrate = () => {
     try {
-      await AsyncStorage.removeItem('entity_store_v4');
-      await AsyncStorage.removeItem('map_cache_v1');
-
-      const data = await AsyncStorage.getItem('entity_store_v5');
-      if (!data) return false;
-      const parsed = JSON.parse(data);
+      const parsed = storageService.get<any>('entity_store_v11');
+      if (!parsed) return false;
 
       const CACHE_TTL = 30 * 60 * 1000;
       if (!parsed.updatedAt || Date.now() - parsed.updatedAt > CACHE_TTL) {
           if (__DEV__) console.log('STORE_HYDRATE', { status: 'expired' });
-          await AsyncStorage.removeItem('entity_store_v5');
+          storageService.delete('entity_store_v11');
           return false;
       }
 
@@ -272,14 +268,14 @@ class EntityStore {
     }
   }
 
-  persist = async () => {
+  persist = () => {
     try {
       const data = {
         orders: Array.from(this.ordersById.values()),
         loadedBounds: this.loadedBounds,
         updatedAt: Date.now()
       };
-      await AsyncStorage.setItem('entity_store_v5', JSON.stringify(data));
+      storageService.set('entity_store_v11', data);
     } catch (e) {}
   }
 

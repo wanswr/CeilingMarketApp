@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storageService } from '../services/StorageService';
 
 /**
- * SpatialManager V6: Handles global coordinate-based chunking and caching.
+ * SpatialManager V11: Handles global coordinate-based chunking and caching using MMKV.
  * No predefined regions, works anywhere in the world.
  */
 
@@ -14,7 +14,7 @@ class SpatialManager {
   private cache: Map<string, ChunkMetadata> = new Map();
   private cellSize = 0.5; // Back to 0.5 for more stable alignment and less jitter
   private maxChunks = 500; // LRU Limit
-  private persistenceKey = 'spatial_cache_v6';
+  private persistenceKey = 'spatial_cache_v11';
 
   /**
    * Generates a unique key for a geographic cell.
@@ -109,11 +109,10 @@ class SpatialManager {
   /**
    * Persistence: Restore chunks from disk.
    */
-  async hydrate() {
+  hydrate() {
     try {
-      const data = await AsyncStorage.getItem(this.persistenceKey);
-      if (!data) return;
-      const parsed = JSON.parse(data);
+      const parsed = storageService.get<any>(this.persistenceKey);
+      if (!parsed) return;
       Object.entries(parsed).forEach(([key, meta]: [string, any]) => {
         // Skip stale chunks (> 2h)
         if (Date.now() - meta.timestamp < 7200000) {
@@ -125,10 +124,10 @@ class SpatialManager {
     }
   }
 
-  async persist() {
+  persist() {
     try {
       const data = Object.fromEntries(this.cache);
-      await AsyncStorage.setItem(this.persistenceKey, JSON.stringify(data));
+      storageService.set(this.persistenceKey, data);
     } catch (e) {
       console.error('[SpatialManager] Persistence failed', e);
     }
@@ -136,7 +135,7 @@ class SpatialManager {
 
   clear() {
     this.cache.clear();
-    AsyncStorage.removeItem(this.persistenceKey).catch(() => {});
+    storageService.delete(this.persistenceKey);
   }
 }
 

@@ -32,12 +32,10 @@ class MapEngine {
       }, 'MapEngine_Core');
   }
 
-  private initPersistence = async () => {
+  private initPersistence = () => {
     if (this.isHydrated) return;
-    await Promise.all([
-      this.entityStore.hydrate(),
-      this.spatialManager.hydrate()
-    ]);
+    this.entityStore.hydrate();
+    this.spatialManager.hydrate();
     this.isHydrated = true;
 
     const count = this.entityStore.getAllOrders().length;

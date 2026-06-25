@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { mapEngine } from '../services/MapEngine';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storageService } from '../services/StorageService';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { resolveImageUrl } from '../utils/image';
 
@@ -44,7 +44,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.clear();
+    storageService.clearAll();
     navigation.reset({
       index: 0,
       routes: [{ name: 'Login' }],
