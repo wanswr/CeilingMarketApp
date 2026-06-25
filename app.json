@@ -2,6 +2,7 @@
   "expo": {
     "name": "Ceilingsapp",
     "slug": "Ceilingsapp",
+    "scheme": "ceilingsapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wanswr.Ceilingsapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,10 +27,24 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-dev-client",
       "expo-font",
       "@react-native-community/datetimepicker",
       "expo-secure-store",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-location",
+        {
+          "locationAlwaysPermission": "Allow Ceilingsapp to use your location."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you share them with others."
+        }
+      ],
+      "expo-notifications"
     ]
   }
 }
