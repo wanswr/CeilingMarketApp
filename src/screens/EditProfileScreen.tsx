@@ -1,20 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import {
+import { TouchableOpacity,
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+
   ScrollView,
   Image,
   TextInput,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+TouchableOpacity,
 } from 'react-native';
-import { z } from 'zod';
-import { COLORS } from '../constants/theme';
-import { mapEngine } from '../services/MapEngine';
+import { TouchableOpacity,  z } from 'zod';
+import { TouchableOpacity,  COLORS } from '../constants/theme';
+import { TouchableOpacity,  mapEngine } from '../services/MapEngine';
 
 const profileSchema = z.object({
   name: z.string().min(2, "Имя слишком короткое"),

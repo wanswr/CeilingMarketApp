@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, ActivityIndicator } from 'react-native';
-import { createStackNavigator } from '@react-navigation/stack';
-import { useAuth } from '../context/AuthContext';
+import { TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, createStackNavigator } from '@react-navigation/stack';
+import { TouchableOpacity, useAuth } from '../context/AuthContext';
 
 import BottomTabNavigator from './BottomTabNavigator';
 import LoginScreen from '../screens/LoginScreen';

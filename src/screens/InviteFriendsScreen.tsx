@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import {
+import { TouchableOpacity,
   View,
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
+
   ActivityIndicator,
   Share,
-  Alert
+  Alert,
+TouchableOpacity,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
+import { TouchableOpacity,  Ionicons } from '@expo/vector-icons';
+import { TouchableOpacity,  COLORS } from '../constants/theme';
 
 export default function InviteFriendsScreen() {
   const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
@@ -27,7 +28,6 @@ export default function InviteFriendsScreen() {
         });
 
         if (data.length > 0) {
-          // Filter contacts with phone numbers and sort
           const filtered = data
             .filter(c => c.phoneNumbers && c.phoneNumbers.length > 0)
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -42,7 +42,7 @@ export default function InviteFriendsScreen() {
 
   const handleInvite = async (contact: Contacts.Contact) => {
     try {
-      const result = await Share.share({
+      await Share.share({
         message: `Привет! Попробуй приложение CeilingsApp для поиска заказов и мастеров по натяжным потолкам: https://ceilingsapp.example.com`,
       });
     } catch (error: any) {

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { COLORS } from '../constants/theme';
-import { mapEngine } from '../services/MapEngine';
-import { useAuth } from '../context/AuthContext';
+import { TouchableOpacity, View, Text, StyleSheet, Alert } from 'react-native';
+import { TouchableOpacity, SafeAreaView } from 'react-native-safe-area-context';
+import { TouchableOpacity, COLORS } from '../constants/theme';
+import { TouchableOpacity, mapEngine } from '../services/MapEngine';
+import { TouchableOpacity, useAuth } from '../context/AuthContext';
 
 const RoleSelectionScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(false);

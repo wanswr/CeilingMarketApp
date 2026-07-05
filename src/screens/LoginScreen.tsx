@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, Alert, KeyboardAvoidingView, Platform, StyleSheet, TouchableWithoutFeedback, Keyboard, ImageBackground } from 'react-native';
+import {
+  View,
+  Text,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  TouchableWithoutFeedback,
+  TouchableOpacity,
+  Keyboard,
+  ImageBackground
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -27,11 +38,9 @@ export default function LoginScreen({ navigation }: any) {
     }
     setLoading(true);
     try {
-      // In this new architecture, we call our own backend via Orchestrator
       const data = await mapEngine.login(phone);
       if (data.access_token) {
         await signIn(data.access_token, data.user);
-        // Note: useAuth will trigger Navigation re-render
       }
     } catch (err: any) {
       console.error(err);

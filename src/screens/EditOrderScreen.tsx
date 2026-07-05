@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
-import { AppInput } from '../components/Input';
-import { mapEngine } from '../services/MapEngine';
-import { COLORS } from '../constants/theme';
+import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, AppInput } from '../components/Input';
+import { TouchableOpacity, mapEngine } from '../services/MapEngine';
+import { TouchableOpacity, COLORS } from '../constants/theme';
 
-import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { TouchableOpacity, Ionicons } from '@expo/vector-icons';
+import { TouchableOpacity, SafeAreaView } from 'react-native-safe-area-context';
 
 export default function EditOrderScreen({ navigation, route }: any) {
   const { orderId } = route.params;

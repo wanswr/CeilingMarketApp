@@ -1,21 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
+import { TouchableOpacity,
   View,
   Text,
   StyleSheet,
   FlatList,
   RefreshControl,
-  TouchableOpacity,
+
   Alert,
   ScrollView,
+TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { mapEngine } from '../services/MapEngine';
-import { Order, OrderStatus, WorkType } from '../types';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { OrderCard } from '../components/OrderCard';
+import { TouchableOpacity,  SafeAreaView } from 'react-native-safe-area-context';
+import { TouchableOpacity,  useFocusEffect } from '@react-navigation/native';
+import { TouchableOpacity,  Ionicons } from '@expo/vector-icons';
+import { TouchableOpacity,  mapEngine } from '../services/MapEngine';
+import { TouchableOpacity,  Order, OrderStatus, WorkType } from '../types';
+import { TouchableOpacity,  COLORS, SHADOWS } from '../constants/theme';
+import { TouchableOpacity,  OrderCard } from '../components/OrderCard';
 
 const FILTERS = {
   STATUS: [
@@ -66,14 +67,12 @@ const OrdersListScreen = ({ navigation }: any) => {
 
   useFocusEffect(
     React.useCallback(() => {
-      // Sync UI state on focus
       setOrders(mapEngine.getOrders(true));
 
       const user = mapEngine.getCurrentUser();
       if (user) setCurrentUser(user);
       else mapEngine.syncUser().then(setCurrentUser);
 
-      // Only sync if we have no orders or if it's the first load in this focus cycle
       if (!mapEngine.entityStore.isMyOrdersLoaded) {
         mapEngine.syncMyOrders();
       }
@@ -92,17 +91,14 @@ const OrdersListScreen = ({ navigation }: any) => {
   const filteredOrders = useMemo(() => {
     const myId = currentUser?.uid || currentUser?.id;
     let result = orders.filter(order => {
-      // In-memory filter based on visibility rules
       if (order.status === 'CANCELLED') return false;
 
       const isMyOrder = order.employerId === myId;
       const amIExecutor = order.executorId === myId;
 
-      // Applicant logic: hide if someone else was selected
       const someoneElseSelected = (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS' || order.status === 'COMPLETED') && !amIExecutor;
       const iApplied = order.applications?.some(a => (a.executorId === myId)) && !someoneElseSelected;
 
-      // 1. Tab Logic: Archive = ONLY COMPLETED. Active = everything else mine.
       if (activeTab === 'archive') {
           if (order.status !== 'COMPLETED') return false;
           if (!isMyOrder && !amIExecutor) return false;
@@ -111,11 +107,9 @@ const OrdersListScreen = ({ navigation }: any) => {
           if (!isMyOrder && !amIExecutor && !iApplied) return false;
       }
 
-      // 2. Filter logic
       if (statusFilter !== 'all' && order.status !== statusFilter) return false;
       if (workTypeFilter !== 'all' && order.workType !== workTypeFilter) return false;
 
-      // 3. Date Filter logic
       if (dateFilter !== 'all') {
           const orderDate = new Date(order.date);
           const now = new Date();
@@ -159,7 +153,6 @@ const OrdersListScreen = ({ navigation }: any) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              // V9: Soft Delete implementation
               await mapEngine.updateOrder(orderId, { status: 'CANCELLED', deletedAt: new Date().toISOString() });
             } catch (e) {
               Alert.alert('Ошибка', 'Не удалось удалить заказ');

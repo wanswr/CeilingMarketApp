@@ -1,27 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import {
+import { TouchableOpacity,
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+
   Alert,
   ActivityIndicator,
   Image,
   ScrollView,
   Platform
+
+TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { mapEngine } from '../services/MapEngine';
-import { useAuth } from '../context/AuthContext';
-import { storageService } from '../services/StorageService';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { Button } from '../components/Button';
+import { TouchableOpacity, SafeAreaView
+} from 'react-native-safe-area-context';
+import { TouchableOpacity, Ionicons
+} from '@expo/vector-icons';
+import { TouchableOpacity, BlurView
+} from 'expo-blur';
+import { TouchableOpacity, mapEngine
+} from '../services/MapEngine';
+import { TouchableOpacity, useAuth
+} from '../context/AuthContext';
+import { TouchableOpacity, storageService
+} from '../services/StorageService';
+import { TouchableOpacity, COLORS, SHADOWS
+} from '../constants/theme';
+import { TouchableOpacity, Button
+} from '../components/Button';
 
 const ProfileScreen = ({ route, navigation }: any) => {
   const userId = route.params?.userId;
-  const { updateUser } = useAuth();
+  const { updateUser, signOut } = useAuth();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [switchingRole, setSwitchingRole] = useState(false);
@@ -62,10 +72,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
 
   const handleLogout = () => {
     storageService.clearAll();
-    // Revert to original navigation structure if possible, but the original code had navigation.replace('Auth')
-    // which didn't match the current Stack.Screen names (Login, MainTabs, etc.)
-    // If user is null after storage clear (and AuthContext reacts), Navigation will show Login.
-    // Explicitly navigating to Login is safer for now.
+    signOut();
     navigation.reset({
       index: 0,
       routes: [{ name: 'Login' }],

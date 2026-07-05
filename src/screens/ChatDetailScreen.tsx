@@ -1,22 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, 
+import { TouchableOpacity,
+  View,
   Text, 
   StyleSheet, 
   FlatList, 
   TextInput, 
-  TouchableOpacity, 
-  KeyboardAvoidingView, 
+
+  KeyboardAvoidingView,
   Platform,
   ImageBackground,
   ActivityIndicator,
+TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
-import { socketService } from '../services/SocketService';
-import { apiService } from '../services/ApiService';
-import { mapEngine } from '../services/MapEngine';
+import { TouchableOpacity,  SafeAreaView } from 'react-native-safe-area-context';
+import { TouchableOpacity,  Ionicons } from '@expo/vector-icons';
+import { TouchableOpacity,  COLORS } from '../constants/theme';
+import { TouchableOpacity,  socketService } from '../services/SocketService';
+import { TouchableOpacity,  apiService } from '../services/ApiService';
+import { TouchableOpacity,  mapEngine } from '../services/MapEngine';
 
 interface Message {
   id: string;
@@ -61,7 +62,6 @@ const ChatDetailScreen = ({ route }: any) => {
 
     initChat();
 
-    // Socket listeners
     const onNewMessage = (msg: any) => {
         if (msg.chatId === activeChatId) {
             setMessages(prev => [...prev, msg]);
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   messageText: { fontSize: 16 },
   messageFooter: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 2 },
   timestamp: { fontSize: 11, color: '#66bb6a' },
-  inputContainer: { flexDirection: 'row', alignItems: 'flex-end', padding: 8 },
+  inputContainer: { flexDirection: 'row', alignItems: 'flex-end' },
   inputWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 25, marginHorizontal: 5, paddingHorizontal: 12, minHeight: 40 },
   input: { flex: 1, fontSize: 16, paddingTop: 8, paddingBottom: 8 },
   sendBtn: { backgroundColor: '#0088cc', width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center' },

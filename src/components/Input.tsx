@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { TextInput, StyleSheet, TextInputProps, View, Text, Animated } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { TouchableOpacity, TextInput, StyleSheet, TextInputProps, View, Text, Animated } from 'react-native';
+import { TouchableOpacity, COLORS } from '../constants/theme';
 
 interface AppInputProps extends TextInputProps {
   label?: string;

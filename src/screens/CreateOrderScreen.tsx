@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import {
+import { TouchableOpacity,
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   Alert,
   ActivityIndicator,
   StyleSheet,
@@ -13,22 +12,35 @@ import {
   Keyboard,
   Image,
   Modal,
-  TextInput
+  TextInput,
+
+
+TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { TouchableOpacity, SafeAreaView
+} from 'react-native-safe-area-context';
+import { TouchableOpacity, Ionicons
+} from '@expo/vector-icons';
+import { TouchableOpacity, BlurView
+} from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE
+} from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { z } from 'zod';
-import { AppInput } from '../components/Input';
-import { Button } from '../components/Button';
-import { mapEngine } from '../services/MapEngine';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { formatDate } from '../utils/date';
+import { TouchableOpacity, z
+} from 'zod';
+import { TouchableOpacity, AppInput
+} from '../components/Input';
+import { TouchableOpacity, Button
+} from '../components/Button';
+import { TouchableOpacity, mapEngine
+} from '../services/MapEngine';
+import { TouchableOpacity, COLORS, SHADOWS
+} from '../constants/theme';
+import { TouchableOpacity, formatDate
+} from '../utils/date';
 import i18n from '../constants/i18n';
 
 const orderSchema = z.object({

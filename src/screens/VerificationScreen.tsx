@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import { COLORS } from '../constants/theme';
+import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { TouchableOpacity, COLORS } from '../constants/theme';
 
 export default function VerificationScreen() {
   return (

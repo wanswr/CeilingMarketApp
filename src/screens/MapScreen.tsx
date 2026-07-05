@@ -1,25 +1,27 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { 
-  View, 
+import { TouchableOpacity,
+  View,
   StyleSheet, 
   Text, 
   ActivityIndicator, 
-  TouchableOpacity, 
+
   TextInput,
+  ScrollView,
   Platform,
+TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { TouchableOpacity,  SafeAreaView } from 'react-native-safe-area-context';
+import { TouchableOpacity,  useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import { Ionicons } from '@expo/vector-icons';
+import { TouchableOpacity,  Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { BlurView } from 'expo-blur';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { mapEngine } from '../services/MapEngine';
-import { mapViewportStore } from '../services/MapViewportStore';
-import { formatDate } from '../utils/date';
-import { Order } from '../types';
+import { TouchableOpacity,  BlurView } from 'expo-blur';
+import { TouchableOpacity,  COLORS, SHADOWS } from '../constants/theme';
+import { TouchableOpacity,  mapEngine } from '../services/MapEngine';
+import { TouchableOpacity,  mapViewportStore } from '../services/MapViewportStore';
+import { TouchableOpacity,  formatDate } from '../utils/date';
+import { TouchableOpacity,  Order } from '../types';
 import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
@@ -36,8 +38,6 @@ const MapScreen = ({ navigation }: any) => {
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPanDragRef = useRef<number>(0);
   const lastSyncRequestRef = useRef<number>(0);
-
-
 
   const fitToOrders = useCallback((orders: Order[]) => {
     if (!orders || orders.length === 0 || !mapRef.current) return;
@@ -66,13 +66,12 @@ const MapScreen = ({ navigation }: any) => {
     if (isSubscribedRef.current) return;
     if (__DEV__) console.log('MAP_SCREEN_MOUNT');
 
-    const unsubscribeOrders = mapEngine.subscribe((newOrders) => {
-      // V9: Ensure we always use a fresh array reference to trigger React re-render
+    const unsubscribeOrders = mapEngine.subscribe((newOrders: any) => {
       setDisplayedOrders([...newOrders]);
       setLoading(false);
     }, 'MapScreen');
 
-    const unsubscribeViewport = mapViewportStore.subscribe((newRegion) => {
+    const unsubscribeViewport = mapViewportStore.subscribe((newRegion: any) => {
       setRegion(newRegion);
     }, 'MapScreen');
 
@@ -91,11 +90,9 @@ const MapScreen = ({ navigation }: any) => {
     useCallback(() => {
       isFocusedRef.current = true;
 
-      // Refresh state from store on focus (in case we missed updates while backgrounded)
       setDisplayedOrders([...mapEngine.getOrders()]);
       setRegion(mapViewportStore.getRegion());
 
-      // --- Init Logic ---
       const orders = mapEngine.getOrders();
       if (orders.length === 0) {
           console.log('MAP_FOCUS (Init)');
@@ -117,7 +114,7 @@ const MapScreen = ({ navigation }: any) => {
 
                   const currentOrders = mapEngine.getOrders();
                   if (currentOrders.length > 0) {
-                      const coords = currentOrders.map(o => mapEngine.getOrderCoords(o)).filter(Boolean) as any[];
+                      const coords = currentOrders.map((o: any) => mapEngine.getOrderCoords(o)).filter(Boolean) as any[];
                       if (coords.length > 0) {
                           setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 80, right: 80, bottom: 250, left: 80 }, animated: true }), 1500);
                       }
@@ -148,7 +145,6 @@ const MapScreen = ({ navigation }: any) => {
     if (movingTimeoutRef.current) clearTimeout(movingTimeoutRef.current);
     movingTimeoutRef.current = setTimeout(() => setIsMoving(false), 300);
 
-    // V9: Just update the camera. Engine handles the rest.
     mapViewportStore.setRegion(newRegion);
   };
 
@@ -210,7 +206,6 @@ const MapScreen = ({ navigation }: any) => {
           onRegionChange={(newReg) => {
               if (!isFocusedRef.current) return;
               if (!isMoving) setIsMoving(true);
-              // V9: Fast camera tracking. Engine is subscribed to this store.
               mapViewportStore.setRegion(newReg);
           }}
           onRegionChangeComplete={handleRegionChangeComplete}
@@ -303,7 +298,7 @@ const MapScreen = ({ navigation }: any) => {
                       style={[styles.radiusBtn, radius === r && styles.radiusBtnActive]}
                       onPress={() => {
                         setRadius(r);
-                        // @ts-ignore - we'll add this to MapEngine
+                        // @ts-ignore
                         mapEngine.setSearchRadius?.(r);
                         mapEngine.forceRefresh();
                       }}

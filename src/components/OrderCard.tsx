@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Swipeable } from 'react-native-gesture-handler';
-import { Order, OrderStatus } from '../types';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { formatDate } from '../utils/date';
+import { TouchableOpacity, View, Text, StyleSheet, Animated } from 'react-native';
+import { TouchableOpacity, Ionicons } from '@expo/vector-icons';
+import { TouchableOpacity, Swipeable } from 'react-native-gesture-handler';
+import { TouchableOpacity, Order, OrderStatus } from '../types';
+import { TouchableOpacity, COLORS, SHADOWS } from '../constants/theme';
+import { TouchableOpacity, formatDate } from '../utils/date';
 
 interface OrderCardProps {
   order: Order;
