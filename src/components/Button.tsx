@@ -68,30 +68,23 @@ export const Button: React.FC<ButtonProps> = ({
 const styles = StyleSheet.create({
   touchable: {
     width: '100%',
-    marginTop: 10,
-  },
+    marginTop: 10 },
   button: {
     padding: 16,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 56,
-  },
+    height: 56 },
   outline: {
     backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: COLORS.primary,
-  },
+    borderColor: COLORS.primary },
   disabled: {
-    opacity: 0.6,
-  },
+    opacity: 0.6 },
   text: {
     color: COLORS.white,
     fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 0.5,
-  },
+    letterSpacing: 0.5 },
   outlineText: {
-    color: COLORS.primary,
-  },
-});
+    color: COLORS.primary } });

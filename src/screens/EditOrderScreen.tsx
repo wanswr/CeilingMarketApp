@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
-import { TouchableOpacity, AppInput } from '../components/Input';
-import { TouchableOpacity, mapEngine } from '../services/MapEngine';
-import { TouchableOpacity, COLORS } from '../constants/theme';
+import { AppInput } from '../components/Input';
+import { mapEngine } from '../services/MapEngine';
+import { COLORS } from '../constants/theme';
 
-import { TouchableOpacity, Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity, SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function EditOrderScreen({ navigation, route }: any) {
   const { orderId } = route.params;
@@ -117,46 +117,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
+    borderBottomColor: '#F1F5F9' },
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: COLORS.dark,
-  },
+    color: COLORS.dark },
   label: {
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.dark,
     marginBottom: 10,
-    marginTop: 10,
-  },
+    marginTop: 10 },
   workTypeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 20,
-  },
+    marginBottom: 20 },
   workTypeBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: '#F1F5F9',
-  },
+    backgroundColor: '#F1F5F9' },
   workTypeBtnActive: {
     backgroundColor: COLORS.primary + '15',
     borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
+    borderColor: COLORS.primary },
   workTypeBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: COLORS.gray,
-  },
+    color: COLORS.gray },
   workTypeBtnTextActive: {
     color: COLORS.primary,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   btn: {
     backgroundColor: COLORS.primary,
     padding: 18,
@@ -167,7 +159,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 4,
-  },
+    elevation: 4 },
   btnText: { color: '#fff', fontWeight: '900', fontSize: 16 }
 });

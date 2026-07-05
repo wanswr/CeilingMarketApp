@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { TouchableOpacity,
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
 
-  ActivityIndicator,
-  Share,
-  Alert,
-TouchableOpacity,
-} from 'react-native';
+import { TouchableOpacity, View,
+ Text,
+ StyleSheet,
+ FlatList,
+
+ ActivityIndicator,
+ Share,
+ Alert } from 'react-native';
 import * as Contacts from 'expo-contacts';
-import { TouchableOpacity,  Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity,  COLORS } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '../constants/theme';
 
 export default function InviteFriendsScreen() {
   const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
@@ -24,8 +22,7 @@ export default function InviteFriendsScreen() {
       const { status } = await Contacts.requestPermissionsAsync();
       if (status === 'granted') {
         const { data } = await Contacts.getContactsAsync({
-          fields: [Contacts.Fields.Emails, Contacts.Fields.PhoneNumbers],
-        });
+          fields: [Contacts.Fields.Emails, Contacts.Fields.PhoneNumbers] });
 
         if (data.length > 0) {
           const filtered = data
@@ -43,8 +40,7 @@ export default function InviteFriendsScreen() {
   const handleInvite = async (contact: Contacts.Contact) => {
     try {
       await Share.share({
-        message: `Привет! Попробуй приложение CeilingsApp для поиска заказов и мастеров по натяжным потолкам: https://ceilingsapp.example.com`,
-      });
+        message: `Привет! Попробуй приложение CeilingsApp для поиска заказов и мастеров по натяжным потолкам: https://ceilingsapp.example.com` });
     } catch (error: any) {
       Alert.alert(error.message);
     }
@@ -134,5 +130,4 @@ const styles = StyleSheet.create({
   inviteBtn: { backgroundColor: COLORS.bgLight, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
   inviteBtnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
   empty: { padding: 40, alignItems: 'center' },
-  emptyText: { color: COLORS.gray },
-});
+  emptyText: { color: COLORS.gray } });

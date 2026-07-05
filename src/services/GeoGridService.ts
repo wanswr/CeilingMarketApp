@@ -34,8 +34,7 @@ export const GeoGridService = {
     const factor = Math.pow(10, precision);
     return {
       latitude: Math.floor(lat * factor) / factor,
-      longitude: Math.floor(lng * factor) / factor,
-    };
+      longitude: Math.floor(lng * factor) / factor };
   },
 
   getPrecision(latDelta: number): number {

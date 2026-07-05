@@ -10,16 +10,14 @@ export const ru = {
     verifyBtn: 'Подтвердить',
     registration: 'Регистрация',
     nameLabel: 'Ваше имя',
-    saveBtn: 'Сохранить',
-  },
+    saveBtn: 'Сохранить' },
   roles: {
     selectionTitle: 'Выберите вашу роль',
     employer: 'Заказчик',
     employerDesc: 'Я хочу создать заказ и найти мастеров',
     worker: 'Мастер (Исполнитель)',
     workerDesc: 'Я ищу работу и хочу откликаться на заказы',
-    confirm: 'Выбрать роль',
-  },
+    confirm: 'Выбрать роль' },
   map: {
     title: 'Карта',
     listBtn: 'СПИСОК',
@@ -28,8 +26,7 @@ export const ru = {
     layers: 'Слои',
     gas: 'АГЗС',
     prod: 'Цех',
-    noOrders: 'Заказы не найдены',
-  },
+    noOrders: 'Заказы не найдены' },
   orders: {
     new: 'Новый заказ',
     title: 'Заголовок',
@@ -43,22 +40,19 @@ export const ru = {
     publish: 'ОПУБЛИКОВАТЬ',
     apply: 'Откликнуться',
     detailsBtn: 'Детали',
-    myOrders: 'Мои Заказы',
-  },
+    myOrders: 'Мои Заказы' },
   profile: {
     title: 'Профиль',
     invite: 'Пригласить коллег',
     logout: 'Выйти из аккаунта',
     verified: 'Проверенный мастер',
     subscription: 'Подписка до',
-    noSubscription: 'Подписка не активна',
-  },
+    noSubscription: 'Подписка не активна' },
   common: {
     loading: 'Загрузка...',
     error: 'Ошибка',
     success: 'Успех',
     cancel: 'Отмена',
     confirm: 'Подтвердить',
-    back: 'Назад',
-  }
+    back: 'Назад' }
 };

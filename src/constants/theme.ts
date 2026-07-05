@@ -14,15 +14,13 @@ export const COLORS = {
   bgLight: '#F8FAFC',
   border: '#E2E8F0',
   placeholder: '#94A3B8',
-  cardBg: 'rgba(255, 255, 255, 0.85)',
-};
+  cardBg: 'rgba(255, 255, 255, 0.85)' };
 
 export const GRADIENTS = {
   header: ['#2D5BFF', '#8257E5'],
   button: ['#2D5BFF', '#8257E5'],
   success: ['#00C897', '#00A878'],
-  card: ['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.85)'],
-};
+  card: ['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.85)'] };
 
 export const SHADOWS = {
   soft: {
@@ -30,28 +28,23 @@ export const SHADOWS = {
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 2,
-  },
+    elevation: 2 },
   medium: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
-    elevation: 8,
-  },
+    elevation: 8 },
   heavy: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.15,
     shadowRadius: 30,
-    elevation: 15,
-  },
-};
+    elevation: 15 } };
 
 export const SPACING = {
   xs: 4,
   sm: 8,
   md: 16,
   lg: 24,
-  xl: 32,
-};
+  xl: 32 };

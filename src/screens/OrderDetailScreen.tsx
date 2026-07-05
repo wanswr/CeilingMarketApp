@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Image, Modal, TextInput } from 'react-native';
-import { TouchableOpacity, SafeAreaView } from 'react-native-safe-area-context';
-import { TouchableOpacity, BlurView } from 'expo-blur';
-import { TouchableOpacity, Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity, Order } from '../types';
-import { TouchableOpacity, mapEngine } from '../services/MapEngine';
-import { TouchableOpacity, Button } from '../components/Button';
-import { TouchableOpacity, COLORS, SHADOWS } from '../constants/theme';
-import { TouchableOpacity, formatDate } from '../utils/date';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
+import { Order } from '../types';
+import { mapEngine } from '../services/MapEngine';
+import { Button } from '../components/Button';
+import { COLORS, SHADOWS } from '../constants/theme';
+import { formatDate } from '../utils/date';
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
@@ -601,91 +601,76 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: COLORS.primary + '10',
     gap: 8,
-    flex: 1,
-  },
+    flex: 1 },
   chatButtonTextFooter: {
     color: COLORS.primary,
     fontSize: 16,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   iconChatBtn: {
     width: 64,
     height: 64,
     borderRadius: 22,
     backgroundColor: COLORS.primary + '10',
     justifyContent: 'center',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   applicationsBanner: {
     backgroundColor: COLORS.primary + '10',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.primary + '30',
     padding: 16,
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   applicationsBannerContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   bannerTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: COLORS.dark,
-  },
+    color: COLORS.dark },
   bannerSubtitle: {
     fontSize: 13,
     color: COLORS.gray,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
+    backgroundColor: 'rgba(0,0,0,0.5)' },
   modalOverlayCenter: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
+    backgroundColor: 'rgba(0,0,0,0.4)' },
   modalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     height: '80%',
-    padding: 24,
-  },
+    padding: 24 },
   priceModalContent: {
     backgroundColor: '#fff',
     borderRadius: 24,
     padding: 24,
     width: '100%',
-    ...SHADOWS.heavy,
-  },
+    ...SHADOWS.heavy },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   modalTitle: {
     fontSize: 24,
     fontWeight: '900',
-    color: COLORS.dark,
-  },
+    color: COLORS.dark },
   modalTitleSmall: {
     fontSize: 20,
     fontWeight: '800',
     color: COLORS.dark,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   modalSubtitleSmall: {
     fontSize: 14,
     color: COLORS.gray,
-    marginBottom: 20,
-  },
+    marginBottom: 20 },
   priceInput: {
     backgroundColor: '#F1F5F9',
     borderRadius: 12,
@@ -693,76 +678,62 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: COLORS.dark,
-    marginBottom: 20,
-  },
+    marginBottom: 20 },
   modalActionsRow: {
     flexDirection: 'row',
-    gap: 12,
-  },
+    gap: 12 },
   modalCancelBtn: {
     flex: 1,
     paddingVertical: 14,
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   modalCancelBtnText: {
     color: COLORS.gray,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   modalApplyBtn: {
     flex: 2,
     backgroundColor: COLORS.primary,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    ...SHADOWS.soft,
-  },
+    ...SHADOWS.soft },
   modalApplyBtnText: {
     color: '#fff',
-    fontWeight: '800',
-  },
+    fontWeight: '800' },
   applicationsList: {
     gap: 16,
-    paddingBottom: 40,
-  },
+    paddingBottom: 40 },
   applicationCard: {
     backgroundColor: '#F8FAFC',
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
+    borderColor: '#E2E8F0' },
   appHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   avatarSmall: {
     width: 48,
     height: 48,
     borderRadius: 24,
     backgroundColor: COLORS.secondary,
     justifyContent: 'center',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   avatarTextSmall: {
     color: '#fff',
     fontSize: 20,
-    fontWeight: '800',
-  },
+    fontWeight: '800' },
   executorName: {
     fontSize: 16,
     fontWeight: '700',
-    color: COLORS.dark,
-  },
+    color: COLORS.dark },
   offerPrice: {
     fontSize: 18,
     fontWeight: '900',
-    color: COLORS.primary,
-  },
+    color: COLORS.primary },
   appActions: {
     flexDirection: 'row',
     marginTop: 16,
-    gap: 12,
-  },
+    gap: 12 },
   appChatBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -773,12 +744,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: COLORS.primary + '30',
-    gap: 6,
-  },
+    gap: 6 },
   appChatText: {
     color: COLORS.primary,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   selectBtn: {
     flex: 2,
     height: 44,
@@ -786,18 +755,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    ...SHADOWS.soft,
-  },
+    ...SHADOWS.soft },
   selectBtnText: {
     color: '#fff',
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   starsRow: {
       flexDirection: 'row',
       justifyContent: 'center',
       gap: 8,
-      marginBottom: 20,
-  }
+      marginBottom: 20 }
 });
 
 export default OrderDetailScreen;

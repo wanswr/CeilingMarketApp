@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { TouchableOpacity, TextInput, StyleSheet, TextInputProps, View, Text, Animated } from 'react-native';
-import { TouchableOpacity, COLORS } from '../constants/theme';
+import { TextInput, StyleSheet, TextInputProps, View, Text, Animated } from 'react-native';
+import { COLORS } from '../constants/theme';
 
 interface AppInputProps extends TextInputProps {
   label?: string;
@@ -36,15 +36,13 @@ export const AppInput = ({ label, error, style, icon, ...props }: AppInputProps)
 const styles = StyleSheet.create({
   container: {
     marginBottom: 18,
-    width: '100%',
-  },
+    width: '100%' },
   label: {
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.dark,
     marginBottom: 8,
-    marginLeft: 4,
-  },
+    marginLeft: 4 },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -58,28 +56,21 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 2,
-  },
+    elevation: 2 },
   inputFocused: {
     borderColor: COLORS.primary,
-    backgroundColor: COLORS.white,
-  },
+    backgroundColor: COLORS.white },
   inputError: {
-    borderColor: COLORS.danger,
-  },
+    borderColor: COLORS.danger },
   input: {
     flex: 1,
     fontSize: 16,
     color: COLORS.dark,
     paddingVertical: 12,
-    paddingHorizontal: 4,
-  },
+    paddingHorizontal: 4 },
   iconWrapper: {
-    marginRight: 10,
-  },
+    marginRight: 10 },
   errorText: {
     color: COLORS.danger,
     fontSize: 12,
-    marginTop: 4,
-  },
-});
+    marginTop: 4 } });

@@ -28,8 +28,7 @@ const BottomTabNavigator = () => {
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: 'gray',
-        headerShown: true,
-      })}
+        headerShown: true })}
     >
       <Tab.Screen name="Map" component={MapScreen} options={{ title: 'Карта' }} />
       <Tab.Screen name="Orders" component={OrdersListScreen} options={{ title: 'Мои Заказы' }} />

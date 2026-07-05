@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { TouchableOpacity, View, Text, StyleSheet, FlatList, TextInput } from 'react-native';
-import { TouchableOpacity, Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity, COLORS } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '../constants/theme';
 
 const ChatListScreen = ({ navigation }: any) => {
   const [chats] = useState([

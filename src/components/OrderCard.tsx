@@ -1,10 +1,10 @@
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet, Animated } from 'react-native';
-import { TouchableOpacity, Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity, Swipeable } from 'react-native-gesture-handler';
-import { TouchableOpacity, Order, OrderStatus } from '../types';
-import { TouchableOpacity, COLORS, SHADOWS } from '../constants/theme';
-import { TouchableOpacity, formatDate } from '../utils/date';
+import { Ionicons } from '@expo/vector-icons';
+import { Swipeable } from 'react-native-gesture-handler';
+import { Order, OrderStatus } from '../types';
+import { COLORS, SHADOWS } from '../constants/theme';
+import { formatDate } from '../utils/date';
 
 interface OrderCardProps {
   order: Order;
@@ -180,79 +180,66 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     ...SHADOWS.soft,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
+    borderColor: 'rgba(0,0,0,0.05)' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10,
-    gap: 4,
-  },
+    gap: 4 },
   statusText: {
     fontSize: 12,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   price: {
     fontSize: 18,
     fontWeight: '900',
-    color: COLORS.dark,
-  },
+    color: COLORS.dark },
   title: {
     fontSize: 18,
     fontWeight: '800',
     color: COLORS.dark,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
-    gap: 4,
-  },
+    gap: 4 },
   infoText: {
     fontSize: 14,
     color: COLORS.gray,
-    flex: 1,
-  },
+    flex: 1 },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.03)',
-    paddingTop: 12,
-  },
+    paddingTop: 12 },
   metaInfo: {
     flexDirection: 'row',
     gap: 12,
-    flex: 1,
-  },
+    flex: 1 },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
+    gap: 4 },
   metaText: {
     fontSize: 12,
     color: COLORS.gray,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   chatButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     backgroundColor: COLORS.primary + '10',
     justifyContent: 'center',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   deleteAction: {
     backgroundColor: '#EF4444',
     justifyContent: 'center',
@@ -260,8 +247,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: '92%',
     borderRadius: 20,
-    marginLeft: 10,
-  },
+    marginLeft: 10 },
   editAction: {
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
@@ -269,8 +255,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: '92%',
     borderRadius: 20,
-    marginRight: 10,
-  },
+    marginRight: 10 },
   startAction: {
     backgroundColor: '#8B5CF6',
     justifyContent: 'center',
@@ -278,8 +263,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: '92%',
     borderRadius: 20,
-    marginRight: 10,
-  },
+    marginRight: 10 },
   completeAction: {
     backgroundColor: '#10B981',
     justifyContent: 'center',
@@ -287,12 +271,10 @@ const styles = StyleSheet.create({
     width: 100,
     height: '92%',
     borderRadius: 20,
-    marginRight: 10,
-  },
+    marginRight: 10 },
   actionText: {
     color: '#fff',
     fontSize: 10,
     fontWeight: '700',
-    marginTop: 4,
-  }
+    marginTop: 4 }
 });

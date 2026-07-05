@@ -1,33 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { TouchableOpacity,
-  View,
-  Text,
-  StyleSheet,
 
-  Alert,
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  Platform
+import { TouchableOpacity, View,
+ Text,
+ StyleSheet,
 
-TouchableOpacity,
-} from 'react-native';
-import { TouchableOpacity, SafeAreaView
-} from 'react-native-safe-area-context';
-import { TouchableOpacity, Ionicons
-} from '@expo/vector-icons';
-import { TouchableOpacity, BlurView
-} from 'expo-blur';
-import { TouchableOpacity, mapEngine
-} from '../services/MapEngine';
-import { TouchableOpacity, useAuth
-} from '../context/AuthContext';
-import { TouchableOpacity, storageService
-} from '../services/StorageService';
-import { TouchableOpacity, COLORS, SHADOWS
-} from '../constants/theme';
-import { TouchableOpacity, Button
-} from '../components/Button';
+ Alert,
+ ActivityIndicator,
+ Image,
+ ScrollView,
+ Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { mapEngine } from '../services/MapEngine';
+import { useAuth } from '../context/AuthContext';
+import { storageService } from '../services/StorageService';
+import { COLORS, SHADOWS } from '../constants/theme';
+import { Button } from '../components/Button';
 
 const ProfileScreen = ({ route, navigation }: any) => {
   const userId = route.params?.userId;
@@ -75,8 +64,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
     signOut();
     navigation.reset({
       index: 0,
-      routes: [{ name: 'Login' }],
-    });
+      routes: [{ name: 'Login' }] });
   };
 
   if (loading) {

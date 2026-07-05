@@ -1,27 +1,25 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { TouchableOpacity,
-  View,
-  StyleSheet, 
-  Text, 
-  ActivityIndicator, 
 
-  TextInput,
-  ScrollView,
-  Platform,
-TouchableOpacity,
-} from 'react-native';
-import { TouchableOpacity,  SafeAreaView } from 'react-native-safe-area-context';
-import { TouchableOpacity,  useFocusEffect } from '@react-navigation/native';
+import { TouchableOpacity, View,
+ StyleSheet,
+ Text,
+ ActivityIndicator,
+
+ TextInput,
+ ScrollView,
+ Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import { TouchableOpacity,  Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { TouchableOpacity,  BlurView } from 'expo-blur';
-import { TouchableOpacity,  COLORS, SHADOWS } from '../constants/theme';
-import { TouchableOpacity,  mapEngine } from '../services/MapEngine';
-import { TouchableOpacity,  mapViewportStore } from '../services/MapViewportStore';
-import { TouchableOpacity,  formatDate } from '../utils/date';
-import { TouchableOpacity,  Order } from '../types';
+import { BlurView } from 'expo-blur';
+import { COLORS, SHADOWS } from '../constants/theme';
+import { mapEngine } from '../services/MapEngine';
+import { mapViewportStore } from '../services/MapViewportStore';
+import { formatDate } from '../utils/date';
+import { Order } from '../types';
 import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
@@ -54,8 +52,7 @@ const MapScreen = ({ navigation }: any) => {
             bottom: selectedOrder ? 300 : 250,
             left: 80
         },
-        animated: true,
-      });
+        animated: true });
     }
   }, [selectedOrder]);
 
@@ -154,8 +151,7 @@ const MapScreen = ({ navigation }: any) => {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
           latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-      };
+          longitudeDelta: 0.05 };
       mapRef.current.animateToRegion(userRegion, 1000);
       mapViewportStore.setRegion(userRegion);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -235,8 +231,7 @@ const MapScreen = ({ navigation }: any) => {
                           latitude: coords.latitude,
                           longitude: coords.longitude,
                           latitudeDelta: region.latitudeDelta / 4,
-                          longitudeDelta: region.longitudeDelta / 4,
-                      }, 500);
+                          longitudeDelta: region.longitudeDelta / 4 }, 500);
                   }}
                 >
                   <View style={[styles.clusterMarker, item.type === 'strong' && styles.clusterMarkerStrong]}>
@@ -445,8 +440,7 @@ const styles = StyleSheet.create({
   headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   topContainer: {
     marginHorizontal: 20,
-    marginTop: 10,
-  },
+    marginTop: 10 },
   searchBar: {
     height: 54,
     borderRadius: 27,
@@ -549,8 +543,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E3A8A',
     width: 42,
     height: 42,
-    borderRadius: 21,
-  },
+    borderRadius: 21 },
   clusterText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   customMarker: {
     backgroundColor: '#fff',
@@ -572,8 +565,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.8)',
     backgroundColor: 'rgba(255,255,255,0.7)',
     overflow: 'hidden',
-    elevation: 10,
-  },
+    elevation: 10 },
   previewContent: { padding: 16 },
   previewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   previewTitle: { fontSize: 18, fontWeight: '900', color: COLORS.dark, marginBottom: 6, letterSpacing: -0.5 },
@@ -607,8 +599,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
-  },
+    borderColor: COLORS.border },
   mainActionBtn: {
     backgroundColor: COLORS.primary,
     height: 40,
@@ -616,9 +607,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    ...SHADOWS.medium,
-  },
-  mainActionText: { color: '#fff', fontWeight: '900', fontSize: 14 },
-});
+    ...SHADOWS.medium },
+  mainActionText: { color: '#fff', fontWeight: '900', fontSize: 14 } });
 
 export default MapScreen;

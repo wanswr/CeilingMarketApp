@@ -129,8 +129,7 @@ class MapEngine {
         north: viewRegion.latitude + viewRegion.latitudeDelta / 2,
         south: viewRegion.latitude - viewRegion.latitudeDelta / 2,
         east: viewRegion.longitude + viewRegion.longitudeDelta / 2,
-        west: viewRegion.longitude - viewRegion.longitudeDelta / 2,
-    };
+        west: viewRegion.longitude - viewRegion.longitudeDelta / 2 };
 
     const isInside = this.entityStore.loadedBounds &&
         viewport.north <= this.entityStore.loadedBounds.north &&
@@ -219,8 +218,7 @@ class MapEngine {
             north: viewRegion.latitude + 0.9,
             south: viewRegion.latitude - 0.9,
             east: viewRegion.longitude + 1.3,
-            west: viewRegion.longitude - 1.3,
-        };
+            west: viewRegion.longitude - 1.3 };
         this.entityStore.isInitialLoaded = true;
         this.lastSyncRegion = {
             latitude: viewRegion.latitude,

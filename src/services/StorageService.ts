@@ -10,8 +10,7 @@ const getStorage = () => {
   if (!_storage) {
     try {
       _storage = new MMKV({
-        id: 'ceilings-app-storage',
-      });
+        id: 'ceilings-app-storage' });
     } catch (e) {
       console.error('[StorageService] Failed to initialize MMKV', e);
       return null;

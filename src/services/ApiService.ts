@@ -13,9 +13,7 @@ class ApiService {
       baseURL: this.baseURL,
       timeout: 15000,
       headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+        'Content-Type': 'application/json' } });
 
     this.setupInterceptors();
   }

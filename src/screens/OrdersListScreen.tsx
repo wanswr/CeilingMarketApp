@@ -1,22 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { TouchableOpacity,
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  RefreshControl,
 
-  Alert,
-  ScrollView,
-TouchableOpacity,
-} from 'react-native';
-import { TouchableOpacity,  SafeAreaView } from 'react-native-safe-area-context';
-import { TouchableOpacity,  useFocusEffect } from '@react-navigation/native';
-import { TouchableOpacity,  Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity,  mapEngine } from '../services/MapEngine';
-import { TouchableOpacity,  Order, OrderStatus, WorkType } from '../types';
-import { TouchableOpacity,  COLORS, SHADOWS } from '../constants/theme';
-import { TouchableOpacity,  OrderCard } from '../components/OrderCard';
+import { TouchableOpacity, View,
+ Text,
+ StyleSheet,
+ FlatList,
+ RefreshControl,
+
+ Alert,
+ ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { mapEngine } from '../services/MapEngine';
+import { Order, OrderStatus, WorkType } from '../types';
+import { COLORS, SHADOWS } from '../constants/theme';
+import { OrderCard } from '../components/OrderCard';
 
 const FILTERS = {
   STATUS: [
@@ -313,40 +311,33 @@ const styles = StyleSheet.create({
     color: COLORS.gray
   },
   tabTextActive: {
-    color: COLORS.primary,
-  },
+    color: COLORS.primary },
   filtersWrapper: {
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
+    borderBottomColor: '#F1F5F9' },
   filtersScroll: {
     paddingHorizontal: 20,
     paddingVertical: 12,
     alignItems: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#F1F5F9',
     borderWidth: 1,
-    borderColor: 'transparent',
-  },
+    borderColor: 'transparent' },
   chipActive: {
     backgroundColor: COLORS.primary + '10',
-    borderColor: COLORS.primary,
-  },
+    borderColor: COLORS.primary },
   chipText: {
     fontSize: 13,
     fontWeight: '600',
-    color: COLORS.gray,
-  },
+    color: COLORS.gray },
   chipTextActive: {
     color: COLORS.primary,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   sortButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -354,19 +345,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    gap: 6,
-  },
+    gap: 6 },
   sortButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.primary,
-  },
+    color: COLORS.primary },
   divider: {
     width: 1,
     height: 16,
     backgroundColor: '#E2E8F0',
-    marginHorizontal: 4,
-  },
+    marginHorizontal: 4 },
   list: { padding: 16, paddingBottom: 100 },
   empty: {
     flex: 1,

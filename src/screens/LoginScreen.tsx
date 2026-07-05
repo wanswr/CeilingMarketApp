@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  TouchableWithoutFeedback,
-  TouchableOpacity,
-  Keyboard,
-  ImageBackground
-} from 'react-native';
+
+import { TouchableOpacity, View,
+ Text,
+ Alert,
+ KeyboardAvoidingView,
+ Platform,
+ StyleSheet,
+ TouchableWithoutFeedback,
+ Keyboard,
+ ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';

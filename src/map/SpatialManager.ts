@@ -75,8 +75,7 @@ class SpatialManager {
           minLat: normalize(minLat, 'floor'),
           maxLat: normalize(maxLat, 'ceil'),
           minLng: normalize(minLng, 'floor'),
-          maxLng: normalize(maxLng, 'ceil'),
-      };
+          maxLng: normalize(maxLng, 'ceil') };
   }
 
   markAreaLoaded(minLat: number, maxLat: number, minLng: number, maxLng: number) {

@@ -1,46 +1,33 @@
 import React, { useState } from 'react';
-import { TouchableOpacity,
-  View,
-  Text,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
-  Image,
-  Modal,
-  TextInput,
 
-
-TouchableOpacity,
-} from 'react-native';
-import { TouchableOpacity, SafeAreaView
-} from 'react-native-safe-area-context';
-import { TouchableOpacity, Ionicons
-} from '@expo/vector-icons';
-import { TouchableOpacity, BlurView
-} from 'expo-blur';
+import { TouchableOpacity, View,
+ Text,
+ ScrollView,
+ Alert,
+ ActivityIndicator,
+ StyleSheet,
+ KeyboardAvoidingView,
+ Platform,
+ TouchableWithoutFeedback,
+ Keyboard,
+ Image,
+ Modal,
+ TextInput } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import MapView, { Marker, PROVIDER_GOOGLE
 } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { TouchableOpacity, z
-} from 'zod';
-import { TouchableOpacity, AppInput
-} from '../components/Input';
-import { TouchableOpacity, Button
-} from '../components/Button';
-import { TouchableOpacity, mapEngine
-} from '../services/MapEngine';
-import { TouchableOpacity, COLORS, SHADOWS
-} from '../constants/theme';
-import { TouchableOpacity, formatDate
-} from '../utils/date';
+import { z } from 'zod';
+import { AppInput } from '../components/Input';
+import { Button } from '../components/Button';
+import { mapEngine } from '../services/MapEngine';
+import { COLORS, SHADOWS } from '../constants/theme';
+import { formatDate } from '../utils/date';
 import i18n from '../constants/i18n';
 
 const orderSchema = z.object({
@@ -48,8 +35,7 @@ const orderSchema = z.object({
   address: z.string().min(5, "Укажите полный адрес"),
   price: z.string().refine(v => !isNaN(Number(v)) && Number(v) > 0, "Укажите корректную сумму"),
   details: z.string().min(10, "Добавьте больше деталей"),
-  workType: z.string().min(1, "Выберите тип работы"),
-});
+  workType: z.string().min(1, "Выберите тип работы") });
 
 export default function CreateOrderScreen({ navigation }: any) {
   const [form, setForm] = useState({
@@ -58,8 +44,7 @@ export default function CreateOrderScreen({ navigation }: any) {
     price: '',
     details: '',
     workType: 'INSTALLATION',
-    date: new Date(),
-  });
+    date: new Date() });
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [importText, setImportText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
@@ -84,8 +69,7 @@ export default function CreateOrderScreen({ navigation }: any) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.7,
-    });
+      quality: 0.7 });
 
     if (!result.canceled) {
       setImages([...images, result.assets[0].uri]);
@@ -169,8 +153,7 @@ export default function CreateOrderScreen({ navigation }: any) {
       if (bestResult) {
         const newCoords = {
           latitude: bestResult.latitude,
-          longitude: bestResult.longitude,
-        };
+          longitude: bestResult.longitude };
         setCoordinates(newCoords);
 
         try {
@@ -190,8 +173,7 @@ export default function CreateOrderScreen({ navigation }: any) {
           mapRef.current.animateToRegion({
             ...newCoords,
             latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }, 1000);
+            longitudeDelta: 0.01 }, 1000);
         }
       } else {
         Alert.alert("Адрес не найден", "Попробуйте уточнить город или район, либо поставьте метку на карте вручную.");
@@ -215,8 +197,7 @@ export default function CreateOrderScreen({ navigation }: any) {
       const loc = await Location.getCurrentPositionAsync({});
       const coords = {
         latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      };
+        longitude: loc.coords.longitude };
       setCoordinates(coords);
 
       const reverse = await Location.reverseGeocodeAsync(coords);
@@ -260,8 +241,7 @@ export default function CreateOrderScreen({ navigation }: any) {
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
         price: Number(form.price),
-        idempotencyKey: `${Date.now()}-${form.title}`,
-      };
+        idempotencyKey: `${Date.now()}-${form.title}` };
 
       await mapEngine.createOrder(orderData);
 
@@ -318,8 +298,7 @@ export default function CreateOrderScreen({ navigation }: any) {
       address: parsedData.address || form.address,
       price: parsedData.price ? String(parsedData.price) : form.price,
       details: parsedData.details || form.details,
-      date: parsedData.date ? new Date(parsedData.date) : form.date,
-    });
+      date: parsedData.date ? new Date(parsedData.date) : form.date });
 
     if (parsedData.address) {
       handleGeocode(parsedData.address);
@@ -454,8 +433,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                     latitude: coordinates?.latitude || 55.751244,
                     longitude: coordinates?.longitude || 37.618423,
                     latitudeDelta: 0.1,
-                    longitudeDelta: 0.1,
-                  }}
+                    longitudeDelta: 0.1 }}
                   onPress={(e) => setCoordinates(e.nativeEvent.coordinate)}
                 >
                   {coordinates && (
@@ -708,28 +686,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 20,
-  },
+    marginBottom: 20 },
   workTypeBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
     backgroundColor: '#F1F5F9',
     borderWidth: 1,
-    borderColor: 'transparent',
-  },
+    borderColor: 'transparent' },
   workTypeBtnActive: {
     backgroundColor: COLORS.primary + '10',
-    borderColor: COLORS.primary,
-  },
+    borderColor: COLORS.primary },
   workTypeBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: COLORS.gray,
-  },
+    color: COLORS.gray },
   workTypeBtnTextActive: {
-    color: COLORS.primary,
-  },
+    color: COLORS.primary },
   row: { flexDirection: 'row', alignItems: 'flex-end' },
   dateButton: {
     flexDirection: 'row',
