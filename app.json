@@ -11,8 +11,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "scheme": "ceilingsapp",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wanswr.ceilingsapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +30,10 @@
       "expo-font",
       "@react-native-community/datetimepicker",
       "expo-secure-store",
-      "expo-localization"
+      "expo-localization",
+      "expo-location",
+      "expo-image-picker",
+      "expo-notifications"
     ]
   }
 }

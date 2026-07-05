@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { mapEngine } from '../services/MapEngine';
 import { useAuth } from '../context/AuthContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storageService } from '../services/StorageService';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { Button } from '../components/Button';
 
@@ -60,9 +60,16 @@ const ProfileScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const handleLogout = async () => {
-    await AsyncStorage.clear();
-    navigation.replace('Auth');
+  const handleLogout = () => {
+    storageService.clearAll();
+    // Revert to original navigation structure if possible, but the original code had navigation.replace('Auth')
+    // which didn't match the current Stack.Screen names (Login, MainTabs, etc.)
+    // If user is null after storage clear (and AuthContext reacts), Navigation will show Login.
+    // Explicitly navigating to Login is safer for now.
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
   };
 
   if (loading) {

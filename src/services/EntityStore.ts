@@ -1,8 +1,9 @@
 import { Order, UserProfile } from '../types';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storageService } from './StorageService';
 
 /**
- * EntityStore V9: Normalized Single Source of Truth with Camera-Data Decoupling.
+ * EntityStore V11: Normalized Single Source of Truth with Camera-Data Decoupling.
+ * Modernized with StorageService (MMKV) for synchronous hydration.
  */
 
 interface StoreMeta {
@@ -11,12 +12,14 @@ interface StoreMeta {
   writes: number;
   spatialSyncs: number;
   lastClusterTime?: number;
+  lastSyncTime?: number;
 }
 
 class EntityStore {
   public ordersById: Map<string, Order> = new Map();
   public myOrders: Set<string> = new Set();
   public usersById: Map<string, UserProfile> = new Map();
+  public seenEvents: Set<string> = new Set();
 
   private spatialGrid: Map<string, Set<string>> = new Map();
   public currentUserId: string | null = null;
@@ -32,15 +35,16 @@ class EntityStore {
     spatialSyncs: 0
   };
 
+  private readonly PERSISTENCE_KEY = 'entity_store_v11';
+
   constructor() {
-      // Initialize with stable empty data
+    this.hydrate();
   }
 
   setCurrentUserId(id: string | null) {
       if (this.currentUserId === id) return;
       this.currentUserId = id;
-      console.log('[EntityStore] currentUserId changed:', id);
-      // Re-evaluate all orders for "My Orders" status when user identity is confirmed
+      if (__DEV__) console.log('[EntityStore] currentUserId changed:', id);
       this.recomputeMyOrders();
   }
 
@@ -58,7 +62,7 @@ class EntityStore {
               this.myOrders.add(order.id);
           }
       });
-      console.log('[EntityStore] MyOrders recomputed. Count:', this.myOrders.size);
+      if (__DEV__) console.log('[EntityStore] MyOrders recomputed. Count:', this.myOrders.size);
   }
 
   private getCoords(order: any): { lat: number; lng: number } | null {
@@ -86,24 +90,22 @@ class EntityStore {
         mergedApplications = Array.from(appMap.values());
     }
 
-    // V9: Ensure consistent field names in the store
+    // V11: Ensure consistent field names in the store
     const normalizedOrder = {
         ...order,
         latitude: coords.lat,
         longitude: coords.lng,
-        lat: coords.lat, // Redundant for convenience
+        lat: coords.lat,
         lng: coords.lng,
         applications: mergedApplications
     };
 
     const mergedOrder = existing ? { ...existing, ...normalizedOrder } : normalizedOrder;
 
-    // Skip if no change (stable reference optimization)
     if (existing === mergedOrder) return;
 
     if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status, source });
 
-    // Update spatial grid: remove from old cell if location changed
     if (existing) {
         const oldCoords = this.getCoords(existing);
         if (oldCoords && (oldCoords.lat !== coords.lat || oldCoords.lng !== coords.lng)) {
@@ -113,25 +115,19 @@ class EntityStore {
     this.ordersById.set(order.id, mergedOrder);
     this.updateOrderInGrid(mergedOrder);
 
-    // Update My Orders membership
     const myId = this.currentUserId;
     const isMeEmployer = !!(myId && mergedOrder.employerId === myId);
     const isMeExecutor = !!(myId && mergedOrder.executorId === myId);
     const isMeApplicant = !!(myId && mergedOrder.applications?.some((a: any) => a.executorId === myId));
 
     if (isMeEmployer || isMeExecutor || isMeApplicant) {
-      if (!this.myOrders.has(mergedOrder.id)) {
-          if (__DEV__) console.log('ORDERS_COUNT_CHANGED', { previousCount: this.myOrders.size, newCount: this.myOrders.size + 1, reason: 'order_added_to_my', orderId: mergedOrder.id });
-          this.myOrders.add(mergedOrder.id);
-      }
+      this.myOrders.add(mergedOrder.id);
     } else {
-      if (this.myOrders.has(mergedOrder.id)) {
-          if (__DEV__) console.log('ORDERS_COUNT_CHANGED', { previousCount: this.myOrders.size, newCount: this.myOrders.size - 1, reason: 'order_removed_from_my', orderId: mergedOrder.id });
-          this.myOrders.delete(mergedOrder.id);
-      }
+      this.myOrders.delete(mergedOrder.id);
     }
 
     this.meta.writes++;
+    this.persist();
   }
 
   removeOrder = (id: string, reason: string = 'unknown') => {
@@ -141,9 +137,7 @@ class EntityStore {
     }
     if (__DEV__) console.log('STORE_REMOVE', { id, reason });
     this.ordersById.delete(id);
-    if (this.myOrders.has(id)) {
-        this.myOrders.delete(id);
-    }
+    this.myOrders.delete(id);
     this.meta.writes++;
     this.persist();
   }
@@ -155,7 +149,6 @@ class EntityStore {
   }
 
   setOrders = (orders: Order[]) => {
-      // V5: FULL RECONCILIATION
       const incomingIds = new Set(orders.map(o => o.id));
       const myOrderIds = Array.from(this.myOrders);
 
@@ -165,7 +158,6 @@ class EntityStore {
           }
       });
 
-      if (__DEV__) console.log('STORE_REPLACE', { count: orders.length, source: 'sync' });
       orders.forEach(o => this.setOrder(o, 'sync_reconciliation'));
       this.isMyOrdersLoaded = true;
       this.persist();
@@ -233,26 +225,30 @@ class EntityStore {
           }) as Order[];
   }
 
-  hydrate = async () => {
+  hydrate = () => {
     try {
-      await AsyncStorage.removeItem('entity_store_v4');
-      await AsyncStorage.removeItem('map_cache_v1');
-
-      const data = await AsyncStorage.getItem('entity_store_v5');
+      const data = storageService.get<any>(this.PERSISTENCE_KEY);
       if (!data) return false;
-      const parsed = JSON.parse(data);
 
       const CACHE_TTL = 30 * 60 * 1000;
-      if (!parsed.updatedAt || Date.now() - parsed.updatedAt > CACHE_TTL) {
+      if (!data.updatedAt || Date.now() - data.updatedAt > CACHE_TTL) {
           if (__DEV__) console.log('STORE_HYDRATE', { status: 'expired' });
-          await AsyncStorage.removeItem('entity_store_v5');
+          storageService.delete(this.PERSISTENCE_KEY);
           return false;
       }
 
-      if (parsed.loadedBounds) this.loadedBounds = parsed.loadedBounds;
-      if (parsed.orders) {
-          if (__DEV__) console.log('STORE_HYDRATE', { status: 'success', count: parsed.orders.length });
-          parsed.orders.forEach((o: Order) => this.setOrder(o));
+      if (data.loadedBounds) this.loadedBounds = data.loadedBounds;
+      if (data.currentUserId) this.currentUserId = data.currentUserId;
+      if (data.orders) {
+          if (__DEV__) console.log('STORE_HYDRATE', { status: 'success', count: data.orders.length });
+          data.orders.forEach((o: Order) => {
+              this.ordersById.set(o.id, o);
+              this.updateOrderInGrid(o);
+          });
+          this.recomputeMyOrders();
+      }
+      if (data.seenEvents) {
+          this.seenEvents = new Set(data.seenEvents);
       }
       return true;
     } catch (e) {
@@ -260,14 +256,16 @@ class EntityStore {
     }
   }
 
-  persist = async () => {
+  persist = () => {
     try {
       const data = {
         orders: Array.from(this.ordersById.values()),
         loadedBounds: this.loadedBounds,
-        updatedAt: Date.now()
+        currentUserId: this.currentUserId,
+        updatedAt: Date.now(),
+        seenEvents: Array.from(this.seenEvents)
       };
-      await AsyncStorage.setItem('entity_store_v5', JSON.stringify(data));
+      storageService.set(this.PERSISTENCE_KEY, data);
     } catch (e) {}
   }
 
@@ -275,8 +273,22 @@ class EntityStore {
     this.ordersById.clear();
     this.myOrders.clear();
     this.spatialGrid.clear();
+    this.seenEvents.clear();
     this.isInitialLoaded = false;
     this.isMyOrdersLoaded = false;
+    storageService.delete(this.PERSISTENCE_KEY);
+  }
+
+  isEventSeen(eventId: string): boolean {
+    return this.seenEvents.has(eventId);
+  }
+
+  markEventSeen(eventId: string) {
+    this.seenEvents.add(eventId);
+    if (this.seenEvents.size > 1000) {
+        const oldest = this.seenEvents.values().next().value;
+        if (oldest) this.seenEvents.delete(oldest);
+    }
     this.persist();
   }
 }
