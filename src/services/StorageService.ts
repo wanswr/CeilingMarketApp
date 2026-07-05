@@ -2,31 +2,43 @@ import { MMKV } from 'react-native-mmkv';
 
 /**
  * StorageService V11: High-performance synchronous storage using MMKV.
+ * Refactored to avoid prototype issues during early initialization.
  */
-class StorageService {
-  private storage: MMKV;
+let _storage: MMKV | null = null;
 
-  constructor() {
-    this.storage = new MMKV({
-      id: 'ceilings-app-storage',
-    });
+const getStorage = () => {
+  if (!_storage) {
+    try {
+      _storage = new MMKV({
+        id: 'ceilings-app-storage',
+      });
+    } catch (e) {
+      console.error('[StorageService] Failed to initialize MMKV', e);
+      return null;
+    }
   }
+  return _storage;
+};
 
+export const storageService = {
   set(key: string, value: any): void {
     try {
+      const storage = getStorage();
+      if (!storage) return;
       const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-      this.storage.set(key, stringValue);
+      storage.set(key, stringValue);
     } catch (error) {
       console.error(`[StorageService] Error setting key "${key}":`, error);
     }
-  }
+  },
 
   get<T>(key: string): T | null {
     try {
-      const value = this.storage.getString(key);
+      const storage = getStorage();
+      if (!storage) return null;
+      const value = storage.getString(key);
       if (!value) return null;
 
-      // Try to parse as JSON, return as string if fails
       try {
         return JSON.parse(value) as T;
       } catch {
@@ -36,32 +48,33 @@ class StorageService {
       console.error(`[StorageService] Error getting key "${key}":`, error);
       return null;
     }
-  }
+  },
 
   delete(key: string): void {
     try {
-      this.storage.delete(key);
+      const storage = getStorage();
+      if (storage) storage.delete(key);
     } catch (error) {
       console.error(`[StorageService] Error deleting key "${key}":`, error);
     }
-  }
+  },
 
   clearAll(): void {
     try {
-      this.storage.clearAll();
+      const storage = getStorage();
+      if (storage) storage.clearAll();
     } catch (error) {
       console.error('[StorageService] Error clearing storage:', error);
     }
-  }
+  },
 
   getAllKeys(): string[] {
     try {
-      return this.storage.getAllKeys();
+      const storage = getStorage();
+      return storage ? storage.getAllKeys() : [];
     } catch (error) {
       console.error('[StorageService] Error getting all keys:', error);
       return [];
     }
   }
-}
-
-export const storageService = new StorageService();
+};

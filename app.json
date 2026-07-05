@@ -21,7 +21,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.wanswr.Ceilingsapp"
+      "package": "com.wanswr.ceilingsapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"

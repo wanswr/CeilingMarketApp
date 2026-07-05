@@ -228,7 +228,10 @@ class EntityStore {
   hydrate = () => {
     try {
       const data = storageService.get<any>(this.PERSISTENCE_KEY);
-      if (!data) return false;
+      if (!data) {
+          if (__DEV__) console.log('STORE_HYDRATE', { status: 'no_data' });
+          return false;
+      }
 
       const CACHE_TTL = 30 * 60 * 1000;
       if (!data.updatedAt || Date.now() - data.updatedAt > CACHE_TTL) {
