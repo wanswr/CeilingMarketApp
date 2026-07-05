@@ -5,11 +5,10 @@ const config = getDefaultConfig(__dirname);
 
 config.resolver.sourceExts.push('cjs');
 
-// V9 Optimization: Robust exclusion that works on Windows and POSIX
-// This prevents Metro from crashing when watching backend build artifacts or node_modules
+// V9 Optimization: Simplified exclusion list for macOS/Windows stability
 config.resolver.blockList = [
-  /.*[\\\/]backend[\\\/].*/,
-  /.*[\\\/]verification[\\\/].*/,
+  /backend\/.*/,
+  /verification\/.*/,
 ];
 
 module.exports = config;
