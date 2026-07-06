@@ -227,6 +227,7 @@ class EntityStore {
 
   hydrate = () => {
     try {
+      if (__DEV__) console.log('STORE_HYDRATE_START');
       const data = storageService.get<any>(this.PERSISTENCE_KEY);
       if (!data) {
           if (__DEV__) console.log('STORE_HYDRATE', { status: 'no_data' });

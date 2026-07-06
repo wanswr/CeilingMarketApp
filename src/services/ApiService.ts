@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-const DEFAULT_API_URL = 'http://localhost:3000/api/'; // Default for simulator. Use machine IP for physical device.
+const DEFAULT_API_URL = 'http://192.168.1.137:3000/api/'; // Default for physical device.
 
 class ApiService {
   private api: AxiosInstance;

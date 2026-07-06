@@ -12,13 +12,19 @@ const getStorage = () => {
 
   try {
     // Dynamic require prevents early prototype resolution issues in Hermes
-    const { MMKV } = require('react-native-mmkv');
-    _storage = new MMKV({
+    const mmkvModule = require('react-native-mmkv');
+
+    // Check if MMKV exists and has a prototype or constructor
+    if (!mmkvModule || !mmkvModule.MMKV) {
+        throw new Error('MMKV module loaded but MMKV constructor is missing');
+    }
+
+    _storage = new mmkvModule.MMKV({
       id: 'ceilings-app-storage'
     });
     return _storage;
   } catch (e) {
-    console.warn('[StorageService] MMKV native module not found. Persistence disabled.');
+    console.warn('[StorageService] MMKV native module not found or unavailable. Persistence disabled.', e);
     _isNativeUnavailable = true;
     return null;
   }
