@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Image, Modal, TextInput } from 'react-native';
+import { TouchableOpacity,   View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Image, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';

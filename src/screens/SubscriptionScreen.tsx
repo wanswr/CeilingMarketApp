@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TouchableOpacity, View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
+import { TouchableOpacity,   View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { mapEngine } from '../services/MapEngine';
 import { COLORS } from '../constants/theme';

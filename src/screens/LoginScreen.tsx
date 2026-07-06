@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-import { TouchableOpacity, View,
+import { TouchableOpacity,  View,
  Text,
  Alert,
  KeyboardAvoidingView,

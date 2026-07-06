@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import { TouchableOpacity,   View, Text, StyleSheet } from 'react-native';
 import { COLORS } from '../../constants/theme';
 
 interface Props {

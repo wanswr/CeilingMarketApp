@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
-import { TouchableOpacity, View,
+import { TouchableOpacity,  View,
  Text,
  StyleSheet,
  FlatList,
