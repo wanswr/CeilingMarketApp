@@ -1,20 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
-import { TouchableOpacity,  View,
- Text,
- StyleSheet,
- FlatList,
- RefreshControl,
-
- Alert,
- ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { mapEngine } from '../services/MapEngine';
-import { Order, OrderStatus, WorkType } from '../types';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { OrderCard } from '../components/OrderCard';
+import {
+  TouchableOpacity,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  Alert,
+  ScrollView
+ } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useFocusEffect } from '@react-navigation/native'
+import { Ionicons } from '@expo/vector-icons'
+import { mapEngine } from '../services/MapEngine'
+import { Order, OrderStatus, WorkType } from '../types'
+import { COLORS, SHADOWS } from '../constants/theme'
+import { OrderCard } from '../components/OrderCard'
 
 const FILTERS = {
   STATUS: [

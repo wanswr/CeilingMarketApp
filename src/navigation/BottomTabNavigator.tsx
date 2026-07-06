@@ -1,13 +1,13 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import { Ionicons } from '@expo/vector-icons'
 
 import MapScreen from '../screens/MapScreen';
 import OrdersListScreen from '../screens/OrdersListScreen';
 import CreateOrderScreen from '../screens/CreateOrderScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ChatListScreen from '../screens/ChatListScreen';
-import { COLORS } from '../constants/theme';
+import { COLORS } from '../constants/theme'
 
 const Tab = createBottomTabNavigator();
 

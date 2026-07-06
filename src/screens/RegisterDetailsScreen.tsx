@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button } from '../components/Button';
-import { AppInput } from '../components/Input';
-import { mapEngine } from '../services/MapEngine';
-import { useAuth } from '../context/AuthContext';
+import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Button } from '../components/Button'
+import { AppInput } from '../components/Input'
+import { mapEngine } from '../services/MapEngine'
+import { useAuth } from '../context/AuthContext'
 
 const RegisterDetailsScreen = ({ navigation }: any) => {
   const [name, setName] = useState('');

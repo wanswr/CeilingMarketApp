@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
 
-import { TouchableOpacity,  View,
- Text,
- StyleSheet,
-
- Alert,
- ActivityIndicator,
- Image,
- ScrollView,
- Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { mapEngine } from '../services/MapEngine';
-import { useAuth } from '../context/AuthContext';
-import { storageService } from '../services/StorageService';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { Button } from '../components/Button';
+import {
+  TouchableOpacity,
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  Platform
+ } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
+import { BlurView } from 'expo-blur'
+import { mapEngine } from '../services/MapEngine'
+import { useAuth } from '../context/AuthContext'
+import { storageService } from '../services/StorageService'
+import { COLORS, SHADOWS } from '../constants/theme'
+import { Button } from '../components/Button'
 
 const ProfileScreen = ({ route, navigation }: any) => {
   const userId = route.params?.userId;

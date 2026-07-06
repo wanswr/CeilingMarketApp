@@ -1,23 +1,26 @@
 import React, { useState } from 'react';
 
-import { TouchableOpacity,  View,
- Text,
- Alert,
- KeyboardAvoidingView,
- Platform,
- StyleSheet,
- TouchableWithoutFeedback,
- Keyboard,
- ImageBackground } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { useAuth } from '../context/AuthContext';
-import { AppInput } from '../components/Input';
-import { Button } from '../components/Button';
-import { mapEngine } from '../services/MapEngine';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  TouchableOpacity,
+  View,
+  Text,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  TouchableWithoutFeedback,
+  Keyboard,
+  ImageBackground
+ } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
+import { BlurView } from 'expo-blur'
+import { useAuth } from '../context/AuthContext'
+import { AppInput } from '../components/Input'
+import { Button } from '../components/Button'
+import { mapEngine } from '../services/MapEngine'
+import { COLORS, SHADOWS } from '../constants/theme'
+import { Ionicons } from '@expo/vector-icons'
 
 export default function LoginScreen({ navigation }: any) {
   const [phone, setPhone] = useState('+7');

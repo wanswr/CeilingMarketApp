@@ -1,25 +1,27 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
-import { TouchableOpacity,  View,
- StyleSheet,
- Text,
- ActivityIndicator,
-
- TextInput,
- ScrollView,
- Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import {
+  TouchableOpacity,
+  View,
+  StyleSheet,
+  Text,
+  ActivityIndicator,
+  TextInput,
+  ScrollView,
+  Platform
+ } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useFocusEffect } from '@react-navigation/native'
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons'
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { BlurView } from 'expo-blur';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { mapEngine } from '../services/MapEngine';
-import { mapViewportStore } from '../services/MapViewportStore';
-import { formatDate } from '../utils/date';
-import { Order } from '../types';
+import { BlurView } from 'expo-blur'
+import { COLORS, SHADOWS } from '../constants/theme'
+import { mapEngine } from '../services/MapEngine'
+import { mapViewportStore } from '../services/MapViewportStore'
+import { formatDate } from '../utils/date'
+import { Order } from '../types'
 import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {

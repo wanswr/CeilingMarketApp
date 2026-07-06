@@ -1,4 +1,4 @@
-import { MMKV } from 'react-native-mmkv';
+import { MMKV } from 'react-native-mmkv'
 
 /**
  * StorageService V11: High-performance synchronous storage using MMKV.

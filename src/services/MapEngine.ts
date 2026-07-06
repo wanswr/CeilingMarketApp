@@ -1,10 +1,10 @@
-import { Order } from '../types';
-import { apiService } from './ApiService';
-import { requestRouter } from './RequestRouter';
-import { entityStore } from './EntityStore';
-import { GeoClusterService } from './GeoClusterService';
-import { spatialManager } from '../map/SpatialManager';
-import { mapViewportStore } from './MapViewportStore';
+import { Order } from '../types'
+import { apiService } from './ApiService'
+import { requestRouter } from './RequestRouter'
+import { entityStore } from './EntityStore'
+import { GeoClusterService } from './GeoClusterService'
+import { spatialManager } from '../map/SpatialManager'
+import { mapViewportStore } from './MapViewportStore'
 
 type OrderCallback = (orders: Order[]) => void;
 

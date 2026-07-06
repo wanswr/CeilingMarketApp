@@ -1,5 +1,5 @@
-import { Order, UserProfile } from '../types';
-import { storageService } from './StorageService';
+import { Order, UserProfile } from '../types'
+import { storageService } from './StorageService'
 
 /**
  * EntityStore V11: Normalized Single Source of Truth with Camera-Data Decoupling.

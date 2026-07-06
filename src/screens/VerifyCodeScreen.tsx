@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, Alert, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button } from '../components/Button';
-import { AppInput } from '../components/Input';
+import { View, Text, Alert, StyleSheet } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Button } from '../components/Button'
+import { AppInput } from '../components/Input'
 
 export default function VerifyCodeScreen({ navigation }: any) {
   const [code, setCode] = useState('');

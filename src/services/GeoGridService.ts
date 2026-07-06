@@ -1,4 +1,4 @@
-import { LatLng } from '../types';
+import { LatLng } from '../types'
 
 /**
  * GeoGridService: Handles coordinate normalization and grid-based bucket key generation.

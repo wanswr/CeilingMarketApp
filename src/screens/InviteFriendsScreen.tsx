@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 
-import { TouchableOpacity,  View,
- Text,
- StyleSheet,
- FlatList,
-
- ActivityIndicator,
- Share,
- Alert } from 'react-native';
+import {
+  TouchableOpacity,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  ActivityIndicator,
+  Share,
+  Alert
+ } from 'react-native'
 import * as Contacts from 'expo-contacts';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons'
+import { COLORS } from '../constants/theme'
 
 export default function InviteFriendsScreen() {
   const [contacts, setContacts] = useState<Contacts.Contact[]>([]);

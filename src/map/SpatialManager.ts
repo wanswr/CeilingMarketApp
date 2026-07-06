@@ -1,4 +1,4 @@
-import { storageService } from '../services/StorageService';
+import { storageService } from '../services/StorageService'
 
 /**
  * SpatialManager V11: Handles global coordinate-based chunking and caching.

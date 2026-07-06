@@ -1,5 +1,5 @@
 
-import { Region } from 'react-native-maps';
+import { Region } from 'react-native-maps'
 
 class MapViewportStore {
     private currentRegion: Region = {

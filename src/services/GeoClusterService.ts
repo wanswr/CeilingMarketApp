@@ -1,5 +1,5 @@
-import { Order } from '../types';
-import { GeoGridService } from './GeoGridService';
+import { Order } from '../types'
+import { GeoGridService } from './GeoGridService'
 
 export interface Cluster {
   id: string;

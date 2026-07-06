@@ -1,6 +1,6 @@
-import { io, Socket } from 'socket.io-client';
-import { mapEngine } from './MapEngine';
-import { getDistance } from '../utils/geo';
+import { io, Socket } from 'socket.io-client'
+import { mapEngine } from './MapEngine'
+import { getDistance } from '../utils/geo'
 
 class SocketService {
   private socket: Socket | null = null;

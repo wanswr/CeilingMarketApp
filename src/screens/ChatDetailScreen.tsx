@@ -1,21 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-import { TouchableOpacity,  View,
- Text,
- StyleSheet,
- FlatList,
- TextInput,
-
- KeyboardAvoidingView,
- Platform,
- ImageBackground,
- ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
-import { socketService } from '../services/SocketService';
-import { apiService } from '../services/ApiService';
-import { mapEngine } from '../services/MapEngine';
+import {
+  TouchableOpacity,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ImageBackground,
+  ActivityIndicator
+ } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
+import { COLORS } from '../constants/theme'
+import { socketService } from '../services/SocketService'
+import { apiService } from '../services/ApiService'
+import { mapEngine } from '../services/MapEngine'
 
 interface Message {
   id: string;
