@@ -1,22 +1,27 @@
-import { MMKV } from 'react-native-mmkv'
-
 /**
  * StorageService V11: High-performance synchronous storage using MMKV.
- * Refactored to avoid prototype issues during early initialization.
+ * Hardened version with dynamic require and graceful degradation.
  */
-let _storage: MMKV | null = null;
+
+let _storage: any = null;
+let _isNativeUnavailable = false;
 
 const getStorage = () => {
-  if (!_storage) {
-    try {
-      _storage = new MMKV({
-        id: 'ceilings-app-storage' });
-    } catch (e) {
-      console.error('[StorageService] Failed to initialize MMKV', e);
-      return null;
-    }
+  if (_storage) return _storage;
+  if (_isNativeUnavailable) return null;
+
+  try {
+    // Dynamic require prevents early prototype resolution issues in Hermes
+    const { MMKV } = require('react-native-mmkv');
+    _storage = new MMKV({
+      id: 'ceilings-app-storage'
+    });
+    return _storage;
+  } catch (e) {
+    console.warn('[StorageService] MMKV native module not found. Persistence disabled.');
+    _isNativeUnavailable = true;
+    return null;
   }
-  return _storage;
 };
 
 export const storageService = {
