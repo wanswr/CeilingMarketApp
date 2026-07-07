@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 
@@ -8,22 +9,59 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
-  async validateUser(phone: string): Promise<any> {
+  async requestOtp(phone: string) {
+    const authMode = this.configService.get('AUTH_MODE') || 'development';
+
+    // In production, we would call an SMS provider here
+    if (authMode === 'development') {
+      return {
+        status: 'sent',
+        devCode: '1234'
+      };
+    }
+
+    // TODO: Integrate SMS provider for production
+    return {
+      status: 'sent'
+    };
+  }
+
+  async verifyOtp(phone: string, code: string) {
+    const authMode = this.configService.get('AUTH_MODE') || 'development';
+
+    if (authMode === 'development') {
+      if (code !== '1234') {
+        throw new UnauthorizedException('Invalid OTP code');
+      }
+    } else {
+      // TODO: Verify against real SMS provider/cache
+    }
+
     let user = await this.prisma.user.findUnique({ where: { phone } });
 
-    // If user doesn't exist, create one automatically (Login-as-Registration)
     if (!user) {
       user = await this.prisma.user.create({
         data: {
           phone,
           name: `User ${phone.slice(-4)}`,
-          // We don't set a default role here to allow the frontend to trigger role selection
+          phoneVerified: true,
         },
+      });
+    } else if (!user.phoneVerified) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { phoneVerified: true }
       });
     }
 
+    return this.login(user);
+  }
+
+  async validateUser(phone: string): Promise<any> {
+    const user = await this.prisma.user.findUnique({ where: { phone } });
     return user;
   }
 
@@ -35,7 +73,8 @@ export class AuthService {
           id: user.id,
           phone: user.phone,
           name: user.name,
-          role: user.role
+          role: user.role,
+          phoneVerified: user.phoneVerified
       },
     };
   }
@@ -46,6 +85,7 @@ export class AuthService {
         phone: dto.phone,
         name: dto.name,
         role: dto.role || 'WORKER',
+        phoneVerified: false, // Should be verified via OTP
       },
     });
     return this.login(user);

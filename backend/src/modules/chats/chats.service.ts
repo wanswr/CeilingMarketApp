@@ -51,17 +51,18 @@ export class ChatsService {
       }
     });
 
-    // Notify participants via WebSocket
-    this.gateway.server.to(`chat_${chatId}`).emit('message.new', message);
+    // Notify participants via WebSocket room
+    this.gateway.server.to(`chat:${chatId}`).emit('message.new', message);
 
-    // Also broadcast globally for notifications if needed
-    // this.gateway.broadcast('notification.message', { chatId, message });
+    // Also notify for list updates in private user rooms
+    const recipientId = chat.employerId === senderId ? chat.executorId : chat.employerId;
+    this.gateway.server.to(`user:${recipientId}`).emit('chat.update', { chatId, lastMessage: message });
 
     return message;
   }
 
   async getMyChats(userId: string) {
-    return this.prisma.chat.findMany({
+    const chats = await this.prisma.chat.findMany({
       where: {
         OR: [
           { employerId: userId },
@@ -69,13 +70,27 @@ export class ChatsService {
         ]
       },
       include: {
-        order: { select: { title: true, status: true } },
-        employer: { select: { name: true, avatar: true } },
-        executor: { select: { name: true, avatar: true } },
+        order: { select: { id: true, title: true, status: true } },
+        employer: { select: { id: true, name: true, avatar: true } },
+        executor: { select: { id: true, name: true, avatar: true } },
         messages: { orderBy: { createdAt: 'desc' }, take: 1 }
       },
       orderBy: { updatedAt: 'desc' }
     });
+
+    // Calculate unread counts
+    const chatsWithUnread = await Promise.all(chats.map(async (chat) => {
+        const unreadCount = await this.prisma.message.count({
+            where: {
+                chatId: chat.id,
+                senderId: { not: userId },
+                isRead: false
+            }
+        });
+        return { ...chat, unreadCount };
+    }));
+
+    return chatsWithUnread;
   }
 
   async getMessages(chatId: string, userId: string) {
@@ -88,5 +103,25 @@ export class ChatsService {
       orderBy: { createdAt: 'asc' },
       include: { sender: { select: { id: true, name: true, avatar: true } } }
     });
+  }
+
+  async markAsRead(chatId: string, userId: string) {
+    const chat = await this.prisma.chat.findUnique({ where: { id: chatId } });
+    if (!chat) throw new NotFoundException();
+    if (chat.employerId !== userId && chat.executorId !== userId) throw new ForbiddenException();
+
+    await this.prisma.message.updateMany({
+        where: {
+            chatId,
+            senderId: { not: userId },
+            isRead: false
+        },
+        data: { isRead: true }
+    });
+
+    const otherId = chat.employerId === userId ? chat.executorId : chat.employerId;
+    this.gateway.server.to(`user:${otherId}`).emit('message.read', { chatId });
+
+    return { success: true };
   }
 }

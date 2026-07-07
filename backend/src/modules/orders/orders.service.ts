@@ -1,14 +1,16 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { OrderStatus, WorkType } from '@prisma/client';
+import { OrderStatus, WorkType, ApplicationStatus } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
+import { ChatsService } from '../chats/chats.service';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private prisma: PrismaService,
     private gateway: AppGateway,
+    private chatsService: ChatsService,
   ) {}
 
   /**
@@ -20,7 +22,8 @@ export class OrdersService {
     [OrderStatus.HAS_RESPONSES]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
     [OrderStatus.CLAIMED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
     [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
-    [OrderStatus.COMPLETED]: [],
+    [OrderStatus.COMPLETED]: [OrderStatus.REVIEWED],
+    [OrderStatus.REVIEWED]: [],
     [OrderStatus.CANCELLED]: [],
     [OrderStatus.DISPUTE]: [],
   };
@@ -54,6 +57,10 @@ export class OrdersService {
       },
     });
 
+    const room = `geo:${Math.floor(order.latitude * 10)}:${Math.floor(order.longitude * 10)}`;
+    this.gateway.server.to(room).emit('order.created', order);
+
+    // Fallback for global listeners
     this.gateway.broadcast('order.created', { order, orderId: order.id, employerId: order.employerId });
     return order;
   }
@@ -86,6 +93,7 @@ export class OrdersService {
           orderId,
           executorId,
           price: price || order.price,
+          status: ApplicationStatus.PENDING,
         },
         include: {
           executor: { select: { id: true, name: true, rating: true, avatar: true, completedOrders: true } }
@@ -104,9 +112,28 @@ export class OrdersService {
       return { application, order: updatedOrder };
     });
 
-    this.gateway.broadcast('application.new', result.application);
+    this.gateway.server.to(`user:${result.order.employerId}`).emit('application.new', result.application);
     this.gateway.broadcast('order.status.changed', result.order);
     return result;
+  }
+
+  async markApplicationViewed(applicationId: string, userId: string) {
+    const app = await this.prisma.application.findUnique({
+        where: { id: applicationId },
+        include: { order: true }
+    });
+    if (!app) throw new NotFoundException();
+    if (app.order.employerId !== userId) throw new ForbiddenException();
+
+    if (app.status === ApplicationStatus.PENDING) {
+        const updated = await this.prisma.application.update({
+            where: { id: applicationId },
+            data: { status: ApplicationStatus.VIEWED }
+        });
+        this.gateway.server.to(`user:${app.executorId}`).emit('application.viewed', { id: applicationId });
+        return updated;
+    }
+    return app;
   }
 
   /**
@@ -125,7 +152,7 @@ export class OrdersService {
       // Update application status
       await tx.application.update({
         where: { id: applicationId },
-        data: { status: 'ACCEPTED' }
+        data: { status: ApplicationStatus.ACCEPTED }
       });
 
       // Reject other applications
@@ -136,7 +163,7 @@ export class OrdersService {
 
       await tx.application.updateMany({
         where: { orderId: application.orderId, id: { not: applicationId } },
-        data: { status: 'REJECTED' }
+        data: { status: ApplicationStatus.REJECTED }
       });
 
       // Update order
@@ -153,18 +180,24 @@ export class OrdersService {
         }
       });
 
+      // Task #2: Automatically create chat
+      const chat = await this.chatsService.getOrCreateChat(application.orderId, application.executorId, employerId);
+
       return {
         order: updatedOrder,
+        chat,
         acceptedApplicationId: applicationId,
         rejectedApplicationIds: otherApplications.map(a => a.id)
       };
     });
 
     this.gateway.broadcast('order.status.changed', result.order);
-    this.gateway.broadcast('application.accepted', { id: result.acceptedApplicationId });
+    this.gateway.server.to(`user:${result.order.executorId}`).emit('application.accepted', { id: result.acceptedApplicationId, orderId: result.order.id });
+
     result.rejectedApplicationIds.forEach(id => {
       this.gateway.broadcast('application.rejected', { id });
     });
+
     return result;
   }
 
@@ -208,6 +241,12 @@ export class OrdersService {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
         executor: { select: { id: true, name: true, avatar: true } }
       }
+    });
+
+    // Increment completed orders for user
+    await this.prisma.user.update({
+        where: { id: userId },
+        data: { completedOrders: { increment: 1 } }
     });
 
     this.gateway.broadcast('order.status.changed', result);
@@ -279,7 +318,8 @@ export class OrdersService {
           include: {
             executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
           }
-        }
+        },
+        review: true
       }
     });
     if (!order) throw new NotFoundException();

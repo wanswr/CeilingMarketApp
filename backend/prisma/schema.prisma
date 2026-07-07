@@ -21,10 +21,12 @@ enum OrderStatus {
   COMPLETED
   CANCELLED
   DISPUTE
+  REVIEWED
 }
 
 enum ApplicationStatus {
   PENDING
+  VIEWED
   ACCEPTED
   REJECTED
 }
@@ -50,6 +52,7 @@ model User {
   instagram         String?
   telegram          String?
   isVerified        Boolean        @default(false)
+  phoneVerified     Boolean        @default(false)
   isTrialUsed       Boolean        @default(false)
   pushToken         String?
   createdAt         DateTime       @default(now())
@@ -62,6 +65,8 @@ model User {
   executorChats     Chat[]         @relation("ExecutorChats")
   messages          Message[]
   subscription      Subscription?
+  authoredReviews   Review[]       @relation("AuthoredReviews")
+  receivedReviews   Review[]       @relation("TargetedReviews")
 }
 
 model Order {
@@ -95,6 +100,7 @@ model Order {
   executor          User?          @relation("ExecutorOrders", fields: [executorId], references: [id])
   applications      Application[]
   chats             Chat[]
+  review            Review?
 }
 
 model Chat {
@@ -149,4 +155,18 @@ model Subscription {
   updatedAt         DateTime       @updatedAt
 
   user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id                String         @id @default(uuid())
+  orderId           String         @unique
+  authorId          String
+  targetUserId      String
+  rating            Int
+  comment           String?
+  createdAt         DateTime       @default(now())
+
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author            User           @relation("AuthoredReviews", fields: [authorId], references: [id])
+  target            User           @relation("TargetedReviews", fields: [targetUserId], references: [id])
 }

@@ -1,10 +1,10 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { TouchableOpacity, View, Text, StyleSheet } from 'react-native'
-import { COLORS } from '../../constants/theme'
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { COLORS } from '../../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
 }
 
 interface State {
@@ -21,15 +21,16 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('[ErrorBoundary] CRASH:', error, errorInfo);
+    console.error('Uncaught error:', error, errorInfo);
   }
 
   public render() {
     if (this.state.hasError) {
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Что-то пошло не так</Text>
-          <Text style={styles.subtitle}>Произошла ошибка при загрузке карты.</Text>
+          <Ionicons name="alert-circle" size={64} color={COLORS.danger} />
+          <Text style={styles.title}>Упс! Что-то пошло не так.</Text>
+          <Text style={styles.subtitle}>Произошла непредвиденная ошибка в приложении.</Text>
           <TouchableOpacity
             style={styles.button}
             onPress={() => this.setState({ hasError: false })}
@@ -50,30 +51,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#fff'
+    backgroundColor: '#fff',
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: COLORS.dark,
-    marginBottom: 10
+    marginTop: 20,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 16,
     color: COLORS.gray,
     textAlign: 'center',
-    marginBottom: 20
+    marginTop: 10,
+    marginBottom: 30,
   },
   button: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 12,
   },
   buttonText: {
     color: '#fff',
-    fontWeight: 'bold'
-  }
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });
 
 export default ErrorBoundary;

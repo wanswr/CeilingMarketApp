@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -97,6 +97,12 @@ export class OrdersController {
     @Req() req: any
   ) {
     return this.ordersService.apply(id, req.user.id, price);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('applications/:id/view')
+  markApplicationViewed(@Param('id') id: string, @Req() req: any) {
+    return this.ordersService.markApplicationViewed(id, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)

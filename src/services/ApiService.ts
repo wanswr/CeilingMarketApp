@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 const DEFAULT_API_URL = 'http://192.168.1.137:3000/api/'; // Default for physical device.
 
 class ApiService {
-  private api: AxiosInstance;
+  public api: AxiosInstance;
   private baseURL: string;
 
   constructor() {
@@ -58,6 +58,7 @@ class ApiService {
   applyForOrder = (id: string, price?: number) => this.api.post(`orders/${id}/apply`, { price });
   cancelApplication = (id: string) => this.api.delete(`orders/${id}/apply`);
   acceptApplication = (applicationId: string) => this.api.post(`orders/applications/${applicationId}/accept`);
+  markApplicationViewed = (applicationId: string) => this.api.patch(`orders/applications/${applicationId}/view`);
   startOrder = (id: string) => this.api.post(`orders/${id}/start`);
   completeOrder = (id: string) => this.api.post(`orders/${id}/complete`);
   updateOrder = (id: string, data: any) => this.api.patch(`orders/${id}`, data);
@@ -69,6 +70,8 @@ class ApiService {
   updateProfile = (data: any) => this.api.patch('users/profile', data);
 
   // Auth
+  requestOtp = (phone: string) => this.api.post('auth/request-otp', { phone });
+  verifyOtp = (phone: string, code: string) => this.api.post('auth/verify-otp', { phone, code });
   login = (phone: string) => this.api.post('auth/login', { phone });
   register = (data: any) => this.api.post('auth/register', data);
 
@@ -77,6 +80,11 @@ class ApiService {
   getChatMessages = (chatId: string) => this.api.get(`chats/${chatId}/messages`);
   getOrCreateChat = (orderId: string, executorId: string) => this.api.post('chats', { orderId, executorId });
   sendMessage = (chatId: string, text: string) => this.api.post(`chats/${chatId}/messages`, { text });
+  markChatAsRead = (chatId: string) => this.api.patch(`chats/${chatId}/read`);
+
+  // Reviews
+  createReview = (data: { orderId: string, rating: number, comment?: string }) => this.api.post('reviews', data);
+  getMasterReviews = (masterId: string) => this.api.get(`reviews/master/${masterId}`);
 
   // Subscriptions
   activateSubscription = (days: number) => this.api.post('subscriptions/activate', { days });

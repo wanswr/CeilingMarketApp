@@ -25,6 +25,13 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('WEBSOCKET_CONNECTED', { id: this.socket?.id });
+
+      // Auto-join private room if user is logged in
+      const currentUser = mapEngine.getCurrentUser();
+      const myId = currentUser?.id || currentUser?.uid;
+      if (myId) {
+          this.socket?.emit('auth.join', myId);
+      }
     });
 
     this.socket.on('order.created', (payload: any) => {
@@ -65,30 +72,21 @@ class SocketService {
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.status.changed', id: order.id, status: order.status, countBefore, countAfter });
     });
 
-    this.socket.on('order.updated', (order: any) => {
-      const countBefore = mapEngine.entityStore?.getAllOrders().length;
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
-      mapEngine.triggerNotify();
-      mapEngine.entityStore?.persist();
-      const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.updated', id: order.id, countBefore, countAfter });
-    });
-
     this.socket.on('application.new', (application: any) => {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'application.new', orderId: application.orderId });
       mapEngine.syncOrder(application.orderId);
     });
 
-    this.socket.on('order.completed', (order: any) => {
-      const countBefore = mapEngine.entityStore?.getAllOrders().length;
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
-      mapEngine.triggerNotify();
-      mapEngine.entityStore?.persist();
-      const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.completed', id: order.id, countBefore, countAfter });
+    this.socket.on('application.accepted', (data: any) => {
+       console.log('WEBSOCKET: application.accepted', data);
+       mapEngine.syncOrder(data.orderId);
+    });
+
+    this.socket.on('message.new', (msg: any) => {
+        console.log('WEBSOCKET: message.new', msg.id);
+        // This is handled by Chat screens if they are active,
+        // but we might want to trigger a local notification or update unread counts globally here
     });
 
     this.socket.on('order.deleted', (payload: any) => {
@@ -97,7 +95,6 @@ class SocketService {
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.removeOrder(orderId);
       mapEngine.triggerNotify();
-      // removeOrder already persists
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.deleted', id: orderId, countBefore, countAfter });
     });

@@ -24,11 +24,11 @@ interface Message {
   text: string;
   senderId: string;
   senderName?: string;
-  timestamp: string;
-  status: 'sent' | 'delivered' | 'read';
+  createdAt: string;
+  isRead: boolean;
 }
 
-const ChatDetailScreen = ({ route }: any) => {
+const ChatDetailScreen = ({ route, navigation }: any) => {
   const { name, chatId, orderId, executorId } = route.params || {};
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,20 +38,31 @@ const ChatDetailScreen = ({ route }: any) => {
   const currentUser = mapEngine.getCurrentUser();
   const myId = currentUser?.id || currentUser?.uid;
 
+  const markAsRead = async (id: string) => {
+      try {
+          // @ts-ignore
+          await apiService.api.patch(`chats/${id}/read`);
+      } catch (e) {}
+  };
+
   useEffect(() => {
     const initChat = async () => {
       try {
-        let currentChatId = chatId;
+        let currentChatId = activeChatId;
         if (!currentChatId && orderId && executorId) {
-          // @ts-ignore
           const res = await apiService.getOrCreateChat(orderId, executorId);
           currentChatId = res.data.id;
           setActiveChatId(currentChatId);
           setMessages(res.data.messages || []);
         } else if (currentChatId) {
-          // @ts-ignore
           const res = await apiService.getChatMessages(currentChatId);
           setMessages(res.data);
+        }
+
+        if (currentChatId) {
+            markAsRead(currentChatId);
+            const socket = (socketService as any).socket;
+            if (socket) socket.emit('chat.join', currentChatId);
         }
       } catch (e) {
         console.error('Chat init error:', e);
@@ -62,21 +73,35 @@ const ChatDetailScreen = ({ route }: any) => {
 
     initChat();
 
+    const socket = (socketService as any).socket;
+
     const onNewMessage = (msg: any) => {
         if (msg.chatId === activeChatId) {
-            setMessages(prev => [...prev, msg]);
+            setMessages(prev => {
+                if (prev.some(m => m.id === msg.id)) return prev;
+                return [...prev, msg];
+            });
+            if (msg.senderId !== myId) {
+                markAsRead(activeChatId);
+            }
         }
     };
 
-    const socket = (socketService as any).socket;
+    const onMessagesRead = (payload: any) => {
+        if (payload.chatId === activeChatId) {
+            setMessages(prev => prev.map(m => m.senderId === myId ? { ...m, isRead: true } : m));
+        }
+    };
+
     if (socket) {
         socket.on('message.new', onNewMessage);
-        if (activeChatId) socket.emit('chat.join', activeChatId);
+        socket.on('message.read', onMessagesRead);
     }
 
     return () => {
         if (socket) {
             socket.off('message.new', onNewMessage);
+            socket.off('message.read', onMessagesRead);
             if (activeChatId) socket.emit('chat.leave', activeChatId);
         }
     };
@@ -89,7 +114,6 @@ const ChatDetailScreen = ({ route }: any) => {
     setInputText('');
 
     try {
-        // @ts-ignore
         await apiService.sendMessage(activeChatId, textToSend);
     } catch (e) {
         console.error('Send error:', e);
@@ -97,15 +121,16 @@ const ChatDetailScreen = ({ route }: any) => {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isMe = item.senderId === 'me';
+    const isMe = item.senderId === myId;
+    const time = new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     return (
       <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.otherMessageWrapper]}>
-        {!isMe && <Text style={styles.senderName}>{item.senderName}</Text>}
         <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.otherBubble]}>
           <Text style={styles.messageText}>{item.text}</Text>
           <View style={styles.messageFooter}>
-            <Text style={styles.timestamp}>{item.timestamp}</Text>
-            {isMe && <Ionicons name={item.status === 'read' ? "checkmark-done" : "checkmark"} size={16} color="#A7E5FF" style={{marginLeft: 4}} />}
+            <Text style={styles.timestamp}>{time}</Text>
+            {isMe && <Ionicons name={item.isRead ? "checkmark-done" : "checkmark"} size={16} color={item.isRead ? "#34B7F1" : "#A7E5FF"} style={{marginLeft: 4}} />}
           </View>
         </View>
       </View>
@@ -113,24 +138,48 @@ const ChatDetailScreen = ({ route }: any) => {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#e5ddd5' }}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#e5ddd5' }} edges={['bottom']}>
+      <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+              <Text style={styles.headerTitle} numberOfLines={1}>{name || 'Чат'}</Text>
+          </View>
+      </View>
+
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
         <ImageBackground source={{ uri: 'https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png' }} style={styles.background}>
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.listPadding}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-          />
+          {loading ? (
+              <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
+          ) : (
+            <FlatList
+                ref={flatListRef}
+                data={messages}
+                renderItem={renderMessage}
+                keyExtractor={item => item.id}
+                contentContainerStyle={styles.listPadding}
+                onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+                onLayout={() => flatListRef.current?.scrollToEnd()}
+            />
+          )}
           <View style={styles.inputContainer}>
-            <TouchableOpacity style={styles.iconBtn}><Ionicons name="attach" size={26} color={COLORS.gray} /></TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtn}><Ionicons name="add" size={28} color={COLORS.primary} /></TouchableOpacity>
             <View style={styles.inputWrapper}>
-              <TextInput style={styles.input} placeholder="Сообщение" value={inputText} onChangeText={setInputText} multiline />
+              <TextInput
+                style={styles.input}
+                placeholder="Cообщение..."
+                value={inputText}
+                onChangeText={setInputText}
+                multiline
+              />
             </View>
-            <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
-              <Ionicons name={inputText.length > 0 ? "send" : "mic"} size={22} color="#fff" />
+            <TouchableOpacity
+                style={[styles.sendBtn, !inputText.trim() && { backgroundColor: COLORS.gray }]}
+                onPress={sendMessage}
+                disabled={!inputText.trim()}
+            >
+              <Ionicons name="send" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         </ImageBackground>
@@ -141,23 +190,35 @@ const ChatDetailScreen = ({ route }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: {
+      height: 60,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#fff',
+      paddingHorizontal: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f0f0f0'
+  },
+  backBtn: { padding: 5 },
+  headerTitleContainer: { marginLeft: 15, flex: 1 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.dark },
   background: { flex: 1 },
-  listPadding: { padding: 10 },
-  messageWrapper: { marginBottom: 4, maxWidth: '80%' },
+  listPadding: { padding: 10, paddingBottom: 20 },
+  messageWrapper: { marginBottom: 4, maxWidth: '85%' },
   myMessageWrapper: { alignSelf: 'flex-end' },
   otherMessageWrapper: { alignSelf: 'flex-start' },
-  senderName: { fontSize: 12, fontWeight: 'bold', color: COLORS.secondary, marginLeft: 10, marginBottom: 2 },
-  messageBubble: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-  myBubble: { backgroundColor: '#DCF8C6', borderTopRightRadius: 2 },
-  otherBubble: { backgroundColor: '#fff', borderTopLeftRadius: 2 },
-  messageText: { fontSize: 16 },
+  messageBubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, ...SHADOWS.soft },
+  myBubble: { backgroundColor: '#DCF8C6', borderTopRightRadius: 4 },
+  otherBubble: { backgroundColor: '#fff', borderTopLeftRadius: 4 },
+  messageText: { fontSize: 16, color: COLORS.dark },
   messageFooter: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 2 },
-  timestamp: { fontSize: 11, color: '#66bb6a' },
-  inputContainer: { flexDirection: 'row', alignItems: 'flex-end' },
-  inputWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 25, marginHorizontal: 5, paddingHorizontal: 12, minHeight: 40 },
-  input: { flex: 1, fontSize: 16, paddingTop: 8, paddingBottom: 8 },
-  sendBtn: { backgroundColor: '#0088cc', width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center' },
-  iconBtn: { padding: 8 }
+  timestamp: { fontSize: 11, color: '#888' },
+  inputContainer: { flexDirection: 'row', alignItems: 'flex-end', padding: 10, backgroundColor: '#f0f0f0' },
+  inputWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 25, marginHorizontal: 8, paddingHorizontal: 15, minHeight: 40, justifyContent: 'center' },
+  input: { fontSize: 16, paddingTop: 8, paddingBottom: 8, color: COLORS.dark },
+  sendBtn: { backgroundColor: COLORS.primary, width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center', ...SHADOWS.soft },
+  iconBtn: { paddingBottom: 8 }
 });
 
 export default ChatDetailScreen;
