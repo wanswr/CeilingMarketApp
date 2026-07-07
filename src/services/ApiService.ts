@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { logger } from './logger/LoggerService';
 
 const DEFAULT_API_URL = 'http://192.168.1.137:3000/api/'; // Default for physical device.
 
@@ -26,10 +27,12 @@ class ApiService {
   private setupInterceptors() {
     this.api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
       const token = await SecureStore.getItemAsync('userToken');
-      if (__DEV__) {
-        const queryStr = config.params ? '?' + new URLSearchParams(config.params).toString() : '';
-        console.log(`[API] ${config.method?.toUpperCase()} -> ${config.url}${queryStr}`);
-      }
+      const requestId = Math.random().toString(36).substring(7);
+
+      // Inject logger
+      (config as any).requestId = requestId;
+      logger.logRequest(config.method?.toUpperCase() || 'GET', config.url || '', requestId, config.data);
+
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -37,10 +40,15 @@ class ApiService {
     });
 
     this.api.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        const requestId = (response.config as any).requestId;
+        logger.logResponse(requestId, response.status, response.data);
+        return response;
+      },
       (error) => {
-        if (__DEV__) {
-          console.warn(`[API] FAIL ${error.response?.status} -> ${error.config?.url}`, error.message);
+        const requestId = (error.config as any)?.requestId;
+        if (requestId) {
+            logger.logNetworkError(requestId, error);
         }
         return Promise.reject(error);
       }

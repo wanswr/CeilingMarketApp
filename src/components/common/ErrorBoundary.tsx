@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { COLORS } from '../../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { logger } from '../../services/logger/LoggerService';
 
 interface Props {
   children: ReactNode;
@@ -21,7 +22,12 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    logger.error('UNHANDLED_EXCEPTION', {
+        type: 'ErrorBoundary',
+        error: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack
+    });
   }
 
   public render() {

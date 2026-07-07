@@ -9,6 +9,7 @@ import { Button } from '../components/Button'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import { apiService } from '../services/ApiService'
+import { logger } from '../services/logger/LoggerService'
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
@@ -44,6 +45,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   useEffect(() => {
     if (isSubscribedRef.current) return;
+    logger.info('SCREEN_OPEN: OrderDetail', { orderId });
 
     mapEngine.syncUser().then(setCurrentUser);
     const unsubscribe = mapEngine.subscribe(() => {
@@ -59,12 +61,14 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     fetchOrderDetails();
 
     return () => {
+      logger.info('SCREEN_CLOSE: OrderDetail', { orderId });
       unsubscribe();
       isSubscribedRef.current = false;
     };
   }, [orderId]);
 
   const handleCancelApplication = async () => {
+    logger.logClick('CancelApplication', 'OrderDetail', { orderId });
     Alert.alert(
       'Отмена отклика',
       'Вы уверены, что хотите отозвать свой отклик?',
@@ -73,11 +77,14 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         {
           text: 'Да, отозвать',
           onPress: async () => {
+            const aid = logger.startAction('CANCEL_APPLICATION', { orderId });
             setSubmitting(true);
             try {
               await mapEngine.cancelApplication(orderId);
+              logger.endAction('CANCEL_APPLICATION', { aid });
               Alert.alert('Успех', 'Отклик отозван');
             } catch (error: any) {
+              logger.error('CANCEL_APPLICATION_FAILED', { error: error.message, aid });
               Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отозвать отклик');
             } finally {
               setSubmitting(false);
@@ -89,6 +96,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleApply = async () => {
+    logger.logClick('ApplyButton', 'OrderDetail', { orderId });
     if (submitting || hasApplied) return;
     setOfferPrice(order?.price.toString() || '');
     setShowPriceModal(true);
@@ -102,11 +110,14 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     }
 
     setShowPriceModal(false);
+    const aid = logger.startAction('SUBMIT_APPLICATION', { orderId, price: numericPrice });
     setSubmitting(true);
     try {
         await mapEngine.applyForOrder(orderId, numericPrice);
+        logger.endAction('SUBMIT_APPLICATION', { aid });
         Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
     } catch (error: any) {
+        logger.error('SUBMIT_APPLICATION_FAILED', { error: error.message, aid });
         Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
     } finally {
         setSubmitting(false);
@@ -114,6 +125,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleAcceptApplication = async (applicationId: string) => {
+    logger.logClick('AcceptApplication', 'OrderDetail', { orderId, applicationId });
     Alert.alert(
       'Выбор исполнителя',
       'Вы уверены, что хотите выбрать этого исполнителя? Остальные отклики будут отклонены.',
@@ -122,15 +134,18 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         {
           text: 'Подтвердить',
           onPress: async () => {
+            const aid = logger.startAction('ACCEPT_APPLICATION', { orderId, applicationId });
             setSubmitting(true);
             try {
               const res = await mapEngine.acceptApplication(applicationId);
+              logger.endAction('ACCEPT_APPLICATION', { aid });
               setShowApplications(false);
               Alert.alert('Успех', 'Исполнитель выбран. Чат создан.', [
                   { text: 'В чат', onPress: () => navigation.navigate('ChatDetail', { chatId: res.data.chat.id, name: res.data.order.executor.name }) },
                   { text: 'ОК' }
               ]);
-            } catch (e) {
+            } catch (e: any) {
+              logger.error('ACCEPT_APPLICATION_FAILED', { error: e.message, aid });
               Alert.alert('Ошибка', 'Не удалось выбрать исполнителя');
             } finally {
               setSubmitting(false);
@@ -150,11 +165,15 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }
 
   const handleStartWork = async () => {
+    logger.logClick('StartWork', 'OrderDetail', { orderId });
+    const aid = logger.startAction('START_WORK', { orderId });
     setSubmitting(true);
     try {
       await mapEngine.startOrder(orderId);
+      logger.endAction('START_WORK', { aid });
       Alert.alert('Успех', 'Статус заказа изменен на "В работе"');
     } catch (error: any) {
+      logger.error('START_WORK_FAILED', { error: error.message, aid });
       Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось начать работу');
     } finally {
       setSubmitting(false);
@@ -162,14 +181,18 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleCompleteWork = async () => {
+    logger.logClick('CompleteWork', 'OrderDetail', { orderId });
+    const aid = logger.startAction('COMPLETE_WORK', { orderId });
     setSubmitting(true);
     try {
       await mapEngine.completeOrder(orderId);
+      logger.endAction('COMPLETE_WORK', { aid });
       Alert.alert('Успех', 'Заказ выполнен!', [
           { text: 'Оставить отзыв', onPress: () => setShowReviewModal(true) },
           { text: 'Позже' }
       ]);
     } catch (error: any) {
+      logger.error('COMPLETE_WORK_FAILED', { error: error.message, aid });
       Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось завершить работу');
     } finally {
       setSubmitting(false);
@@ -178,6 +201,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const submitReview = async () => {
       if (rating === 0) return;
+      logger.logClick('SubmitReview', 'OrderDetail', { orderId, rating });
+      const aid = logger.startAction('SUBMIT_REVIEW', { orderId, rating });
       setSubmitting(true);
       try {
           await apiService.createReview({
@@ -185,10 +210,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               comment: reviewText,
               orderId
           });
+          logger.endAction('SUBMIT_REVIEW', { aid });
           Alert.alert('Спасибо!', 'Ваш отзыв важен для нас');
           setShowReviewModal(false);
           fetchOrderDetails();
-      } catch (e) {
+      } catch (e: any) {
+          logger.error('SUBMIT_REVIEW_FAILED', { error: e.message, aid });
           Alert.alert('Ошибка', 'Не удалось отправить отзыв');
       } finally {
           setSubmitting(false);
@@ -312,7 +339,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           {isEmployer && order.applications && order.applications.length > 0 && order.status === 'HAS_RESPONSES' && (
             <TouchableOpacity
               style={styles.applicationsBanner}
-              onPress={() => setShowApplications(true)}
+              onPress={() => {
+                  logger.logClick('ViewApplications', 'OrderDetail', { orderId });
+                  setShowApplications(true);
+              }}
             >
               <View style={styles.applicationsBannerContent}>
                 <Ionicons name="people" size={24} color={COLORS.primary} />
@@ -330,7 +360,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               <TouchableOpacity
                 style={styles.employerCard}
                 activeOpacity={0.7}
-                onPress={() => navigation.navigate('Profile', { userId: order.executorId })}
+                onPress={() => {
+                    logger.logClick('ViewMasterProfile', 'OrderDetail', { masterId: order.executorId });
+                    navigation.navigate('Profile', { userId: order.executorId });
+                }}
               >
                 <View style={styles.avatar}>
                    <Text style={styles.avatarText}>{(order.executor?.name || 'M')[0]}</Text>
@@ -349,7 +382,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               <TouchableOpacity
                 style={styles.employerCard}
                 activeOpacity={0.7}
-                onPress={() => navigation.navigate('Profile', { userId: order.employerId })}
+                onPress={() => {
+                    logger.logClick('ViewEmployerProfile', 'OrderDetail', { employerId: order.employerId });
+                    navigation.navigate('Profile', { userId: order.employerId });
+                }}
               >
                 <View style={styles.avatar}>
                    <Text style={styles.avatarText}>{(order.employer?.name || 'U')[0]}</Text>
@@ -374,7 +410,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               order.status === 'COMPLETED' && !order.review ? (
                   <TouchableOpacity
                     style={[styles.applyBtn, { flex: 1 }]}
-                    onPress={() => setShowReviewModal(true)}
+                    onPress={() => {
+                        logger.logClick('OpenReviewModal', 'OrderDetail', { orderId });
+                        setShowReviewModal(true);
+                    }}
                   >
                     <Text style={styles.applyBtnText}>Оставить отзыв</Text>
                   </TouchableOpacity>
@@ -382,6 +421,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 <TouchableOpacity
                   style={styles.chatButtonFooter}
                   onPress={async () => {
+                      logger.logClick('OpenChat', 'OrderDetail', { orderId, isEmployer: true });
                       if (order.executorId) {
                         const res = await apiService.getOrCreateChat(order.id, order.executorId);
                         navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.executor?.name });
@@ -399,6 +439,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               <TouchableOpacity
                 style={styles.iconChatBtn}
                 onPress={async () => {
+                    logger.logClick('OpenChat', 'OrderDetail', { orderId, isExecutor: true });
                     const res = await apiService.getOrCreateChat(order.id, myId!);
                     navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.employer?.name });
                 }}
@@ -531,7 +572,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           <BlurView intensity={100} tint="light" style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Отклики</Text>
-              <TouchableOpacity onPress={() => setShowApplications(false)}>
+              <TouchableOpacity onPress={() => {
+                  logger.logClick('CloseApplications', 'OrderDetail');
+                  setShowApplications(false);
+              }}>
                 <Ionicons name="close-circle" size={32} color={COLORS.gray} />
               </TouchableOpacity>
             </View>
@@ -542,7 +586,11 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   <View style={styles.appHeader}>
                     <TouchableOpacity
                         style={styles.avatarSmall}
-                        onPress={() => { setShowApplications(false); navigation.navigate('Profile', { userId: app.executorId }) }}
+                        onPress={() => {
+                            logger.logClick('ViewApplicantProfile', 'OrderDetail', { masterId: app.executorId });
+                            setShowApplications(false);
+                            navigation.navigate('Profile', { userId: app.executorId });
+                        }}
                     >
                        <Text style={styles.avatarTextSmall}>{app.executor?.name?.[0] || '?'}</Text>
                     </TouchableOpacity>
@@ -564,6 +612,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                      <TouchableOpacity
                       style={styles.appChatBtn}
                       onPress={async () => {
+                        logger.logClick('OpenChatWithApplicant', 'OrderDetail', { orderId: order.id, masterId: app.executorId });
                         setShowApplications(false);
                         const res = await apiService.getOrCreateChat(order.id, app.executorId);
                         navigation.navigate('ChatDetail', { chatId: res.data.id, name: app.executor?.name });

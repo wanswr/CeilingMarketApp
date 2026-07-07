@@ -1,5 +1,6 @@
 import { Order, UserProfile } from '../types'
 import { storageService } from './StorageService'
+import { logger } from './logger/LoggerService'
 
 /**
  * EntityStore V11: Normalized Single Source of Truth with Camera-Data Decoupling.
@@ -48,7 +49,7 @@ class EntityStore {
   setCurrentUserId(id: string | null) {
       if (this.currentUserId === id) return;
       this.currentUserId = id;
-      if (__DEV__) console.log('[EntityStore] currentUserId changed:', id);
+      logger.info('USER_CHANGED', { source: 'store', userId: id });
       this.recomputeMyOrders();
   }
 
@@ -66,7 +67,7 @@ class EntityStore {
               this.myOrders.add(order.id);
           }
       });
-      if (__DEV__) console.log('[EntityStore] MyOrders recomputed. Count:', this.myOrders.size);
+      logger.debug('STORE_RECOMPUTE_MY_ORDERS', { source: 'store', count: this.myOrders.size });
   }
 
   private getCoords(order: any): { lat: number; lng: number } | null {
@@ -81,17 +82,16 @@ class EntityStore {
 
     const existing = this.ordersById.get(order.id);
 
-    // V11: Handle Partial Updates (common in WebSockets)
-    // If incoming order is missing coords, use existing ones.
+    // V11: Handle Partial Updates
     const incomingCoords = this.getCoords(order);
     const coords = incomingCoords || (existing ? this.getCoords(existing) : null);
 
     if (!coords) {
-        if (__DEV__) console.warn('STORE_UPSERT_FAILED: Missing coordinates', { id: order.id, source });
+        logger.warn('STORE_SET_ORDER_FAILED: Missing coordinates', { source: 'store', orderId: order.id, source_orig: source });
         return;
     }
 
-    // Deep merge applications to preserve state
+    // Deep merge applications
     let mergedApplications = order.applications;
     if (!mergedApplications && existing?.applications) {
         mergedApplications = existing.applications;
@@ -101,7 +101,6 @@ class EntityStore {
         mergedApplications = Array.from(appMap.values());
     }
 
-    // V11: Ensure consistent field names in the store
     const normalizedOrder = {
         ...order,
         latitude: coords.lat,
@@ -115,7 +114,17 @@ class EntityStore {
 
     if (existing === mergedOrder) return;
 
-    if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status, source });
+    if (existing && existing.status !== mergedOrder.status) {
+        logger.info('ORDER_STATUS_TRANSITION', {
+            source: 'store',
+            orderId: order.id,
+            old: existing.status,
+            new: mergedOrder.status,
+            trigger: source
+        });
+    } else if (!existing) {
+        logger.debug('ORDER_ADDED_TO_STORE', { source: 'store', orderId: order.id, status: mergedOrder.status, trigger: source });
+    }
 
     if (existing) {
         const oldCoords = this.getCoords(existing);
@@ -146,7 +155,7 @@ class EntityStore {
     if (order) {
         this.removeFromGrid(order);
     }
-    if (__DEV__) console.log('STORE_REMOVE', { id, reason });
+    logger.info('ORDER_REMOVED_FROM_STORE', { source: 'store', orderId: id, reason });
     this.ordersById.delete(id);
     this.myOrders.delete(id);
     this.meta.writes++;
@@ -238,16 +247,15 @@ class EntityStore {
 
   hydrate = () => {
     try {
-      if (__DEV__) console.log('STORE_HYDRATE_START');
+      logger.debug('STORE_HYDRATE_START', { source: 'store' });
       const data = storageService.get<any>(this.PERSISTENCE_KEY);
       if (!data) {
-          if (__DEV__) console.log('STORE_HYDRATE', { status: 'no_data' });
           return false;
       }
 
       const CACHE_TTL = 30 * 60 * 1000;
       if (!data.updatedAt || Date.now() - data.updatedAt > CACHE_TTL) {
-          if (__DEV__) console.log('STORE_HYDRATE', { status: 'expired' });
+          logger.debug('STORE_HYDRATE_EXPIRED', { source: 'store' });
           storageService.delete(this.PERSISTENCE_KEY);
           return false;
       }
@@ -255,7 +263,6 @@ class EntityStore {
       if (data.loadedBounds) this.loadedBounds = data.loadedBounds;
       if (data.currentUserId) this.currentUserId = data.currentUserId;
       if (data.orders) {
-          if (__DEV__) console.log('STORE_HYDRATE', { status: 'success', count: data.orders.length });
           data.orders.forEach((o: Order) => {
               this.ordersById.set(o.id, o);
               this.updateOrderInGrid(o);
@@ -265,6 +272,7 @@ class EntityStore {
       if (data.seenEvents) {
           this.seenEvents = new Set(data.seenEvents);
       }
+      logger.info('STORE_HYDRATED', { source: 'store', orders: data.orders?.length || 0 });
       return true;
     } catch (e) {
       return false;
@@ -292,6 +300,7 @@ class EntityStore {
     this.isInitialLoaded = false;
     this.isMyOrdersLoaded = false;
     storageService.delete(this.PERSISTENCE_KEY);
+    logger.info('STORE_CLEARED', { source: 'store' });
   }
 
   isEventSeen(eventId: string): boolean {
