@@ -38,6 +38,10 @@ class EntityStore {
   private readonly PERSISTENCE_KEY = 'entity_store_v11';
 
   constructor() {
+    this.init();
+  }
+
+  private init() {
     this.hydrate();
   }
 
@@ -75,10 +79,17 @@ class EntityStore {
   setOrder = (order: Order, source: string = 'unknown') => {
     if (!order?.id) return;
 
-    const coords = this.getCoords(order);
-    if (!coords) return;
-
     const existing = this.ordersById.get(order.id);
+
+    // V11: Handle Partial Updates (common in WebSockets)
+    // If incoming order is missing coords, use existing ones.
+    const incomingCoords = this.getCoords(order);
+    const coords = incomingCoords || (existing ? this.getCoords(existing) : null);
+
+    if (!coords) {
+        if (__DEV__) console.warn('STORE_UPSERT_FAILED: Missing coordinates', { id: order.id, source });
+        return;
+    }
 
     // Deep merge applications to preserve state
     let mergedApplications = order.applications;
@@ -100,7 +111,7 @@ class EntityStore {
         applications: mergedApplications
     };
 
-    const mergedOrder = existing ? { ...existing, ...normalizedOrder } : normalizedOrder;
+    const mergedOrder = existing ? { ...existing, ...normalizedOrder } : normalizedOrder as Order;
 
     if (existing === mergedOrder) return;
 

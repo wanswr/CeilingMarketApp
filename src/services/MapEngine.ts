@@ -5,6 +5,7 @@ import { entityStore } from './EntityStore'
 import { GeoClusterService } from './GeoClusterService'
 import { spatialManager } from '../map/SpatialManager'
 import { mapViewportStore } from './MapViewportStore'
+import { socketService } from './SocketService'
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -16,25 +17,40 @@ class MapEngine {
   private requestCounter: number = 0;
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
   private searchRadius: number = 100;
+  private lastGeoJoinKey: string | null = null;
+
   setSearchRadius = (radius: number) => {
     this.searchRadius = radius;
   }
   public spatialManager = spatialManager;
+  public entityStore = entityStore;
+  public apiService = apiService;
+  public requestRouter = requestRouter;
+  public geoClusterService = GeoClusterService;
+
   private isHydrated = false;
   private lastClusteredOrders: any[] = [];
 
-  constructor(
-      public apiService: any,
-      public entityStore: any,
-      public requestRouter: any,
-      public geoClusterService: any
-  ) {
+  constructor() {
       this.initPersistence();
 
       // V9: Reactive architecture - Engine listens to Camera
       mapViewportStore.subscribe((region) => {
           this.triggerMapUpdate(region);
+          this.updateSocketRoom(region);
       }, 'MapEngine_Core');
+  }
+
+  private updateSocketRoom(region: any) {
+      const key = `${Math.floor(region.latitude * 10)}:${Math.floor(region.longitude * 10)}`;
+      if (key !== this.lastGeoJoinKey) {
+          const socket = socketService.getSocket();
+          if (socket?.connected) {
+              socket.emit('geo.join', { lat: region.latitude, lng: region.longitude });
+              this.lastGeoJoinKey = key;
+              if (__DEV__) console.log('MAP_GEO_ROOM_JOIN', { key });
+          }
+      }
   }
 
   private initPersistence = () => {
@@ -258,17 +274,39 @@ class MapEngine {
         region.longitude + lngPadding
     );
 
-    // V9: Filter map candidates by status (Only show available orders)
-    const candidates = rawCandidates.filter((order: Order) =>
-        order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES'
-    );
+    // V9: Filter map candidates by status
+    const myId = this.entityStore.currentUserId;
+
+    const candidates = rawCandidates.filter((order: Order) => {
+        const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
+        const isMine = !!myId && (
+            order.employerId === myId ||
+            order.executorId === myId ||
+            order.applications?.some((a: any) => a.executorId === myId)
+        );
+
+        // Rules:
+        // 1. Published/Responses are visible to everyone.
+        // 2. Claimed/In Progress are visible ONLY to participants.
+        const shouldShow = isPublic || (isMine && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
+
+        if (__DEV__) {
+            if (!shouldShow && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
+                console.log('MAP_FILTER_BUG', { id: order.id, status: order.status, isMine, myId });
+            }
+        }
+
+        return shouldShow;
+    });
 
     // V9: Perform clustering but NEVER hide single orders unless they are actually in a cluster
     const result = this.clusterOrders(candidates, region.latitudeDelta);
 
     const safeItems = result.filter((item: any) => {
         const coords = this.getOrderCoords(item);
-        return coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
+        const isValid = coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
+        if (!isValid && __DEV__) console.log('MAP_INVALID_COORDS', { id: item.id });
+        return isValid;
     });
 
     this.lastClusteredOrders = safeItems;
@@ -440,5 +478,5 @@ class MapEngine {
   }
 }
 
-export const mapEngine = new MapEngine(apiService, entityStore, requestRouter, GeoClusterService);
+export const mapEngine = new MapEngine();
 export const orderOrchestrator = mapEngine;

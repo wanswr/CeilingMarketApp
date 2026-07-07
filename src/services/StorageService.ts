@@ -11,19 +11,17 @@ const getStorage = () => {
   if (_isNativeUnavailable) return null;
 
   try {
-    // V11: Using standard react-native-mmkv import pattern
-    // In Dev Client/Native build, the MMKV constructor is expected to be present.
+    // V11: Robust MMKV initialization with clear error states
     let mmkvModule;
     try {
         mmkvModule = require('react-native-mmkv');
     } catch (e) {
-        throw new Error('react-native-mmkv module not found');
+        throw new Error('react-native-mmkv module not found in bundle');
     }
 
     const { MMKV } = mmkvModule;
-
     if (!MMKV) {
-        throw new Error('MMKV constructor is missing from the module');
+        throw new Error('MMKV constructor is missing (native modules likely not linked)');
     }
 
     _storage = new MMKV({
@@ -31,9 +29,8 @@ const getStorage = () => {
     });
     return _storage;
   } catch (e: any) {
-    // Reduced log level for expected missing native modules (e.g., standard Expo Go or some simulators)
     if (!_isNativeUnavailable) {
-        console.log('[StorageService] Native storage unavailable (using in-memory fallback):', e.message);
+        console.warn(`[StorageService] Native storage unavailable: ${e.message}. Using in-memory fallback.`);
     }
     _isNativeUnavailable = true;
     return null;
@@ -62,9 +59,10 @@ export const storageService = {
   get<T>(key: string): T | null {
     try {
       const storage = getStorage();
-      const value = storage ? storage.getString(key) : _memoryCache[key];
+      // Ensure we check for null/undefined from native side
+      const value = storage ? (storage.getString(key) ?? null) : _memoryCache[key];
 
-      if (!value) return null;
+      if (value === null || value === undefined) return null;
 
       try {
         return JSON.parse(value) as T;
@@ -106,7 +104,7 @@ export const storageService = {
   getAllKeys(): string[] {
     try {
       const storage = getStorage();
-      return storage ? storage.getAllKeys() : Object.keys(_memoryCache);
+      return storage ? (storage.getAllKeys() ?? []) : Object.keys(_memoryCache);
     } catch (error) {
       if (__DEV__) console.error('[StorageService] Error getting all keys:', error);
       return [];

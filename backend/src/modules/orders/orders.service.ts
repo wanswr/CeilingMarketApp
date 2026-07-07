@@ -446,7 +446,7 @@ export class OrdersService {
 
     const orders = await this.prisma.order.findMany({
       where: {
-        status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] },
+        status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES, OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
         latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
         longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
         // If updatedAfter is provided, we only want those changed.
@@ -456,7 +456,7 @@ export class OrdersService {
       take: 1000,
       include: {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
-        applications: { select: { id: true, executorId: true, status: true } }
+        applications: { select: { id: true, executorId: true, status: true, price: true } }
       },
     });
 
