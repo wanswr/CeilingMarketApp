@@ -14,7 +14,7 @@ import {
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import { COLORS } from '../constants/theme'
+import { COLORS, SHADOWS } from '../constants/theme'
 import { socketService } from '../services/SocketService'
 import { apiService } from '../services/ApiService'
 import { mapEngine } from '../services/MapEngine'
