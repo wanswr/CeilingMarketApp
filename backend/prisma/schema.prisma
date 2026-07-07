@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  WORKER
+  EMPLOYER
+}
+
+enum OrderStatus {
+  PENDING
+  PUBLISHED
+  HAS_RESPONSES
+  CLAIMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTE
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum WorkType {
+  FROZE
+  INSTALLATION
+  SERVICE
+  REPAIR
+  OTHER
+}
+
+model User {
+  id                String         @id @default(uuid())
+  phone             String         @unique
+  name              String?
+  role              Role?
+  avatar            String?
+  rating            Float          @default(5.0)
+  experience        Int?           @default(0)
+  ordersCount       Int            @default(0)
+  completedOrders   Int            @default(0)
+  instagram         String?
+  telegram          String?
+  isVerified        Boolean        @default(false)
+  isTrialUsed       Boolean        @default(false)
+  pushToken         String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  orders            Order[]        @relation("EmployerOrders")
+  assignedOrders    Order[]        @relation("ExecutorOrders")
+  applications      Application[]
+  employerChats     Chat[]         @relation("EmployerChats")
+  executorChats     Chat[]         @relation("ExecutorChats")
+  messages          Message[]
+  subscription      Subscription?
+}
+
+model Order {
+  id                String         @id @default(uuid())
+  employerId        String
+  executorId        String?
+  title             String
+  address           String
+  latitude          Float
+  longitude         Float
+  date              DateTime
+  workType          WorkType       @default(INSTALLATION)
+
+  @@index([status, latitude, longitude]) // V6: Composite index for optimized BBOX spatial queries
+  @@index([latitude])
+  @@index([longitude])
+  @@index([status])
+  @@index([createdAt])
+  @@index([updatedAt])
+  price             Float
+  details           String?
+  status            OrderStatus    @default(PUBLISHED)
+  images            String[]
+  isPinned          Boolean        @default(false)
+  idempotencyKey    String?        @unique
+  claimedAt         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  employer          User           @relation("EmployerOrders", fields: [employerId], references: [id])
+  executor          User?          @relation("ExecutorOrders", fields: [executorId], references: [id])
+  applications      Application[]
+  chats             Chat[]
+}
+
+model Chat {
+  id                String         @id @default(uuid())
+  orderId           String
+  employerId        String
+  executorId        String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  employer          User           @relation("EmployerChats", fields: [employerId], references: [id])
+  executor          User           @relation("ExecutorChats", fields: [executorId], references: [id])
+  messages          Message[]
+
+  @@unique([orderId, executorId])
+}
+
+model Message {
+  id                String         @id @default(uuid())
+  chatId            String
+  senderId          String
+  text              String
+  isRead            Boolean        @default(false)
+  createdAt         DateTime       @default(now())
+
+  chat              Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender            User           @relation(fields: [senderId], references: [id])
+}
+
+model Application {
+  id                String         @id @default(uuid())
+  orderId           String
+  executorId        String
+  price             Float?
+  status            ApplicationStatus @default(PENDING)
+  idempotencyKey    String?        @unique
+  createdAt         DateTime       @default(now())
+
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  executor          User           @relation(fields: [executorId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, executorId])
+}
+
+model Subscription {
+  id                String         @id @default(uuid())
+  userId            String         @unique
+  activeUntil       DateTime
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

@@ -1,0 +1,38 @@
+name: Run Tests
+
+on: 
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run Jest tests
+        run: npm test
+        continue-on-error: false
+
+      # Detox requires significant setup for CI (emulators/simulators)
+      # Disabling for now to allow CI to pass on unit tests
+      # - name: Set up Detox dependencies
+      #   run: |
+      #     npm install -g detox-cli
+      #     npm run detox:build
+      #     npm run detox:test
+      #   continue-on-error: true

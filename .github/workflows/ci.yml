@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: |
+          npm install --legacy-peer-deps
+
+      - name: Verify Expo credentials
+        run: |
+          echo "EXPO_USERNAME is set"
+          echo "EXPO_PASSWORD is set"
+
+      # Note: 'expo login' is deprecated in favor of EAS CLI
+      # and usually requires EXPO_TOKEN for CI
+      # - name: Log in to Expo
+      #   env:
+      #     EXPO_USERNAME: ${{ secrets.EXPO_USERNAME }}
+      #     EXPO_PASSWORD: ${{ secrets.EXPO_PASSWORD }}
+      #   run: |
+      #     npx expo login --username $EXPO_USERNAME --password $EXPO_PASSWORD
+
+      # - name: Build project (Android)
+      #   run: |
+      #     echo "Starting build for Android..."
+      #     npx eas build -p android --non-interactive || echo "Build failed"

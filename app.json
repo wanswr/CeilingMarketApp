@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Ceilingsapp",
+    "slug": "Ceilingsapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "scheme": "ceilingsapp",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wanswr.ceilingsapp"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.wanswr.ceilingsapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      "@react-native-community/datetimepicker",
+      "expo-secure-store",
+      "expo-localization",
+      "expo-location",
+      "expo-image-picker",
+      "expo-notifications"
+    ]
+  }
+}
