@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Image, Modal, TextInput, FlatList } from 'react-native'
+import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Image, Modal, TextInput, FlatList, RefreshControl } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
 import { Ionicons } from '@expo/vector-icons'
@@ -14,6 +14,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
   const [loading, setLoading] = useState(!order);
+  const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [showApplications, setShowApplications] = useState(false);
@@ -25,14 +26,19 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const isSubscribedRef = useRef(false);
 
-  const fetchOrderDetails = async () => {
+  const fetchOrderDetails = async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
     try {
         const updated = await mapEngine.syncOrder(orderId);
         setOrder(updated);
         setLoading(false);
     } catch (e) {
-        Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
-        navigation.goBack();
+        if (!isRefresh) {
+            Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
+            navigation.goBack();
+        }
+    } finally {
+        if (isRefresh) setRefreshing(false);
     }
   };
 
@@ -138,8 +144,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const markViewed = async (appId: string, currentStatus: string) => {
       if (currentStatus === 'PENDING') {
           try {
-              // @ts-ignore
-              await apiService.api.patch(`orders/applications/${appId}/view`);
+              await apiService.markApplicationViewed(appId);
           } catch (e) {}
       }
   }
@@ -175,8 +180,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       if (rating === 0) return;
       setSubmitting(true);
       try {
-          // @ts-ignore
-          await apiService.api.post(`/reviews`, {
+          await apiService.createReview({
               rating,
               comment: reviewText,
               orderId
@@ -206,7 +210,11 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchOrderDetails(true)} />}
+      >
         <View style={styles.imageHeader}>
           {order.images && order.images.length > 0 ? (
             <Image source={{ uri: order.images[0] }} style={styles.mainImage} />

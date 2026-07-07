@@ -40,8 +40,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
 
   const markAsRead = async (id: string) => {
       try {
-          // @ts-ignore
-          await apiService.api.patch(`chats/${id}/read`);
+          await apiService.markChatAsRead(id);
       } catch (e) {}
   };
 
@@ -61,8 +60,15 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
 
         if (currentChatId) {
             markAsRead(currentChatId);
-            const socket = (socketService as any).socket;
-            if (socket) socket.emit('chat.join', currentChatId);
+            const socket = socketService.getSocket();
+            if (socket) {
+                socket.emit('chat.join', currentChatId);
+
+                // Task #4: Handle socket reconnect to re-join the room
+                socket.on('connect', () => {
+                    socket.emit('chat.join', currentChatId);
+                });
+            }
         }
       } catch (e) {
         console.error('Chat init error:', e);
@@ -73,7 +79,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
 
     initChat();
 
-    const socket = (socketService as any).socket;
+    const socket = socketService.getSocket();
 
     const onNewMessage = (msg: any) => {
         if (msg.chatId === activeChatId) {
@@ -102,6 +108,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
         if (socket) {
             socket.off('message.new', onNewMessage);
             socket.off('message.read', onMessagesRead);
+            socket.off('connect'); // Remove the rejoin listener
             if (activeChatId) socket.emit('chat.leave', activeChatId);
         }
     };

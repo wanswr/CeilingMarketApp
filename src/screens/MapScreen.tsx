@@ -37,26 +37,8 @@ const MapScreen = ({ navigation }: any) => {
   const [isMoving, setIsMoving] = useState(false);
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPanDragRef = useRef<number>(0);
-  const lastSyncRequestRef = useRef<number>(0);
-
-  const fitToOrders = useCallback((orders: Order[]) => {
-    if (!orders || orders.length === 0 || !mapRef.current) return;
-
-    const coords = orders
-      .map(o => mapEngine.getOrderCoords(o))
-      .filter(Boolean) as { latitude: number, longitude: number }[];
-
-    if (coords.length > 0) {
-      mapRef.current.fitToCoordinates(coords, {
-        edgePadding: {
-            top: 80,
-            right: 80,
-            bottom: selectedOrder ? 300 : 250,
-            left: 80
-        },
-        animated: true });
-    }
-  }, [selectedOrder]);
+  const currentUser = mapEngine.getCurrentUser();
+  const myId = currentUser?.uid || currentUser?.id;
 
   // 1. Static Subscriptions (Mount/Unmount)
   const isSubscribedRef = useRef(false);
@@ -94,7 +76,6 @@ const MapScreen = ({ navigation }: any) => {
 
       const orders = mapEngine.getOrders();
       if (orders.length === 0) {
-          console.log('MAP_FOCUS (Init)');
           (async () => {
             try {
                 const { status } = await Location.requestForegroundPermissionsAsync();
@@ -110,15 +91,6 @@ const MapScreen = ({ navigation }: any) => {
                   mapViewportStore.setRegion(userRegion);
                   await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
                   mapRef.current?.animateToRegion(userRegion, 500);
-
-                  const currentOrders = mapEngine.getOrders();
-                  if (currentOrders.length > 0) {
-                      const coords = currentOrders.map((o: any) => mapEngine.getOrderCoords(o)).filter(Boolean) as any[];
-                      if (coords.length > 0) {
-                          setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 80, right: 80, bottom: 250, left: 80 }, animated: true }), 1500);
-                      }
-                      setDisplayedOrders([...mapEngine.getOrders()]);
-                  }
                 } else {
                   const fallback = mapViewportStore.getRegion();
                   await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
@@ -131,12 +103,9 @@ const MapScreen = ({ navigation }: any) => {
 
       return () => {
         isFocusedRef.current = false;
-        console.log('MAP_BLUR');
       };
     }, [])
   );
-
-  const lastUpdateRef = useRef<{ordersCount: number, visibleCount: number, regionKey: string} | null>(null);
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     if (!newRegion || !newRegion.latitude || !newRegion.longitude || !isFocusedRef.current) return;
@@ -160,37 +129,6 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
-  useEffect(() => {
-      if (!isMoving) {
-          const regionKey = `${region.latitude.toFixed(3)}:${region.longitude.toFixed(3)}:${region.latitudeDelta.toFixed(3)}`;
-
-          if (lastUpdateRef.current &&
-              lastUpdateRef.current.ordersCount === displayedOrders.length &&
-              lastUpdateRef.current.visibleCount === displayedOrders.length &&
-              lastUpdateRef.current.regionKey === regionKey) {
-              return;
-          }
-
-          lastUpdateRef.current = {
-              ordersCount: displayedOrders.length,
-              visibleCount: displayedOrders.length,
-              regionKey
-          };
-
-          console.log('MAP_RENDER', {
-              count: displayedOrders.length,
-              visible: displayedOrders.length,
-              loading,
-              source: 'entityStore',
-              region: {
-                  lat: region.latitude.toFixed(3),
-                  lng: region.longitude.toFixed(3),
-                  delta: region.latitudeDelta.toFixed(3)
-              }
-          });
-      }
-  }, [displayedOrders.length, loading, isMoving, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
-
   return (
     <ErrorBoundary>
       <View style={styles.container}>
@@ -209,13 +147,7 @@ const MapScreen = ({ navigation }: any) => {
           onRegionChangeComplete={handleRegionChangeComplete}
           onPanDrag={() => {
             if (!isMoving) setIsMoving(true);
-            const now = Date.now();
-            if (now - lastPanDragRef.current > 1000) {
-                if (__DEV__) console.log('[MAP] PAN_DRAG');
-                lastPanDragRef.current = now;
-            }
           }}
-          onMapReady={() => console.log('[MAP] READY')}
           customMapStyle={mapStyle}
           mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
         >
@@ -243,6 +175,8 @@ const MapScreen = ({ navigation }: any) => {
               );
             }
 
+            const hasMyApplication = item.applications?.some((a: any) => a.executorId === myId);
+
             return (
               <Marker
                 key={item.id}
@@ -256,7 +190,8 @@ const MapScreen = ({ navigation }: any) => {
                 <View style={[
                   styles.customMarker,
                   selectedOrder?.id === item.id && styles.customMarkerActive,
-                  item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { borderColor: '#F59E0B' }
+                  item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { borderColor: '#F59E0B' },
+                  hasMyApplication && { backgroundColor: COLORS.primary + '20', borderColor: COLORS.primary }
                 ]}>
                   <Text style={[
                     styles.markerPrice,
@@ -265,6 +200,9 @@ const MapScreen = ({ navigation }: any) => {
                   ]}>
                     {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
                   </Text>
+                  {hasMyApplication && (
+                      <View style={styles.appliedDot} />
+                  )}
                 </View>
               </Marker>
             );
@@ -357,22 +295,12 @@ const MapScreen = ({ navigation }: any) => {
                           <Ionicons name="calendar-outline" size={12} color={COLORS.gray} />
                           <Text style={styles.infoBadgeText}>{formatDate(selectedOrder.date)}</Text>
                         </View>
-                        <View style={styles.infoBadge}>
-                          <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
-                          <Text style={[styles.infoBadgeText, { color: COLORS.primary }]}>{selectedOrder.distance?.toFixed(1) || '0.0'} км</Text>
-                        </View>
                       </View>
                     </View>
                     <View style={styles.priceBadge}>
                       <Text style={styles.previewPrice}>{selectedOrder.price} ₽</Text>
                     </View>
                   </View>
-
-                  {selectedOrder.details && (
-                    <Text style={styles.previewDetails} numberOfLines={2}>
-                      {selectedOrder.details}
-                    </Text>
-                  )}
 
                   <View style={styles.footerRow}>
                     <TouchableOpacity
@@ -412,7 +340,9 @@ const MapScreen = ({ navigation }: any) => {
                           navigation.navigate('OrderDetail', { orderId: selectedOrder.id });
                         }}
                       >
-                        <Text style={styles.mainActionText}>Отклик</Text>
+                        <Text style={styles.mainActionText}>
+                            {selectedOrder.applications?.some((a: any) => a.executorId === myId) ? 'Открыт' : 'Отклик'}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -554,9 +484,21 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     borderWidth: 2,
     borderColor: COLORS.primary,
-    ...SHADOWS.soft
+    ...SHADOWS.soft,
+    position: 'relative'
   },
   customMarkerActive: { backgroundColor: COLORS.primary, borderColor: '#fff', transform: [{ scale: 1.1 }] },
+  appliedDot: {
+      position: 'absolute',
+      top: -4,
+      right: -4,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: COLORS.primary,
+      borderWidth: 2,
+      borderColor: '#fff'
+  },
   markerPrice: { fontSize: 13, fontWeight: '900', color: COLORS.primary },
   markerPriceActive: { color: '#fff' },
   previewCardContainer: { position: 'absolute', bottom: 10, left: 12, right: 12, zIndex: 1000 },
@@ -576,7 +518,6 @@ const styles = StyleSheet.create({
   infoBadgeText: { fontSize: 11, fontWeight: '600', color: COLORS.gray },
   priceBadge: { backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, ...SHADOWS.soft },
   previewPrice: { fontSize: 16, color: '#fff', fontWeight: '900' },
-  previewDetails: { fontSize: 13, color: COLORS.gray, marginBottom: 12, lineHeight: 18 },
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   employerLink: {
     flexDirection: 'row',
