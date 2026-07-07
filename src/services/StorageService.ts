@@ -1,6 +1,6 @@
 /**
  * StorageService V11: High-performance synchronous storage using MMKV.
- * Hardened version with dynamic require and defensive constructor checks.
+ * Hardened version with dynamic require and graceful degradation.
  */
 
 let _storage: any = null;
@@ -13,7 +13,14 @@ const getStorage = () => {
   try {
     // V11: Using standard react-native-mmkv import pattern
     // In Dev Client/Native build, the MMKV constructor is expected to be present.
-    const { MMKV } = require('react-native-mmkv');
+    let mmkvModule;
+    try {
+        mmkvModule = require('react-native-mmkv');
+    } catch (e) {
+        throw new Error('react-native-mmkv module not found');
+    }
+
+    const { MMKV } = mmkvModule;
 
     if (!MMKV) {
         throw new Error('MMKV constructor is missing from the module');
