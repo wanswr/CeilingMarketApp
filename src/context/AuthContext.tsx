@@ -30,7 +30,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[AuthContext] Token status:', token ? 'Found' : 'Not found');
 
       if (token) {
-        // V9: Added timeout to profile sync to prevent infinite hang if IP is unreachable
         console.log('[AuthContext] Attempting profile sync...');
         const profilePromise = mapEngine.syncUser();
         const timeoutPromise = new Promise((_, reject) =>
@@ -44,13 +43,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           socketService.connect(apiService.getBaseUrl());
         } catch (syncError: any) {
           console.warn('[AuthContext] Profile sync failed or timed out:', syncError.message);
-          // Fallback: try to use cached user if sync fails
+
+          // Task #7: If error is 404, the user record is gone, so logout
+          if (syncError.response?.status === 404) {
+              console.log('[AuthContext] User record not found, clearing session');
+              await signOut();
+              return;
+          }
+
+          // Fallback: try to use cached user if sync fails (e.g. 500 or timeout)
           const cachedUser = mapEngine.entityStore.getCurrentUser();
           if (cachedUser) {
               console.log('[AuthContext] Using cached user data');
               setUser(cachedUser);
+              socketService.connect(apiService.getBaseUrl());
           } else {
-              // If no cache, we might need to re-login, but stay authed for now
               setUser({ id: 'pending', role: null });
           }
         }
@@ -76,6 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await SecureStore.deleteItemAsync('userToken');
     setUser(null);
     socketService.disconnect();
+    mapEngine.entityStore.clear(); // Clear cache on logout
   };
 
   const updateUser = (userData: any) => {

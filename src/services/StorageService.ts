@@ -12,19 +12,35 @@ const getStorage = () => {
 
   try {
     // Dynamic require prevents early prototype resolution issues in Hermes
-    const mmkvModule = require('react-native-mmkv');
-
-    // Check if MMKV exists and has a prototype or constructor
-    if (!mmkvModule || !mmkvModule.MMKV) {
-        throw new Error('MMKV module loaded but MMKV constructor is missing');
+    // We check for both default export and direct import for compatibility
+    let mmkvModule;
+    try {
+        mmkvModule = require('react-native-mmkv');
+    } catch (e) {
+        throw new Error('react-native-mmkv module not found');
     }
 
-    _storage = new mmkvModule.MMKV({
+    const MMKV = mmkvModule.MMKV;
+
+    if (!MMKV) {
+        throw new Error('MMKV constructor is missing from the module');
+    }
+
+    _storage = new MMKV({
       id: 'ceilings-app-storage'
     });
     return _storage;
-  } catch (e) {
-    console.warn('[StorageService] MMKV native module not found or unavailable. Persistence disabled.', e);
+  } catch (e: any) {
+    // Only warn once to avoid console spam
+    if (!_isNativeUnavailable) {
+        // In Expo Go or some web/test environments, MMKV is expected to be missing
+        const isExpectedMissing = e.message?.includes('not found') || e.message?.includes('Native');
+        if (__DEV__ && !isExpectedMissing) {
+            console.warn('[StorageService] MMKV native module unavailable. Persistence disabled.', e.message);
+        } else if (!isExpectedMissing) {
+            console.log('[StorageService] MMKV unavailable (expected in some environments)');
+        }
+    }
     _isNativeUnavailable = true;
     return null;
   }
@@ -38,7 +54,7 @@ export const storageService = {
       const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
       storage.set(key, stringValue);
     } catch (error) {
-      console.error(`[StorageService] Error setting key "${key}":`, error);
+      if (__DEV__) console.error(`[StorageService] Error setting key "${key}":`, error);
     }
   },
 
@@ -55,7 +71,7 @@ export const storageService = {
         return value as unknown as T;
       }
     } catch (error) {
-      console.error(`[StorageService] Error getting key "${key}":`, error);
+      if (__DEV__) console.error(`[StorageService] Error getting key "${key}":`, error);
       return null;
     }
   },
@@ -65,7 +81,7 @@ export const storageService = {
       const storage = getStorage();
       if (storage) storage.delete(key);
     } catch (error) {
-      console.error(`[StorageService] Error deleting key "${key}":`, error);
+      if (__DEV__) console.error(`[StorageService] Error deleting key "${key}":`, error);
     }
   },
 
@@ -74,7 +90,7 @@ export const storageService = {
       const storage = getStorage();
       if (storage) storage.clearAll();
     } catch (error) {
-      console.error('[StorageService] Error clearing storage:', error);
+      if (__DEV__) console.error('[StorageService] Error clearing storage:', error);
     }
   },
 
@@ -83,7 +99,7 @@ export const storageService = {
       const storage = getStorage();
       return storage ? storage.getAllKeys() : [];
     } catch (error) {
-      console.error('[StorageService] Error getting all keys:', error);
+      if (__DEV__) console.error('[StorageService] Error getting all keys:', error);
       return [];
     }
   }

@@ -12,14 +12,22 @@ export class UsersService {
         subscription: true,
       }
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
     return user;
   }
 
   async update(id: string, dto: any) {
-    return this.prisma.user.update({
-      where: { id },
-      data: dto,
-    });
+    try {
+        return await this.prisma.user.update({
+          where: { id },
+          data: dto,
+        });
+    } catch (error) {
+        // Prisma error P2025: Record to update not found
+        if (error.code === 'P2025') {
+            throw new NotFoundException(`User with ID ${id} not found`);
+        }
+        throw error;
+    }
   }
 }
