@@ -1,6 +1,6 @@
 /**
  * StorageService V11: High-performance synchronous storage using MMKV.
- * Hardened version with dynamic require and graceful degradation.
+ * Hardened version with dynamic require and defensive constructor checks.
  */
 
 let _storage: any = null;
@@ -11,16 +11,9 @@ const getStorage = () => {
   if (_isNativeUnavailable) return null;
 
   try {
-    // Dynamic require prevents early prototype resolution issues in Hermes
-    // We check for both default export and direct import for compatibility
-    let mmkvModule;
-    try {
-        mmkvModule = require('react-native-mmkv');
-    } catch (e) {
-        throw new Error('react-native-mmkv module not found');
-    }
-
-    const MMKV = mmkvModule.MMKV;
+    // V11: Using standard react-native-mmkv import pattern
+    // In Dev Client/Native build, the MMKV constructor is expected to be present.
+    const { MMKV } = require('react-native-mmkv');
 
     if (!MMKV) {
         throw new Error('MMKV constructor is missing from the module');
@@ -31,28 +24,29 @@ const getStorage = () => {
     });
     return _storage;
   } catch (e: any) {
-    // Only warn once to avoid console spam
+    // Reduced log level for expected missing native modules (e.g., standard Expo Go or some simulators)
     if (!_isNativeUnavailable) {
-        // In Expo Go or some web/test environments, MMKV is expected to be missing
-        const isExpectedMissing = e.message?.includes('not found') || e.message?.includes('Native');
-        if (__DEV__ && !isExpectedMissing) {
-            console.warn('[StorageService] MMKV native module unavailable. Persistence disabled.', e.message);
-        } else if (!isExpectedMissing) {
-            console.log('[StorageService] MMKV unavailable (expected in some environments)');
-        }
+        console.log('[StorageService] Native storage unavailable (using in-memory fallback):', e.message);
     }
     _isNativeUnavailable = true;
     return null;
   }
 };
 
+// In-memory fallback for cases where MMKV is missing (Persistence disabled)
+const _memoryCache: Record<string, string> = {};
+
 export const storageService = {
   set(key: string, value: any): void {
     try {
       const storage = getStorage();
-      if (!storage) return;
       const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-      storage.set(key, stringValue);
+
+      if (storage) {
+          storage.set(key, stringValue);
+      } else {
+          _memoryCache[key] = stringValue;
+      }
     } catch (error) {
       if (__DEV__) console.error(`[StorageService] Error setting key "${key}":`, error);
     }
@@ -61,8 +55,8 @@ export const storageService = {
   get<T>(key: string): T | null {
     try {
       const storage = getStorage();
-      if (!storage) return null;
-      const value = storage.getString(key);
+      const value = storage ? storage.getString(key) : _memoryCache[key];
+
       if (!value) return null;
 
       try {
@@ -79,7 +73,11 @@ export const storageService = {
   delete(key: string): void {
     try {
       const storage = getStorage();
-      if (storage) storage.delete(key);
+      if (storage) {
+          storage.delete(key);
+      } else {
+          delete _memoryCache[key];
+      }
     } catch (error) {
       if (__DEV__) console.error(`[StorageService] Error deleting key "${key}":`, error);
     }
@@ -88,7 +86,11 @@ export const storageService = {
   clearAll(): void {
     try {
       const storage = getStorage();
-      if (storage) storage.clearAll();
+      if (storage) {
+          storage.clearAll();
+      } else {
+          Object.keys(_memoryCache).forEach(k => delete _memoryCache[k]);
+      }
     } catch (error) {
       if (__DEV__) console.error('[StorageService] Error clearing storage:', error);
     }
@@ -97,7 +99,7 @@ export const storageService = {
   getAllKeys(): string[] {
     try {
       const storage = getStorage();
-      return storage ? storage.getAllKeys() : [];
+      return storage ? storage.getAllKeys() : Object.keys(_memoryCache);
     } catch (error) {
       if (__DEV__) console.error('[StorageService] Error getting all keys:', error);
       return [];
