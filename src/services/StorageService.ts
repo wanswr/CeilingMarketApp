@@ -4,12 +4,59 @@
  */
 import { logger } from './logger/LoggerService';
 
-let _storage: any = null;
+/**
+ * V11 Storage Adapter Interface: Unifies native and in-memory storage operations.
+ */
+interface StorageAdapter {
+  get(key: string): string | null;
+  set(key: string, value: string): void;
+  delete(key: string): void;
+  clearAll(): void;
+  getAllKeys(): string[];
+}
+
+let _adapter: StorageAdapter | null = null;
 let _isNativeUnavailable = false;
 
-const getStorage = () => {
-  if (_storage) return _storage;
-  if (_isNativeUnavailable) return null;
+/**
+ * MMKV Adapter implementation with safety guards.
+ */
+class MMKVAdapter implements StorageAdapter {
+  constructor(private storage: any) {}
+  get(key: string): string | null { return this.storage.getString(key) ?? null; }
+  set(key: string, value: string): void { this.storage.set(key, value); }
+  delete(key: string): void {
+      if (typeof this.storage.delete === 'function') {
+          this.storage.delete(key);
+      } else {
+          logger.warn(`[MMKVAdapter] delete unavailable for key: ${key}`);
+      }
+  }
+  clearAll(): void {
+      if (typeof this.storage.clearAll === 'function') {
+          this.storage.clearAll();
+      }
+  }
+  getAllKeys(): string[] { return this.storage.getAllKeys() ?? []; }
+}
+
+/**
+ * Memory Fallback Adapter for dev client without native modules or test environments.
+ */
+class MemoryAdapter implements StorageAdapter {
+  private cache: Map<string, string> = new Map();
+  get(key: string): string | null { return this.cache.get(key) ?? null; }
+  set(key: string, value: string): void { this.cache.set(key, value); }
+  delete(key: string): void { this.cache.delete(key); }
+  clearAll(): void { this.cache.clear(); }
+  getAllKeys(): string[] { return Array.from(this.cache.keys()); }
+}
+
+const _memoryFallback = new MemoryAdapter();
+
+const getAdapter = (): StorageAdapter => {
+  if (_adapter) return _adapter;
+  if (_isNativeUnavailable) return _memoryFallback;
 
   try {
     // V11: Robust MMKV initialization with clear error states
@@ -28,43 +75,42 @@ const getStorage = () => {
         MMKV = mmkvModule;
     }
 
+    let nativeInstance = null;
     if (MMKV) {
-        _storage = new MMKV({
+        nativeInstance = new MMKV({
             id: 'ceilings-app-storage'
         });
     } else if (mmkvModule.createMMKV) {
         // Fallback to factory function if available
-        _storage = mmkvModule.createMMKV({
+        nativeInstance = mmkvModule.createMMKV({
             id: 'ceilings-app-storage'
         });
     } else {
         const keys = Object.keys(mmkvModule).filter(k => k !== 'default').join(', ');
         throw new Error(`MMKV constructor is missing (native modules likely not linked). Available keys: ${keys}`);
     }
-    return _storage;
+
+    if (nativeInstance) {
+        _adapter = new MMKVAdapter(nativeInstance);
+        return _adapter;
+    }
+
+    throw new Error('Failed to create native MMKV instance');
   } catch (e: any) {
     if (!_isNativeUnavailable) {
         logger.warn(`[StorageService] Native storage unavailable: ${e.message}. Using in-memory fallback.`);
     }
     _isNativeUnavailable = true;
-    return null;
+    return _memoryFallback;
   }
 };
-
-// In-memory fallback for cases where MMKV is missing (Persistence disabled)
-const _memoryCache: Record<string, string> = {};
 
 export const storageService = {
   set(key: string, value: any): void {
     try {
-      const storage = getStorage();
+      const adapter = getAdapter();
       const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-
-      if (storage) {
-          storage.set(key, stringValue);
-      } else {
-          _memoryCache[key] = stringValue;
-      }
+      adapter.set(key, stringValue);
     } catch (error) {
       logger.error(`[StorageService] Error setting key "${key}":`, { error });
     }
@@ -72,9 +118,8 @@ export const storageService = {
 
   get<T>(key: string): T | null {
     try {
-      const storage = getStorage();
-      // Ensure we check for null/undefined from native side
-      const value = storage ? (storage.getString(key) ?? null) : _memoryCache[key];
+      const adapter = getAdapter();
+      const value = adapter.get(key);
 
       if (value === null || value === undefined) return null;
 
@@ -91,12 +136,8 @@ export const storageService = {
 
   delete(key: string): void {
     try {
-      const storage = getStorage();
-      if (storage) {
-          storage.delete(key);
-      } else {
-          delete _memoryCache[key];
-      }
+      const adapter = getAdapter();
+      adapter.delete(key);
     } catch (error) {
       logger.error(`[StorageService] Error deleting key "${key}":`, { error });
     }
@@ -104,12 +145,8 @@ export const storageService = {
 
   clearAll(): void {
     try {
-      const storage = getStorage();
-      if (storage) {
-          storage.clearAll();
-      } else {
-          Object.keys(_memoryCache).forEach(k => delete _memoryCache[k]);
-      }
+      const adapter = getAdapter();
+      adapter.clearAll();
     } catch (error) {
       logger.error('[StorageService] Error clearing storage:', { error });
     }
@@ -117,8 +154,8 @@ export const storageService = {
 
   getAllKeys(): string[] {
     try {
-      const storage = getStorage();
-      return storage ? (storage.getAllKeys() ?? []) : Object.keys(_memoryCache);
+      const adapter = getAdapter();
+      return adapter.getAllKeys();
     } catch (error) {
       logger.error('[StorageService] Error getting all keys:', { error });
       return [];
