@@ -20,6 +20,7 @@ import { BlurView } from 'expo-blur'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { mapEngine } from '../services/MapEngine'
 import { mapViewportStore } from '../services/MapViewportStore'
+import { logger } from '../services/logger/LoggerService'
 import { formatDate } from '../utils/date'
 import { Order } from '../types'
 import ErrorBoundary from '../components/common/ErrorBoundary';
