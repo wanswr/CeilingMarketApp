@@ -38,6 +38,8 @@ class EntityStore {
 
   private readonly PERSISTENCE_KEY = 'entity_store_v11';
 
+  private isHydratedFlag = false;
+
   constructor() {
     // V11: Defer hydration to MapEngine to avoid race conditions and double-hydration
   }
@@ -276,6 +278,7 @@ class EntityStore {
   }
 
   hydrate = () => {
+    if (this.isHydratedFlag) return true;
     try {
       logger.debug('STORE_HYDRATE_START', { source: 'store' });
       const data = storageService.get<any>(this.PERSISTENCE_KEY);
@@ -303,6 +306,7 @@ class EntityStore {
           this.seenEvents = new Set(data.seenEvents);
       }
       logger.info('STORE_HYDRATED', { source: 'store', orders: data.orders?.length || 0 });
+      this.isHydratedFlag = true;
       return true;
     } catch (e) {
       return false;

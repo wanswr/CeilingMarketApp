@@ -542,8 +542,8 @@ export class OrdersService {
 
     // 3. Extract Address (Heuristic: line with "ул", "мкад", or known cities)
     // V11: Expanded city list and added common landmarks like МКАД
-    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское', 'корс'];
-    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.', 'шоссе', 'мкад', 'жк', 'набережная', 'тупик'];
+    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское', 'корс', 'римского'];
+    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.', 'шоссе', 'мкад', 'жк', 'набережная', 'тупик', 'шоссе', 'кв', 'стр'];
 
     for (const line of lines) {
        const lowerLine = line.toLowerCase();
@@ -551,9 +551,11 @@ export class OrdersService {
        const isPriceLine = /зп|зарплата|цена|руб|₽/i.test(lowerLine);
 
        const hasCity = cities.some(c => lowerLine.includes(c));
-       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine.includes(' ' + k));
+       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine.includes(' ' + k) || lowerLine === k);
+       // Check for house number patterns like "11к1" or "д.5"
+       const hasHouseNum = /\d+[а-я]?/.test(lowerLine) && (lowerLine.includes(' ') || lowerLine.length < 20);
 
-       if ((hasCity || hasKeyword) && !isPriceLine && !isDateLine) {
+       if ((hasCity || hasKeyword || hasHouseNum) && !isPriceLine && !isDateLine) {
          result.address = line;
          // If it's a line like "Варшавское шоссе", check if next line adds detail (like "11к1")
          const idx = lines.indexOf(line);
@@ -561,7 +563,7 @@ export class OrdersService {
              const nextLine = lines[idx+1];
              if (nextLine.length < 40 && !/зп|цена|руб|завтра|сегодня/i.test(nextLine)) {
                  // If the current address is just a street, or next line looks like a house number
-                 if (nextLine.match(/\d+/) || line.length < 25) {
+                 if (nextLine.match(/\d+/) || line.length < 25 || nextLine.toLowerCase().includes('жк')) {
                     result.address += ', ' + nextLine;
                  }
              }
