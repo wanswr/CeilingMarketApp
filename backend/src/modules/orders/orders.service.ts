@@ -542,35 +542,49 @@ export class OrdersService {
 
     // 3. Extract Address (Heuristic: line with "ул", "мкад", or known cities)
     // V11: Expanded city list and added common landmarks like МКАД
-    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское'];
-    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.', 'шоссе', 'мкад', 'жк'];
+    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское', 'корс'];
+    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.', 'шоссе', 'мкад', 'жк', 'набережная', 'тупик'];
 
     for (const line of lines) {
        const lowerLine = line.toLowerCase();
        const isDateLine = /завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\d{1,2}\.\d{1,2}/i.test(lowerLine);
-       const isPriceLine = /зп|зарплата|руб|₽/i.test(lowerLine);
+       const isPriceLine = /зп|зарплата|цена|руб|₽/i.test(lowerLine);
 
        const hasCity = cities.some(c => lowerLine.includes(c));
-       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine === k);
+       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine.includes(' ' + k));
 
        if ((hasCity || hasKeyword) && !isPriceLine && !isDateLine) {
          result.address = line;
-         // If it's a very short line like "Варшавское шоссе", check if next line adds detail
+         // If it's a line like "Варшавское шоссе", check if next line adds detail (like "11к1")
          const idx = lines.indexOf(line);
-         if (idx !== -1 && idx < lines.length - 1 && lines[idx+1].length < 30 && !/зп|цена|руб/i.test(lines[idx+1])) {
-             result.address += ', ' + lines[idx+1];
+         if (idx !== -1 && idx < lines.length - 1) {
+             const nextLine = lines[idx+1];
+             if (nextLine.length < 40 && !/зп|цена|руб|завтра|сегодня/i.test(nextLine)) {
+                 // If the current address is just a street, or next line looks like a house number
+                 if (nextLine.match(/\d+/) || line.length < 25) {
+                    result.address += ', ' + nextLine;
+                 }
+             }
          }
          break;
        }
     }
 
-    // 4. Extract Title (First line that isn't a date or address)
+    // 4. Extract Title (First line that isn't a date or address, or looks like a job description)
     for (const line of lines) {
-        if (line === result.address) continue;
-        if (/завтра|сегодня|\d{1,2}\.\d{1,2}/i.test(line)) continue;
-        if (line.length > 5 && line.length < 50) {
+        if (result.address && result.address.includes(line)) continue;
+        const lowerLine = line.toLowerCase();
+        if (/завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\d{1,2}\.\d{1,2}/i.test(line)) continue;
+        if (/зп|зарплата|цена|руб|₽/i.test(line)) continue;
+
+        // V11: Smarter title selection - prefer lines with job keywords
+        if (lowerLine.includes('потолок') || lowerLine.includes('монтаж') || lowerLine.includes('замер') || lowerLine.includes('ремонт')) {
             result.title = line;
             break;
+        }
+
+        if (!result.title && line.length > 5 && line.length < 60) {
+            result.title = line;
         }
     }
 

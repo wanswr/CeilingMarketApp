@@ -45,7 +45,7 @@ const MapScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     if (isSubscribedRef.current) return;
-    if (__DEV__) console.log('MAP_SCREEN_MOUNT');
+    logger.debug('MAP_SCREEN_MOUNT', { source: 'ui' });
 
     const unsubscribeOrders = mapEngine.subscribe((newOrders: any) => {
       setDisplayedOrders([...newOrders]);
@@ -59,7 +59,7 @@ const MapScreen = ({ navigation }: any) => {
     isSubscribedRef.current = true;
 
     return () => {
-      console.log('MAP_SCREEN_UNMOUNT');
+      logger.debug('MAP_SCREEN_UNMOUNT', { source: 'ui' });
       unsubscribeOrders();
       unsubscribeViewport();
       isSubscribedRef.current = false;

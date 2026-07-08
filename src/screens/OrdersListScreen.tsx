@@ -59,10 +59,15 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [sortOrder, setSortOrder] = useState('newest');
 
   useEffect(() => {
+    logger.debug('ORDERS_LIST_MOUNT', { source: 'ui' });
     const unsubscribe = mapEngine.subscribe(() => {
       setOrders(mapEngine.getOrders(true));
     }, 'OrdersListScreen');
-    return () => unsubscribe();
+
+    return () => {
+        logger.debug('ORDERS_LIST_UNMOUNT', { source: 'ui' });
+        unsubscribe();
+    };
   }, []);
 
   useFocusEffect(

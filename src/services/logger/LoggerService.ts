@@ -2,7 +2,6 @@ import { LogLevel } from './LogLevel';
 import { LogContext, LogEntry } from './LogContext';
 import { traceManager } from './TraceManager';
 import { Platform } from 'react-native';
-import { storageService } from '../StorageService';
 
 class LoggerService {
   private level: LogLevel = __DEV__ ? LogLevel.DEBUG : LogLevel.INFO;
@@ -60,7 +59,9 @@ class LoggerService {
 
   private persistLog(entry: LogEntry) {
       try {
-          const stored = storageService.get<LogEntry[]>(this.PERSISTENT_LOG_KEY) || [];
+          // Break circular dependency by using dynamic require
+          const { storageService } = require('../StorageService');
+          const stored = storageService.get(this.PERSISTENT_LOG_KEY) || [];
           stored.push(entry);
           if (stored.length > 5000) stored.shift(); // Max 5000 as requested
           storageService.set(this.PERSISTENT_LOG_KEY, stored);
@@ -189,7 +190,12 @@ class LoggerService {
   }
 
   getPersistentLogs(): LogEntry[] {
-      return storageService.get<LogEntry[]>(this.PERSISTENT_LOG_KEY) || [];
+      try {
+          const { storageService } = require('../StorageService');
+          return storageService.get(this.PERSISTENT_LOG_KEY) || [];
+      } catch (e) {
+          return [];
+      }
   }
 
   exportLogs(): string {
@@ -201,7 +207,10 @@ class LoggerService {
   }
 
   clearPersistentLogs() {
-      storageService.delete(this.PERSISTENT_LOG_KEY);
+      try {
+          const { storageService } = require('../StorageService');
+          storageService.delete(this.PERSISTENT_LOG_KEY);
+      } catch (e) {}
   }
 }
 

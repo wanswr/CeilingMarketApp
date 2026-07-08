@@ -91,6 +91,8 @@ class MapEngine {
     };
   }
 
+  private notifyTimer: NodeJS.Timeout | null = null;
+
   private notifySubscribers = (clusteredOrders?: any[]) => {
     const orders = this.getOrdersArray();
 
@@ -103,7 +105,7 @@ class MapEngine {
     logger.debug('MAP_NOTIFY', {
         visible: mapOrders.length,
         total: orders.length,
-        subscribers: this.subscribers.size
+        subscribers: Array.from(this.subscribers.keys())
     });
 
     this.subscribers.forEach((cb, source) => {
@@ -116,10 +118,16 @@ class MapEngine {
   }
 
   triggerNotify = () => {
-      // Re-run clustering with current region
-      const region = mapViewportStore.getRegion();
-      const safeItems = this.recalculateClusteredOrders(region);
-      this.notifySubscribers(safeItems);
+      if (this.notifyTimer) clearTimeout(this.notifyTimer);
+
+      // Debounce notify to group multiple rapid updates (e.g. from websocket)
+      this.notifyTimer = setTimeout(() => {
+          // Re-run clustering with current region
+          const region = mapViewportStore.getRegion();
+          const safeItems = this.recalculateClusteredOrders(region);
+          this.notifySubscribers(safeItems);
+          this.notifyTimer = null;
+      }, 50);
   };
 
   getOrdersArray = (myOnly: boolean = false): Order[] => {
@@ -176,7 +184,8 @@ class MapEngine {
     if (!this.entityStore || !viewRegion) return;
 
     if (!this.isSyncRequired(viewRegion, force)) {
-        if (!this.syncLock) this.notifySubscribers();
+        // Even if sync not required, notify once to ensure UI is fresh (e.g. after hydrate)
+        this.triggerNotify();
         return;
     }
 
@@ -189,10 +198,12 @@ class MapEngine {
       logger.debug('MAP_FETCH_START', { lat: viewRegion.latitude, lng: viewRegion.longitude, requestId });
       const startTime = Date.now();
 
+      // V11: Enforce 100km radius for server sync as per technical audit requirement
+      const SYNC_RADIUS = 100;
       const response = await this.apiService.getSpatialOrders({
           lat: viewRegion.latitude,
           lng: viewRegion.longitude,
-          radius: this.searchRadius
+          radius: SYNC_RADIUS
       }, { signal: this.currentAbortController?.signal });
 
       if (requestId !== this.requestCounter) {
@@ -264,7 +275,13 @@ class MapEngine {
   }
 
   private recalculateClusteredOrders = (region: any): any[] => {
-    logger.debug('MAP_VISIBLE_RECALC_START');
+    const totalOrders = this.entityStore.getAllOrders();
+
+    if (!region) {
+        logger.debug('MAP_VISIBLE_RECALC_SKIP: No region');
+        return [];
+    }
+
     const startTime = Date.now();
     const latPadding = region.latitudeDelta * 0.7; // Wider padding for smoother panning
     const lngPadding = region.longitudeDelta * 0.7;
@@ -278,6 +295,13 @@ class MapEngine {
 
     // V9: Filter map candidates by status
     const myId = this.entityStore.currentUserId;
+
+    logger.debug('MAP_VISIBLE_RECALC_START', {
+        totalInStore: totalOrders.length,
+        inBounds: rawCandidates.length,
+        region: `${region.latitude.toFixed(3)},${region.longitude.toFixed(3)}`,
+        delta: region.latitudeDelta.toFixed(3)
+    });
 
     const candidates = rawCandidates.filter((order: Order) => {
         const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
@@ -313,7 +337,8 @@ class MapEngine {
     logger.debug('MAP_VISIBLE_RECALC_END', {
         candidates: candidates.length,
         visible: safeItems.length,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
+        radius: this.searchRadius
     });
     return safeItems;
   }
@@ -402,7 +427,8 @@ class MapEngine {
     const res = await this.apiService.createOrder(data);
     this.requestRouter.invalidate('orders:my');
     this.entityStore?.setOrder(res.data, 'api_create');
-    this.notifySubscribers();
+    // Ensure new order is visible immediately without a full sync
+    this.triggerNotify();
     return res.data;
   }
 
