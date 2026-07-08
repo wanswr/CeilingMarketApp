@@ -26,7 +26,7 @@ export default function VerifyCodeScreen({ route, navigation }: any) {
   const { phone, devCode } = route.params || {};
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
+  const { login } = useAuth();
 
   useEffect(() => {
     if (devCode) {
@@ -41,11 +41,7 @@ export default function VerifyCodeScreen({ route, navigation }: any) {
     }
     setLoading(true);
     try {
-      // @ts-ignore
-      const res = await apiService.api.post('auth/verify-otp', { phone, code });
-      if (res.data.access_token) {
-        await signIn(res.data.access_token, res.data.user);
-      }
+      await login(phone, code);
     } catch (err: any) {
       console.error(err);
       Alert.alert("Ошибка", err.response?.data?.message || "Неверный код");
