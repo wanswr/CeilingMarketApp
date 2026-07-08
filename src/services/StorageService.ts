@@ -21,17 +21,26 @@ const getStorage = () => {
     }
 
     // MMKV v4+ compatibility check
-    const MMKV = mmkvModule.MMKV || (mmkvModule.default && mmkvModule.default.MMKV);
+    let MMKV = mmkvModule.MMKV || (mmkvModule.default && mmkvModule.default.MMKV);
 
-    if (!MMKV) {
-        // Log the keys to help debug if it fails again
-        const keys = Object.keys(mmkvModule).join(', ');
-        throw new Error(`MMKV constructor is missing (native modules likely not linked). Available keys: ${keys}`);
+    // If MMKV class is not directly available, try to find it or use a factory
+    if (!MMKV && typeof mmkvModule === 'function') {
+        MMKV = mmkvModule;
     }
 
-    _storage = new MMKV({
-      id: 'ceilings-app-storage'
-    });
+    if (MMKV) {
+        _storage = new MMKV({
+            id: 'ceilings-app-storage'
+        });
+    } else if (mmkvModule.createMMKV) {
+        // Fallback to factory function if available
+        _storage = mmkvModule.createMMKV({
+            id: 'ceilings-app-storage'
+        });
+    } else {
+        const keys = Object.keys(mmkvModule).filter(k => k !== 'default').join(', ');
+        throw new Error(`MMKV constructor is missing (native modules likely not linked). Available keys: ${keys}`);
+    }
     return _storage;
   } catch (e: any) {
     if (!_isNativeUnavailable) {
