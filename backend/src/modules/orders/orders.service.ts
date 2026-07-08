@@ -478,18 +478,19 @@ export class OrdersService {
       date: new Date(),
     };
 
-    // 1. Extract Price (Patterns: 15000, ЗП 15000, 15.000р, 15000₽)
-    const priceRegex = /(?:зп|зарплата|цена|стоимость|выплата)?[:\s-]*(\d[\d\s.,]*)(?:₽|р|руб|рублей)/i;
+    // 1. Extract Price (Patterns: 15000, ЗП 15.000, 15.000р, 15000₽)
+    // V11: Enhanced price regex to capture numbers with dots/spaces even without currency symbols
+    const priceRegex = /(?:зп|зарплата|цена|стоимость|выплата)[:\s-]*(\d[\d\s.,]{3,})/i;
     const priceMatch = text.match(priceRegex);
+
     if (priceMatch) {
       const rawPrice = priceMatch[1].replace(/[\s.,]/g, '');
       result.price = parseInt(rawPrice, 10);
     } else {
-        // Simple fallback for "зп 15000" without currency symbol
-        const altPriceRegex = /(?:зп|зарплата)[:\s-]*(\d[\d\s]*)/i;
-        const altMatch = text.match(altPriceRegex);
-        if (altMatch) {
-            result.price = parseInt(altMatch[1].replace(/\s/g, ''), 10);
+        const currencyRegex = /(\d[\d\s.,]*)(?:₽|р|руб|рублей)/i;
+        const currencyMatch = text.match(currencyRegex);
+        if (currencyMatch) {
+            result.price = parseInt(currencyMatch[1].replace(/[\s.,]/g, ''), 10);
         }
     }
 
@@ -499,7 +500,9 @@ export class OrdersService {
       'воскресенье': 0, 'понедельник': 1, 'вторник': 2, 'среда': 3, 'четверг': 4, 'пятница': 5, 'суббота': 6
     };
 
-    if (/завтра/i.test(cleanText)) {
+    if (/сегодня/i.test(cleanText)) {
+      result.date = new Date(today);
+    } else if (/завтра/i.test(cleanText)) {
       const tomorrow = new Date();
       tomorrow.setDate(today.getDate() + 1);
       result.date = tomorrow;
@@ -508,9 +511,10 @@ export class OrdersService {
       dayAfter.setDate(today.getDate() + 2);
       result.date = dayAfter;
     } else {
-      // Check for day names
+      // Check for day names (e.g., "на пятницу", "в четверг")
       for (const [dayName, dayIndex] of Object.entries(daysOfWeek)) {
-        if (new RegExp(dayName, 'i').test(cleanText)) {
+        const dayRegex = new RegExp(`(?:на|в|во)?\\s*${dayName.slice(0, -1)}`, 'i');
+        if (dayRegex.test(cleanText)) {
           const targetDate = new Date();
           const currentDay = today.getDay();
           let daysUntil = dayIndex - currentDay;
@@ -536,9 +540,10 @@ export class OrdersService {
       }
     }
 
-    // 3. Extract Address (Heuristic: usually the 2nd or 3rd line, or line with "ул", "проезд", "корпус", or known cities)
-    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное'];
-    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.'];
+    // 3. Extract Address (Heuristic: line with "ул", "мкад", or known cities)
+    // V11: Expanded city list and added common landmarks like МКАД
+    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское'];
+    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.', 'шоссе', 'мкад', 'жк'];
 
     for (const line of lines) {
        const lowerLine = line.toLowerCase();
@@ -546,10 +551,15 @@ export class OrdersService {
        const isPriceLine = /зп|зарплата|руб|₽/i.test(lowerLine);
 
        const hasCity = cities.some(c => lowerLine.includes(c));
-       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' '));
+       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine === k);
 
        if ((hasCity || hasKeyword) && !isPriceLine && !isDateLine) {
          result.address = line;
+         // If it's a very short line like "Варшавское шоссе", check if next line adds detail
+         const idx = lines.indexOf(line);
+         if (idx !== -1 && idx < lines.length - 1 && lines[idx+1].length < 30 && !/зп|цена|руб/i.test(lines[idx+1])) {
+             result.address += ', ' + lines[idx+1];
+         }
          break;
        }
     }

@@ -77,10 +77,44 @@ class EntityStore {
       return { lat, lng };
   }
 
+  /**
+   * STATUS_PRIORITY defines the immutable flow of an order.
+   * We block updates that try to move an order backwards in status (e.g., from CLAIMED back to PUBLISHED)
+   * unless explicitly allowed by the backend (which isn't the case for regular sync).
+   */
+  private readonly STATUS_PRIORITY: Record<string, number> = {
+    'PENDING': 0,
+    'PUBLISHED': 1,
+    'HAS_RESPONSES': 1, // Same as published for discovery
+    'CLAIMED': 2,
+    'IN_PROGRESS': 3,
+    'COMPLETED': 4,
+    'REVIEWED': 5,
+    'CANCELLED': 6,
+    'DISPUTE': 6
+  };
+
   setOrder = (order: Order, source: string = 'unknown') => {
     if (!order?.id) return;
 
     const existing = this.ordersById.get(order.id);
+
+    // V11: Block status rollback (prevent API race condition where stale spatial data overwrites fresh status)
+    if (existing && order.status) {
+        const currentPrio = this.STATUS_PRIORITY[existing.status] || 0;
+        const newPrio = this.STATUS_PRIORITY[order.status] || 0;
+        if (newPrio < currentPrio) {
+            logger.warn('STATUS_ROLLBACK_BLOCKED', {
+                orderId: order.id,
+                current: existing.status,
+                incoming: order.status,
+                source
+            });
+            // Still update coordinates or other fields if it's the same or higher priority in business logic
+            // but for simple sync, if priority is lower, we ignore the whole update to be safe
+            return;
+        }
+    }
 
     // V11: Handle Partial Updates
     const incomingCoords = this.getCoords(order);

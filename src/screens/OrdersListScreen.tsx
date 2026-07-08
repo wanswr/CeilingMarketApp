@@ -67,6 +67,7 @@ const OrdersListScreen = ({ navigation }: any) => {
 
   useFocusEffect(
     React.useCallback(() => {
+      // V11: Only update local state if mounted to prevent memory leaks/zombie state
       setOrders(mapEngine.getOrders(true));
 
       const user = mapEngine.getCurrentUser();

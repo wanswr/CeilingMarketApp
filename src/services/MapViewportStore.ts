@@ -14,11 +14,14 @@ class MapViewportStore {
   private subscribers: Map<string, ViewportCallback> = new Map();
 
   setRegion(region: Region) {
-    if (
-      Math.abs(this.currentRegion.latitude - region.latitude) > 0.0001 ||
-      Math.abs(this.currentRegion.longitude - region.longitude) > 0.0001 ||
-      Math.abs(this.currentRegion.latitudeDelta - region.latitudeDelta) > 0.0001
-    ) {
+    // V11: Increased significance threshold to prevent micro-movements from triggering expensive recalculations
+    const SIGNIFICANT_MOVE = 0.0005;
+    const isSignificant =
+      Math.abs(this.currentRegion.latitude - region.latitude) > SIGNIFICANT_MOVE ||
+      Math.abs(this.currentRegion.longitude - region.longitude) > SIGNIFICANT_MOVE ||
+      Math.abs(this.currentRegion.latitudeDelta - region.latitudeDelta) > (SIGNIFICANT_MOVE * 2);
+
+    if (isSignificant) {
         this.currentRegion = region;
         logger.debug('MAP_VIEWPORT_CHANGED', {
             source: 'system',

@@ -139,10 +139,9 @@ const MapScreen = ({ navigation }: any) => {
           initialRegion={region}
           showsUserLocation={true}
           onPress={() => setSelectedOrder(null)}
-          onRegionChange={(newReg) => {
+          onRegionChange={() => {
               if (!isFocusedRef.current) return;
               if (!isMoving) setIsMoving(true);
-              mapViewportStore.setRegion(newReg);
           }}
           onRegionChangeComplete={handleRegionChangeComplete}
           onPanDrag={() => {

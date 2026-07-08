@@ -322,12 +322,12 @@ class MapEngine {
     if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
     }
-    // V9: Faster update loop for snappier markers
+    // V11: Debounce 300ms to ensure we don't recalculate mid-flight
     this.debounceTimer = setTimeout(() => {
-        const safeItems = this.recalculateClusteredOrders(region);
-        this.notifySubscribers(safeItems);
+        // Recalculate will notify subscribers automatically
+        this.triggerNotify();
         this.syncMap(false, region);
-    }, 200);
+    }, 300);
   }
 
   // --- Selectors ---
