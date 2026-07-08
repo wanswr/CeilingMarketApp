@@ -177,7 +177,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     const statusBefore = order?.status;
     setSubmitting(true);
     try {
-      await mapEngine.startOrder(orderId);
+      const res = await mapEngine.startOrder(orderId);
+      // V11: Immediate local update to satisfy UI even before subscription fires
+      if (res.data) setOrder(res.data);
+
       logger.logStateTransition('START_WORK', statusBefore, 'IN_PROGRESS', { orderId, actionId: aid });
       logger.endAction('START_WORK', { aid });
       Alert.alert('Успех', 'Статус заказа изменен на "В работе"');
@@ -199,7 +202,9 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     const statusBefore = order?.status;
     setSubmitting(true);
     try {
-      await mapEngine.completeOrder(orderId);
+      const res = await mapEngine.completeOrder(orderId);
+      if (res.data) setOrder(res.data);
+
       logger.logStateTransition('COMPLETE_WORK', statusBefore, 'COMPLETED', { orderId, actionId: aid });
       logger.endAction('COMPLETE_WORK', { aid });
       Alert.alert('Успех', 'Заказ выполнен!', [

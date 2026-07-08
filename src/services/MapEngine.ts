@@ -61,7 +61,7 @@ class MapEngine {
   private initPersistence = () => {
     if (this.isHydrated) return;
     // V11: Synchronous hydration via StorageService
-    this.entityStore.hydrate();
+    const hasData = this.entityStore.hydrate();
     this.spatialManager.hydrate();
     this.isHydrated = true;
 

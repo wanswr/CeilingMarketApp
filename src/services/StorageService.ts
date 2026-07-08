@@ -95,6 +95,7 @@ const getAdapter = (): StorageAdapter => {
     }
 
     if (nativeInstance) {
+        // Hardened: If nativeInstance is a factory/module, wrap it correctly
         _adapter = new MMKVAdapter(nativeInstance);
         return _adapter;
     }

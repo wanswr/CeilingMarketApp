@@ -32,11 +32,18 @@ class SocketService {
     this.socket.on('connect', () => {
       logger.info('WEBSOCKET_CONNECTED', { source: 'websocket', socketId: this.socket?.id });
       this.joinPrivateRoom();
+
+      // V11: Re-join geo room on reconnect to ensure map remains reactive
+      const { mapViewportStore } = require('./MapViewportStore');
+      const region = mapViewportStore.getRegion();
+      if (region) {
+          this.socket?.emit('geo.join', { lat: region.latitude, lng: region.longitude });
+      }
     });
 
     this.socket.on('order.created', (payload: any) => {
       const order = payload.order || payload;
-      logger.debug('WS_ORDER_CREATED', { source: 'websocket', orderId: order.id });
+      logger.info('WS_ORDER_CREATED', { source: 'websocket', orderId: order.id, status: order.status });
 
       const loadedBounds = entityStore.loadedBounds;
       if (loadedBounds) {
