@@ -394,8 +394,8 @@ class MapEngine {
     return this.entityStore.getUser(userId);
   }
 
-  syncOrder = async (orderId: string) => {
-    const res = await this.requestRouter.request(`order:${orderId}`, () => this.apiService.getOrderDetails(orderId), 10000);
+  syncOrder = async (orderId: string, force: boolean = false) => {
+    const res = await this.requestRouter.request(`order:${orderId}`, () => this.apiService.getOrderDetails(orderId), force ? 0 : 10000);
     if (res && res.data) {
         this.entityStore.setOrder(res.data, 'api_sync');
         return res.data;
@@ -453,27 +453,35 @@ class MapEngine {
   cancelApplication = async (id: string) => {
     const res = await this.apiService.cancelApplication(id);
     this.requestRouter.invalidate(`order:${id}`);
-    this.syncOrder(id);
+    await this.syncOrder(id, true);
     return res;
   };
   acceptApplication = async (applicationId: string) => {
     const res = await this.apiService.acceptApplication(applicationId);
-    if (res.data?.orderId) {
-        this.requestRouter.invalidate(`order:${res.data.orderId}`);
-        this.syncOrder(res.data.orderId);
+    const orderId = res.data?.orderId || res.data?.order?.id;
+    if (orderId) {
+        this.requestRouter.invalidate(`order:${orderId}`);
+        await this.syncOrder(orderId, true);
     }
     return res;
   };
   startOrder = async (id: string) => {
     const res = await this.apiService.startOrder(id);
     this.requestRouter.invalidate(`order:${id}`);
-    this.syncOrder(id);
+    // V11: Update store immediately if data is returned
+    if (res.data) {
+        this.entityStore.setOrder(res.data, 'api_start');
+    }
+    await this.syncOrder(id, true);
     return res;
   };
   completeOrder = async (id: string) => {
     const res = await this.apiService.completeOrder(id);
     this.requestRouter.invalidate(`order:${id}`);
-    this.syncOrder(id);
+    if (res.data) {
+        this.entityStore.setOrder(res.data, 'api_complete');
+    }
+    await this.syncOrder(id, true);
     return res;
   };
   deleteOrder = async (id: string) => {

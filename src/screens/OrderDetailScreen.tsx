@@ -30,8 +30,11 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const fetchOrderDetails = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-        const updated = await mapEngine.syncOrder(orderId);
-        setOrder(updated);
+        // V11: Bypass cache to ensure UI is always fresh when entering Detail screen
+        const updated = await mapEngine.syncOrder(orderId, true);
+        if (updated) {
+            setOrder(updated);
+        }
         setLoading(false);
     } catch (e) {
         if (!isRefresh) {
@@ -248,9 +251,9 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }
 
   const myId = currentUser?.uid || currentUser?.id;
-  const isEmployer = myId === order?.employerId;
-  const isExecutor = myId === order?.executorId;
-  const hasApplied = order?.applications?.some(a => a.executorId === myId);
+  const isEmployer = !!myId && !!order?.employerId && myId === order?.employerId;
+  const isExecutor = !!myId && !!order?.executorId && myId === order?.executorId;
+  const hasApplied = !!myId && !!order?.applications?.some(a => a.executorId === myId);
 
   if (loading || !order) {
     return (

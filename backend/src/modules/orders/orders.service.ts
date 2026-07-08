@@ -204,9 +204,14 @@ export class OrdersService {
   async startWork(orderId: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
-    if (order.executorId !== userId) throw new ForbiddenException();
+
+    if (order.executorId !== userId) {
+        console.warn(`[OrdersService] Forbidden: User ${userId} is not executor ${order.executorId} for order ${order.id}`);
+        throw new ForbiddenException();
+    }
 
     if (order.status !== OrderStatus.CLAIMED) {
+      console.warn(`[OrdersService] Conflict: Order ${orderId} has status ${order.status}, but CLAIMED is required to start`);
       throw new ConflictException('Order must be in CLAIMED status to start work');
     }
 
@@ -552,8 +557,8 @@ export class OrdersService {
 
        const hasCity = cities.some(c => lowerLine.includes(c));
        const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine.includes(' ' + k) || lowerLine === k);
-       // Check for house number patterns like "11к1" or "д.5"
-       const hasHouseNum = /\d+[а-я]?/.test(lowerLine) && (lowerLine.includes(' ') || lowerLine.length < 20);
+       // Check for house number patterns like "11к1" or "д.5" (ensuring it's not a price or date)
+       const hasHouseNum = /\d+[а-я]?/.test(lowerLine) && !isPriceLine && !isDateLine && (lowerLine.includes(' ') || lowerLine.length < 15);
 
        if ((hasCity || hasKeyword || hasHouseNum) && !isPriceLine && !isDateLine) {
          result.address = line;
@@ -562,8 +567,8 @@ export class OrdersService {
          if (idx !== -1 && idx < lines.length - 1) {
              const nextLine = lines[idx+1];
              if (nextLine.length < 40 && !/зп|цена|руб|завтра|сегодня/i.test(nextLine)) {
-                 // If the current address is just a street, or next line looks like a house number
-                 if (nextLine.match(/\d+/) || line.length < 25 || nextLine.toLowerCase().includes('жк')) {
+                 // If the current address is just a street, or next line looks like a house number or JK
+                 if (nextLine.match(/\d+/) || line.length < 25 || nextLine.toLowerCase().includes('жк') || cities.some(c => nextLine.toLowerCase().includes(c))) {
                     result.address += ', ' + nextLine;
                  }
              }

@@ -11,13 +11,22 @@ export class ReviewsService {
   ) {}
 
   async create(userId: string, dto: { orderId: string; rating: number; comment?: string }) {
+    console.log(`[ReviewsService] Create review request from user ${userId} for order ${dto.orderId}`);
+
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
       include: { review: true }
     });
 
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.employerId !== userId) throw new ForbiddenException('Only employer can leave a review');
+    if (!order) {
+        console.error(`[ReviewsService] Order ${dto.orderId} not found`);
+        throw new NotFoundException('Order not found');
+    }
+
+    if (order.employerId !== userId) {
+        console.warn(`[ReviewsService] Forbidden: User ${userId} is not the employer ${order.employerId} for order ${order.id}`);
+        throw new ForbiddenException('Only employer can leave a review');
+    }
     if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.REVIEWED) {
       throw new ConflictException('Order must be completed to leave a review');
     }
