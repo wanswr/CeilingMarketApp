@@ -2,7 +2,7 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { logger } from './logger/LoggerService';
 
-const DEFAULT_API_URL = 'http://192.168.1.137:3000/api/'; // Default for physical device.
+const DEFAULT_API_URL = 'http://192.168.1.124:3000/api/'; // Default for physical device.
 
 class ApiService {
   public api: AxiosInstance;
