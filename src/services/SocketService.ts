@@ -29,13 +29,20 @@ class SocketService {
     });
 
     this.socket.on('connect', () => {
-      logger.info('WEBSOCKET_CONNECTED', { source: 'websocket', socketId: this.socket?.id });
+      logger.logWS('WS_CONNECTED', { socketId: this.socket?.id });
       this.joinPrivateRoom();
     });
 
     this.socket.on('order.created', (payload: any) => {
+      const eventId = payload.eventId || payload.id;
+      if (eventId && mapEngine.entityStore?.isEventSeen(eventId)) {
+          logger.logWS('WS_EVENT_DUPLICATE', { event: 'order.created', eventId });
+          return;
+      }
+      if (eventId) mapEngine.entityStore?.markEventSeen(eventId);
+
       const order = payload.order || payload;
-      logger.debug('WS_ORDER_CREATED', { source: 'websocket', orderId: order.id });
+      logger.logWS('WS_EVENT_RECEIVED', { event: 'order.created', orderId: order.id });
 
       const loadedBounds = mapEngine.entityStore?.loadedBounds;
       if (loadedBounds) {
@@ -57,39 +64,56 @@ class SocketService {
       mapEngine.entityStore?.persist();
     });
 
-    this.socket.on('order.status.changed', (order: any) => {
-      logger.info('WS_ORDER_STATUS_CHANGED', { source: 'websocket', orderId: order.id, status: order.status });
+    this.socket.on('order.status.changed', (payload: any) => {
+      const eventId = payload.eventId || `status_${payload.id}_${payload.status}`;
+      if (mapEngine.entityStore?.isEventSeen(eventId)) {
+          logger.logWS('WS_EVENT_DUPLICATE', { event: 'order.status.changed', eventId });
+          return;
+      }
+      mapEngine.entityStore?.markEventSeen(eventId);
+
+      const order = payload.order || payload;
+      logger.logWS('WS_EVENT_RECEIVED', { event: 'order.status.changed', orderId: order.id, status: order.status });
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.setOrder(order, 'websocket');
       mapEngine.triggerNotify();
       mapEngine.entityStore?.persist();
     });
 
-    this.socket.on('application.new', (application: any) => {
-      logger.info('WS_APPLICATION_NEW', { source: 'websocket', orderId: application.orderId });
+    this.socket.on('application.new', (payload: any) => {
+      const eventId = payload.eventId || `app_new_${payload.id}`;
+      if (mapEngine.entityStore?.isEventSeen(eventId)) return;
+      mapEngine.entityStore?.markEventSeen(eventId);
+
+      const application = payload.application || payload;
+      logger.logWS('WS_EVENT_RECEIVED', { event: 'application.new', orderId: application.orderId });
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.syncOrder(application.orderId);
     });
 
-    this.socket.on('application.accepted', (data: any) => {
-       logger.info('WS_APPLICATION_ACCEPTED', { source: 'websocket', orderId: data.orderId });
-       mapEngine.syncOrder(data.orderId);
+    this.socket.on('application.accepted', (payload: any) => {
+       const eventId = payload.eventId || `app_acc_${payload.orderId}`;
+       if (mapEngine.entityStore?.isEventSeen(eventId)) return;
+       mapEngine.entityStore?.markEventSeen(eventId);
+
+       logger.logWS('WS_EVENT_RECEIVED', { event: 'application.accepted', orderId: payload.orderId });
+       mapEngine.syncOrder(payload.orderId);
     });
 
     this.socket.on('message.new', (msg: any) => {
-        logger.info('WS_MESSAGE_NEW', { source: 'websocket', chatId: msg.chatId, messageId: msg.id });
+        logger.logWS('WS_EVENT_RECEIVED', { event: 'message.new', chatId: msg.chatId, messageId: msg.id });
     });
 
     this.socket.on('order.deleted', (payload: any) => {
       const orderId = payload.id || payload.orderId || payload;
-      logger.info('WS_ORDER_DELETED', { source: 'websocket', orderId });
+      logger.logWS('WS_EVENT_RECEIVED', { event: 'order.deleted', orderId });
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.removeOrder(orderId);
       mapEngine.triggerNotify();
     });
 
     this.socket.on('disconnect', (reason) => {
-      logger.warn('WEBSOCKET_DISCONNECTED', { source: 'websocket', reason });
+      logger.logWS('WS_DISCONNECTED', { reason });
     });
 
     this.socket.on('connect_error', (err) => {

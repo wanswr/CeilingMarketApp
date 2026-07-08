@@ -84,7 +84,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               logger.endAction('CANCEL_APPLICATION', { aid });
               Alert.alert('Успех', 'Отклик отозван');
             } catch (error: any) {
-              logger.error('CANCEL_APPLICATION_FAILED', { error: error.message, aid });
+              logger.logNetworkError(aid, error, { orderId });
               Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отозвать отклик');
             } finally {
               setSubmitting(false);
@@ -117,7 +117,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         logger.endAction('SUBMIT_APPLICATION', { aid });
         Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
     } catch (error: any) {
-        logger.error('SUBMIT_APPLICATION_FAILED', { error: error.message, aid });
+        logger.logNetworkError(aid, error, { orderId });
         Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
     } finally {
         setSubmitting(false);
@@ -145,7 +145,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   { text: 'ОК' }
               ]);
             } catch (e: any) {
-              logger.error('ACCEPT_APPLICATION_FAILED', { error: e.message, aid });
+              logger.logNetworkError(aid, e, { orderId, applicationId });
               Alert.alert('Ошибка', 'Не удалось выбрать исполнителя');
             } finally {
               setSubmitting(false);
@@ -167,13 +167,15 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const handleStartWork = async () => {
     logger.logClick('StartWork', 'OrderDetail', { orderId });
     const aid = logger.startAction('START_WORK', { orderId });
+    const statusBefore = order?.status;
     setSubmitting(true);
     try {
       await mapEngine.startOrder(orderId);
+      logger.logStateTransition('START_WORK', statusBefore, 'IN_PROGRESS', { orderId, actionId: aid });
       logger.endAction('START_WORK', { aid });
       Alert.alert('Успех', 'Статус заказа изменен на "В работе"');
     } catch (error: any) {
-      logger.error('START_WORK_FAILED', { error: error.message, aid });
+      logger.logNetworkError(aid, error, { orderId });
       Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось начать работу');
     } finally {
       setSubmitting(false);
@@ -183,16 +185,18 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const handleCompleteWork = async () => {
     logger.logClick('CompleteWork', 'OrderDetail', { orderId });
     const aid = logger.startAction('COMPLETE_WORK', { orderId });
+    const statusBefore = order?.status;
     setSubmitting(true);
     try {
       await mapEngine.completeOrder(orderId);
+      logger.logStateTransition('COMPLETE_WORK', statusBefore, 'COMPLETED', { orderId, actionId: aid });
       logger.endAction('COMPLETE_WORK', { aid });
       Alert.alert('Успех', 'Заказ выполнен!', [
           { text: 'Оставить отзыв', onPress: () => setShowReviewModal(true) },
           { text: 'Позже' }
       ]);
     } catch (error: any) {
-      logger.error('COMPLETE_WORK_FAILED', { error: error.message, aid });
+      logger.logNetworkError(aid, error, { orderId });
       Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось завершить работу');
     } finally {
       setSubmitting(false);
@@ -200,9 +204,16 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const submitReview = async () => {
-      if (rating === 0) return;
+      if (rating === 0 || submitting) return;
+      if (order?.review) {
+          Alert.alert('Инфо', 'Вы уже оставили отзыв');
+          setShowReviewModal(false);
+          return;
+      }
+
       logger.logClick('SubmitReview', 'OrderDetail', { orderId, rating });
       const aid = logger.startAction('SUBMIT_REVIEW', { orderId, rating });
+      const statusBefore = order?.status;
       setSubmitting(true);
       try {
           await apiService.createReview({
@@ -210,13 +221,19 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               comment: reviewText,
               orderId
           });
+
+          // Force invalidate cache to prevent status rollback
+          mapEngine.requestRouter.invalidate(`order:${orderId}`);
+          const updated = await mapEngine.syncOrder(orderId);
+          setOrder(updated);
+
+          logger.logStateTransition('SUBMIT_REVIEW', statusBefore, updated?.status, { orderId, actionId: aid });
           logger.endAction('SUBMIT_REVIEW', { aid });
           Alert.alert('Спасибо!', 'Ваш отзыв важен для нас');
           setShowReviewModal(false);
-          fetchOrderDetails();
       } catch (e: any) {
-          logger.error('SUBMIT_REVIEW_FAILED', { error: e.message, aid });
-          Alert.alert('Ошибка', 'Не удалось отправить отзыв');
+          logger.logNetworkError(aid, e, { orderId });
+          Alert.alert('Ошибка', e.response?.data?.message || 'Не удалось отправить отзыв');
       } finally {
           setSubmitting(false);
       }

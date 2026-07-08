@@ -2,11 +2,13 @@ import { LogLevel } from './LogLevel';
 import { LogContext, LogEntry } from './LogContext';
 import { traceManager } from './TraceManager';
 import { Platform } from 'react-native';
+import { storageService } from '../StorageService';
 
 class LoggerService {
   private level: LogLevel = __DEV__ ? LogLevel.DEBUG : LogLevel.INFO;
   private logs: LogEntry[] = [];
   private readonly MAX_LOGS = 1000;
+  private readonly PERSISTENT_LOG_KEY = 'app_logs_persistent';
 
   setLevel(level: LogLevel) {
     this.level = level;
@@ -47,8 +49,22 @@ class LoggerService {
     this.logs.push(entry);
     if (this.logs.length > this.MAX_LOGS) this.logs.shift();
 
+    // Persistent storage for critical logs (Error/Warn or important Actions)
+    if (level >= LogLevel.WARN || context.source === 'system' || context.important) {
+        this.persistLog(entry);
+    }
+
     // Output to console
     this.printToConsole(entry);
+  }
+
+  private persistLog(entry: LogEntry) {
+      try {
+          const stored = storageService.get<LogEntry[]>(this.PERSISTENT_LOG_KEY) || [];
+          stored.push(entry);
+          if (stored.length > 500) stored.shift(); // Max 500 persistent logs
+          storageService.set(this.PERSISTENT_LOG_KEY, stored);
+      } catch (e) {}
   }
 
   private printToConsole(entry: LogEntry) {
@@ -94,6 +110,15 @@ class LoggerService {
     }
   }
 
+  logStateTransition(name: string, before: any, after: any, extra: LogContext = {}) {
+      this.info(`STATE_TRANSITION: ${name}`, {
+          source: 'store',
+          stateBefore: before,
+          stateAfter: after,
+          ...extra
+      });
+  }
+
   // Network Logging
   logRequest(method: string, url: string, requestId: string, payload?: any) {
     traceManager.startTimer(requestId);
@@ -112,9 +137,34 @@ class LoggerService {
     }
   }
 
-  logNetworkError(requestId: string, error: any) {
+  logNetworkError(requestId: string, error: any, extra: any = {}) {
     const duration = traceManager.getDuration(requestId, 'request');
-    this.error(`NETWORK_ERROR`, { source: 'api', requestId, duration, error: error.message, stack: error.stack });
+    const response = error.response?.data;
+    const status = error.response?.status;
+    const url = error.config?.url;
+    const method = error.config?.method;
+
+    this.error(`NETWORK_ERROR`, {
+        source: 'api',
+        requestId,
+        duration,
+        status,
+        url,
+        method,
+        error: error.message,
+        response,
+        ...extra
+    });
+  }
+
+  // Cache Logging
+  logCache(event: 'CACHE_READ' | 'CACHE_WRITE' | 'CACHE_INVALIDATE' | 'CACHE_STALE' | 'CACHE_HIT', key: string, extra: LogContext = {}) {
+      this.debug(event, { source: 'store', key, ...extra });
+  }
+
+  // WebSocket Logging
+  logWS(event: 'WS_CONNECTED' | 'WS_DISCONNECTED' | 'WS_EVENT_RECEIVED' | 'WS_EVENT_DUPLICATE' | 'WS_EVENT_IGNORED', extra: LogContext = {}) {
+      this.debug(event, { source: 'websocket', ...extra });
   }
 
   // UI Interaction Logging
@@ -125,6 +175,14 @@ class LoggerService {
   // Trace helper for complex flows
   getTrace(actionId: string): LogEntry[] {
     return this.logs.filter(l => l.context.actionId === actionId);
+  }
+
+  getPersistentLogs(): LogEntry[] {
+      return storageService.get<LogEntry[]>(this.PERSISTENT_LOG_KEY) || [];
+  }
+
+  clearPersistentLogs() {
+      storageService.delete(this.PERSISTENT_LOG_KEY);
   }
 }
 

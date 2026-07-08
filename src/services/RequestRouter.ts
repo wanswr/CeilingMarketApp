@@ -1,3 +1,5 @@
+import { logger } from './logger/LoggerService';
+
 /**
  * RequestRouter: Centralized Gateway for all API requests.
  * Features: Global Deduplication, Cache-First Policy, and Request Locking.
@@ -52,6 +54,7 @@ class RequestRouter {
       if (__DEV__) {
         console.log(`[RequestRouter] CACHE HIT: ${key}`);
       }
+      logger.logCache('CACHE_HIT', key, { ageMs: now - cached.timestamp });
       this.metrics.cacheHits++;
       return cached.data;
     }
@@ -66,6 +69,7 @@ class RequestRouter {
       try {
         const data = await fetchFn();
         this.cache.set(key, { data, timestamp: Date.now() });
+        logger.logCache('CACHE_WRITE', key);
         return data;
       } catch (error: any) {
         if (error.name === 'AbortError' || error.message === 'canceled') {
@@ -91,6 +95,7 @@ class RequestRouter {
    */
   invalidate = (key: string) => {
     this.cache.delete(key);
+    logger.logCache('CACHE_INVALIDATE', key);
   }
 
   /**
@@ -109,6 +114,7 @@ class RequestRouter {
     this.metrics.spatialCacheHits = 0;
     this.metrics.spatialCacheMisses = 0;
     this.metrics.spatialRequests = 0;
+    logger.logCache('CACHE_INVALIDATE', 'ALL');
   }
 
   getMetrics = () => {
