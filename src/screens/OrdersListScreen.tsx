@@ -52,6 +52,7 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [orders, setOrders] = useState<Order[]>(mapEngine.getOrders(true));
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [refreshing, setRefreshing] = useState(false);
+  const [submitting, setSubmitting] = useState<string | null>(null);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
@@ -150,6 +151,8 @@ const OrdersListScreen = ({ navigation }: any) => {
   }, [orders, activeTab, statusFilter, workTypeFilter, sortOrder, currentUser]);
 
   const handleDelete = (orderId: string) => {
+    if (submitting) return;
+
     Alert.alert(
       'Удаление заказа',
       'Заказ будет перенесен в корзину и окончательно удален через 10 дней. Продолжить?',
@@ -159,10 +162,13 @@ const OrdersListScreen = ({ navigation }: any) => {
           text: 'В корзину',
           style: 'destructive',
           onPress: async () => {
+            setSubmitting(orderId);
             try {
               await mapEngine.updateOrder(orderId, { status: 'CANCELLED', deletedAt: new Date().toISOString() });
             } catch (e) {
               Alert.alert('Ошибка', 'Не удалось удалить заказ');
+            } finally {
+                setSubmitting(null);
             }
           }
         }
@@ -171,20 +177,44 @@ const OrdersListScreen = ({ navigation }: any) => {
   };
 
   const handleStartWork = async (orderId: string) => {
+    const target = orders.find(o => o.id === orderId);
+    if (submitting || target?.status !== 'CLAIMED') return;
+
+    setSubmitting(orderId);
     try {
       await mapEngine.startOrder(orderId);
     } catch (e) {
       Alert.alert('Ошибка', 'Не удалось начать работу');
+    } finally {
+        setSubmitting(null);
     }
   };
 
   const handleCompleteWork = async (orderId: string) => {
+    const target = orders.find(o => o.id === orderId);
+    if (submitting || target?.status !== 'IN_PROGRESS') return;
+
+    setSubmitting(orderId);
     try {
       await mapEngine.completeOrder(orderId);
     } catch (e) {
       Alert.alert('Ошибка', 'Не удалось завершить работу');
+    } finally {
+        setSubmitting(null);
     }
   };
+
+  const handleCancelApplication = async (orderId: string) => {
+      if (submitting) return;
+      setSubmitting(orderId);
+      try {
+          await mapEngine.cancelApplication(orderId);
+      } catch (e: any) {
+          Alert.alert('Ошибка', e.response?.data?.message || 'Не удалось отменить отклик');
+      } finally {
+          setSubmitting(null);
+      }
+  }
 
   const renderFilterChip = (item: { id: string, label: string }, current: string, setter: (v: string) => void) => (
     <TouchableOpacity
@@ -262,6 +292,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             isEmployer={item.employerId === (currentUser?.uid || currentUser?.id)}
             currentUserId={currentUser?.uid || currentUser?.id}
             hasApplied={item.applications?.some(a => a.executorId === (currentUser?.uid || currentUser?.id))}
+            submitting={submitting === item.id}
             onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
             onDelete={() => handleDelete(item.id)}
             onEdit={() => navigation.navigate('EditOrder', { orderId: item.id })}
@@ -271,7 +302,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             onCancelApplication={() => {
               Alert.alert('Отмена отклика', 'Вы уверены?', [
                 { text: 'Нет' },
-                { text: 'Да', onPress: () => mapEngine.cancelApplication(item.id) }
+                { text: 'Да', onPress: () => handleCancelApplication(item.id) }
               ]);
             }}
           />

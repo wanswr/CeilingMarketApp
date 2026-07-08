@@ -69,12 +69,14 @@ class SocketService {
     this.socket.on('application.new', (application: any) => {
       logger.info('WS_APPLICATION_NEW', { source: 'websocket', orderId: application.orderId });
       requestRouter.metrics.websocketUpdates++;
-      require('./MapEngine').mapEngine.syncOrder(application.orderId);
+      // Sync order and notify list listeners
+      require('./MapEngine').mapEngine.syncOrder(application.orderId, true);
     });
 
     this.socket.on('application.accepted', (data: any) => {
        logger.info('WS_APPLICATION_ACCEPTED', { source: 'websocket', orderId: data.orderId });
-       require('./MapEngine').mapEngine.syncOrder(data.orderId);
+       // Force sync and notify
+       require('./MapEngine').mapEngine.syncOrder(data.orderId, true);
     });
 
     this.socket.on('message.new', (msg: any) => {

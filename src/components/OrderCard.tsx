@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, View, Text, StyleSheet, Animated } from 'react-native'
+import { TouchableOpacity, View, Text, StyleSheet, ActivityIndicator } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { Swipeable } from 'react-native-gesture-handler'
 import { Order, OrderStatus } from '../types'
@@ -49,7 +49,7 @@ const getWorkTypeLabel = (type: string) => {
     }
 }
 
-export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string }> = ({
+export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string, submitting?: boolean }> = ({
   order,
   isEmployer,
   onPress,
@@ -60,7 +60,8 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
   onChat,
   onCancelApplication,
   hasApplied,
-  currentUserId
+  currentUserId,
+  submitting
 }) => {
   const statusInfo = getStatusDetails(order.status);
   const amIExecutor = order.executorId === currentUserId;
@@ -101,18 +102,18 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
 
     if (!isEmployer && order.status === 'CLAIMED' && amIExecutor) {
       return (
-        <TouchableOpacity style={styles.startAction} onPress={onStart}>
-          <Ionicons name="play-outline" size={24} color="#fff" />
-          <Text style={styles.actionText}>Начать</Text>
+        <TouchableOpacity style={styles.startAction} onPress={onStart} disabled={submitting}>
+          {submitting ? <ActivityIndicator color="#fff" /> : <Ionicons name="play-outline" size={24} color="#fff" />}
+          <Text style={styles.actionText}>{submitting ? 'Запуск...' : 'Начать'}</Text>
         </TouchableOpacity>
       );
     }
 
     if (!isEmployer && order.status === 'IN_PROGRESS' && amIExecutor) {
       return (
-        <TouchableOpacity style={styles.completeAction} onPress={onComplete}>
-          <Ionicons name="checkmark-done-outline" size={24} color="#fff" />
-          <Text style={styles.actionText}>Завершить</Text>
+        <TouchableOpacity style={styles.completeAction} onPress={onComplete} disabled={submitting}>
+          {submitting ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-done-outline" size={24} color="#fff" />}
+          <Text style={styles.actionText}>{submitting ? 'Завершение...' : 'Завершить'}</Text>
         </TouchableOpacity>
       );
     }

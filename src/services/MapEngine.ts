@@ -398,6 +398,7 @@ class MapEngine {
     const res = await this.requestRouter.request(`order:${orderId}`, () => this.apiService.getOrderDetails(orderId), force ? 0 : 10000);
     if (res && res.data) {
         this.entityStore.setOrder(res.data, 'api_sync');
+        this.triggerNotify();
         return res.data;
     }
     return this.entityStore.getOrder(orderId);
@@ -409,7 +410,7 @@ class MapEngine {
       const res = await this.requestRouter.request('orders:my', () => this.apiService.getMyOrders(), 10000);
       if (res && res.data) {
           this.entityStore.setOrders(res.data);
-          this.notifySubscribers();
+          this.triggerNotify();
           return res.data;
       }
       return this.entityStore.getMyOrders();
@@ -436,7 +437,7 @@ class MapEngine {
     const res = await this.apiService.updateOrder(id, data);
     this.requestRouter.invalidate(`order:${id}`);
     this.entityStore?.setOrder(res.data, 'api_update');
-    this.notifySubscribers();
+    this.triggerNotify();
     return res.data;
   }
 
@@ -453,7 +454,8 @@ class MapEngine {
   cancelApplication = async (id: string) => {
     const res = await this.apiService.cancelApplication(id);
     this.requestRouter.invalidate(`order:${id}`);
-    await this.syncOrder(id, true);
+    const updated = await this.syncOrder(id, true);
+    this.triggerNotify();
     return res;
   };
   acceptApplication = async (applicationId: string) => {
@@ -462,6 +464,7 @@ class MapEngine {
     if (orderId) {
         this.requestRouter.invalidate(`order:${orderId}`);
         await this.syncOrder(orderId, true);
+        this.triggerNotify();
     }
     return res;
   };
@@ -473,6 +476,7 @@ class MapEngine {
         this.entityStore.setOrder(res.data, 'api_start');
     }
     await this.syncOrder(id, true);
+    this.triggerNotify();
     return res;
   };
   completeOrder = async (id: string) => {
@@ -482,6 +486,7 @@ class MapEngine {
         this.entityStore.setOrder(res.data, 'api_complete');
     }
     await this.syncOrder(id, true);
+    this.triggerNotify();
     return res;
   };
   deleteOrder = async (id: string) => {
