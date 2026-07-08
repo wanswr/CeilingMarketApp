@@ -61,10 +61,13 @@ class LoggerService {
       try {
           // Break circular dependency by using dynamic require
           const { storageService } = require('../StorageService');
-          const stored = storageService.get(this.PERSISTENT_LOG_KEY) || [];
+          const adapter = storageService;
+          if (!adapter) return;
+
+          const stored = adapter.get(this.PERSISTENT_LOG_KEY) || [];
           stored.push(entry);
           if (stored.length > 5000) stored.shift(); // Max 5000 as requested
-          storageService.set(this.PERSISTENT_LOG_KEY, stored);
+          adapter.set(this.PERSISTENT_LOG_KEY, stored);
       } catch (e) {}
   }
 

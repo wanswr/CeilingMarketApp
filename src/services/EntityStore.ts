@@ -123,15 +123,21 @@ class EntityStore {
         return;
     }
 
-    // Deep merge applications
+    // V11: Robust merge of applications and executor data
     let mergedApplications = order.applications;
     if (!mergedApplications && existing?.applications) {
         mergedApplications = existing.applications;
     } else if (mergedApplications && existing?.applications) {
         const appMap = new Map(existing.applications.map(a => [a.executorId, a]));
-        mergedApplications.forEach(a => appMap.set(a.executorId, a));
+        mergedApplications.forEach(a => {
+            const current = appMap.get(a.executorId);
+            appMap.set(a.executorId, current ? { ...current, ...a } : a);
+        });
         mergedApplications = Array.from(appMap.values());
     }
+
+    const executorId = order.executorId ?? existing?.executorId;
+    const executor = order.executor ?? existing?.executor;
 
     const normalizedOrder = {
         ...order,
@@ -139,6 +145,8 @@ class EntityStore {
         longitude: coords.lng,
         lat: coords.lat,
         lng: coords.lng,
+        executorId,
+        executor,
         applications: mergedApplications
     };
 

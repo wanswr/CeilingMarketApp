@@ -45,15 +45,27 @@ class MapEngine {
   }
 
   private updateSocketRoom(region: any) {
-      const key = `${Math.floor(region.latitude * 10)}:${Math.floor(region.longitude * 10)}`;
+      // V11: Multi-room join (Center + 8 neighbors) to ensure full coverage of viewport
+      // Grid is 0.1 degree (approx 10km)
+      const lat = Math.floor(region.latitude * 10) / 10;
+      const lng = Math.floor(region.longitude * 10) / 10;
+      const key = `${lat}:${lng}`;
+
       if (key !== this.lastGeoJoinKey) {
-          // Break circular dependency by dynamic require
           const { socketService } = require('./SocketService');
           const socket = socketService.getSocket();
           if (socket?.connected) {
-              socket.emit('geo.join', { lat: region.latitude, lng: region.longitude });
+              // Join a 3x3 grid around current center to account for viewport delta
+              for (let i = -1; i <= 1; i++) {
+                  for (let j = -1; j <= 1; j++) {
+                      socket.emit('geo.join', {
+                          lat: lat + (i * 0.1),
+                          lng: lng + (j * 0.1)
+                      });
+                  }
+              }
               this.lastGeoJoinKey = key;
-              logger.debug('MAP_GEO_ROOM_JOIN', { source: 'system', key });
+              logger.debug('MAP_GEO_ROOM_JOIN_GRID', { source: 'system', center: key });
           }
       }
   }
@@ -446,7 +458,7 @@ class MapEngine {
     if (res.data?.order) {
         this.requestRouter.invalidate(`order:${id}`);
         this.entityStore.setOrder(res.data.order, 'api_apply');
-        this.notifySubscribers();
+        this.triggerNotify();
     }
     return res.data;
   }

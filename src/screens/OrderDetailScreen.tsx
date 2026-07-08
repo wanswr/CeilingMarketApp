@@ -116,7 +116,9 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     const aid = logger.startAction('SUBMIT_APPLICATION', { orderId, price: numericPrice });
     setSubmitting(true);
     try {
-        await mapEngine.applyForOrder(orderId, numericPrice);
+        const res = await mapEngine.applyForOrder(orderId, numericPrice);
+        if (res?.order) setOrder(res.order);
+
         logger.endAction('SUBMIT_APPLICATION', { aid });
         Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
     } catch (error: any) {
@@ -141,6 +143,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             setSubmitting(true);
             try {
               const res = await mapEngine.acceptApplication(applicationId);
+              if (res.data?.order) setOrder(res.data.order);
+
               logger.endAction('ACCEPT_APPLICATION', { aid });
               setShowApplications(false);
               Alert.alert('Успех', 'Исполнитель выбран. Чат создан.', [

@@ -179,7 +179,7 @@ const MapScreen = ({ navigation }: any) => {
 
             return (
               <Marker
-                key={item.id}
+                key={`${item.id}_${item.status}`} // V11: status in key forces re-render if updated
                 coordinate={coords}
                 onPress={(e) => {
                   e.stopPropagation();
