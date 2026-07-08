@@ -11,7 +11,7 @@ class SpatialManager {
   private grid: Map<string, Set<string>> = new Map();
 
   constructor() {
-    this.hydrate();
+    // V11: Defer hydration to MapEngine to avoid double calls
   }
 
   hydrate() {

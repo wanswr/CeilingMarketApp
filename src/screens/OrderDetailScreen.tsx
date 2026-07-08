@@ -165,6 +165,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }
 
   const handleStartWork = async () => {
+    if (submitting || order?.status !== 'CLAIMED') return;
+
     logger.logClick('StartWork', 'OrderDetail', { orderId });
     const aid = logger.startAction('START_WORK', { orderId });
     const statusBefore = order?.status;
@@ -183,6 +185,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleCompleteWork = async () => {
+    if (submitting || order?.status !== 'IN_PROGRESS') return;
+
     logger.logClick('CompleteWork', 'OrderDetail', { orderId });
     const aid = logger.startAction('COMPLETE_WORK', { orderId });
     const statusBefore = order?.status;

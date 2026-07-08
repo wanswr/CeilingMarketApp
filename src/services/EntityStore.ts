@@ -39,11 +39,7 @@ class EntityStore {
   private readonly PERSISTENCE_KEY = 'entity_store_v11';
 
   constructor() {
-    this.init();
-  }
-
-  private init() {
-    this.hydrate();
+    // V11: Defer hydration to MapEngine to avoid race conditions and double-hydration
   }
 
   setCurrentUserId(id: string | null) {

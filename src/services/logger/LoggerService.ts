@@ -86,6 +86,15 @@ class LoggerService {
     }
   }
 
+  logStateTransition(action: string, from: any, to: any, extra: LogContext = {}) {
+      this.info(`STATE_TRANSITION: ${action}`, {
+          source: 'state',
+          from,
+          to,
+          ...extra
+      });
+  }
+
   private getLevelColor(level: LogLevel): string {
     switch (level) {
       case LogLevel.DEBUG: return '#888';
