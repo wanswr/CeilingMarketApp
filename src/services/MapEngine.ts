@@ -34,11 +34,14 @@ class MapEngine {
   constructor() {
       this.initPersistence();
 
-      // V9: Reactive architecture - Engine listens to Camera
-      mapViewportStore.subscribe((region) => {
-          this.triggerMapUpdate(region);
-          this.updateSocketRoom(region);
-      }, 'MapEngine_Core');
+      // V11: Defer subscription to avoid require cycles during module definition
+      setTimeout(() => {
+          // V9: Reactive architecture - Engine listens to Camera
+          mapViewportStore.subscribe((region) => {
+              this.triggerMapUpdate(region);
+              this.updateSocketRoom(region);
+          }, 'MapEngine_Core');
+      }, 0);
   }
 
   private updateSocketRoom(region: any) {

@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client'
-import { mapEngine } from './MapEngine'
+import { entityStore } from './EntityStore'
+import { requestRouter } from './RequestRouter'
 import { getDistance } from '../utils/geo'
 import { logger } from './logger/LoggerService'
 
@@ -37,7 +38,7 @@ class SocketService {
       const order = payload.order || payload;
       logger.debug('WS_ORDER_CREATED', { source: 'websocket', orderId: order.id });
 
-      const loadedBounds = mapEngine.entityStore?.loadedBounds;
+      const loadedBounds = entityStore.loadedBounds;
       if (loadedBounds) {
           const centerLat = (loadedBounds.north + loadedBounds.south) / 2;
           const centerLng = (loadedBounds.east + loadedBounds.west) / 2;
@@ -51,29 +52,29 @@ class SocketService {
           }
       }
 
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
-      mapEngine.triggerNotify();
-      mapEngine.entityStore?.persist();
+      requestRouter.metrics.websocketUpdates++;
+      entityStore.setOrder(order, 'websocket');
+      require('./MapEngine').mapEngine.triggerNotify();
+      entityStore.persist();
     });
 
     this.socket.on('order.status.changed', (order: any) => {
       logger.info('WS_ORDER_STATUS_CHANGED', { source: 'websocket', orderId: order.id, status: order.status });
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
-      mapEngine.triggerNotify();
-      mapEngine.entityStore?.persist();
+      requestRouter.metrics.websocketUpdates++;
+      entityStore.setOrder(order, 'websocket');
+      require('./MapEngine').mapEngine.triggerNotify();
+      entityStore.persist();
     });
 
     this.socket.on('application.new', (application: any) => {
       logger.info('WS_APPLICATION_NEW', { source: 'websocket', orderId: application.orderId });
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.syncOrder(application.orderId);
+      requestRouter.metrics.websocketUpdates++;
+      require('./MapEngine').mapEngine.syncOrder(application.orderId);
     });
 
     this.socket.on('application.accepted', (data: any) => {
        logger.info('WS_APPLICATION_ACCEPTED', { source: 'websocket', orderId: data.orderId });
-       mapEngine.syncOrder(data.orderId);
+       require('./MapEngine').mapEngine.syncOrder(data.orderId);
     });
 
     this.socket.on('message.new', (msg: any) => {
@@ -83,9 +84,9 @@ class SocketService {
     this.socket.on('order.deleted', (payload: any) => {
       const orderId = payload.id || payload.orderId || payload;
       logger.info('WS_ORDER_DELETED', { source: 'websocket', orderId });
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.removeOrder(orderId);
-      mapEngine.triggerNotify();
+      requestRouter.metrics.websocketUpdates++;
+      entityStore.removeOrder(orderId);
+      require('./MapEngine').mapEngine.triggerNotify();
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -98,7 +99,7 @@ class SocketService {
   }
 
   private joinPrivateRoom() {
-      const currentUser = mapEngine.getCurrentUser();
+      const currentUser = entityStore.getCurrentUser();
       const myId = currentUser?.id || currentUser?.uid;
       if (myId && this.socket?.connected) {
           logger.debug('[WebSocket] Joining private room', { source: 'websocket', userId: myId });

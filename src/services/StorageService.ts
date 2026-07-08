@@ -20,9 +20,13 @@ const getStorage = () => {
         throw new Error('react-native-mmkv module not found in bundle');
     }
 
-    const { MMKV } = mmkvModule;
+    // MMKV v4+ compatibility check
+    const MMKV = mmkvModule.MMKV || (mmkvModule.default && mmkvModule.default.MMKV);
+
     if (!MMKV) {
-        throw new Error('MMKV constructor is missing (native modules likely not linked)');
+        // Log the keys to help debug if it fails again
+        const keys = Object.keys(mmkvModule).join(', ');
+        throw new Error(`MMKV constructor is missing (native modules likely not linked). Available keys: ${keys}`);
     }
 
     _storage = new MMKV({
