@@ -1,59 +1,56 @@
+import { Region } from '../types'
+import { logger } from './logger/LoggerService';
 
-import { Region } from 'react-native-maps'
+type ViewportCallback = (region: Region) => void;
 
 class MapViewportStore {
-    private currentRegion: Region = {
-        latitude: 55.751244,
-        longitude: 37.618423,
-        latitudeDelta: 0.5,
-        longitudeDelta: 0.5 };
+  private currentRegion: Region = {
+    latitude: 55.751244,
+    longitude: 37.618423,
+    latitudeDelta: 0.1,
+    longitudeDelta: 0.1,
+  };
 
-    private subscribers: Map<string, (region: Region) => void> = new Map();
-    private debounceTimer: NodeJS.Timeout | null = null;
+  private subscribers: Map<string, ViewportCallback> = new Map();
 
-    setRegion(region: Region) {
-        if (this.currentRegion.latitude === region.latitude &&
-            this.currentRegion.longitude === region.longitude &&
-            this.currentRegion.latitudeDelta === region.latitudeDelta &&
-            this.currentRegion.longitudeDelta === region.longitudeDelta) {
-            return;
-        }
-
-        // 1. Update state immediately so getRegion() is always current
+  setRegion(region: Region) {
+    if (
+      Math.abs(this.currentRegion.latitude - region.latitude) > 0.0001 ||
+      Math.abs(this.currentRegion.longitude - region.longitude) > 0.0001 ||
+      Math.abs(this.currentRegion.latitudeDelta - region.latitudeDelta) > 0.0001
+    ) {
         this.currentRegion = region;
-
-        // 2. Debounce notification to prevent heavy subscriber logic during rapid movement
-        if (this.debounceTimer) clearTimeout(this.debounceTimer);
-        this.debounceTimer = setTimeout(() => {
-            if (__DEV__) {
-                console.log('MAP_VIEWPORT_CHANGED', {
-                    lat: region.latitude.toFixed(3),
-                    lng: region.longitude.toFixed(3),
-                    delta: region.latitudeDelta.toFixed(3)
-                });
-            }
-            this.notify();
-        }, 250);
+        logger.debug('MAP_VIEWPORT_CHANGED', {
+            source: 'system',
+            lat: region.latitude.toFixed(3),
+            lng: region.longitude.toFixed(3),
+            delta: region.latitudeDelta.toFixed(3)
+        });
+        this.notify();
     }
+  }
 
-    getRegion(): Region {
-        return { ...this.currentRegion };
-    }
+  getRegion(): Region {
+    return this.currentRegion;
+  }
 
-    subscribe(callback: (region: Region) => void, source: string) {
-        this.subscribers.set(source, callback);
-        if (__DEV__) console.log('MAP_VIEWPORT_SUBSCRIBE', { source, total: this.subscribers.size });
-        return () => {
-            if (this.subscribers.delete(source)) {
-                if (__DEV__) console.log('MAP_VIEWPORT_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
-            }
-        };
-    }
+  subscribe(callback: ViewportCallback, source: string) {
+    this.subscribers.set(source, callback);
+    logger.debug('MAP_VIEWPORT_SUBSCRIBE', { source, total: this.subscribers.size });
 
-    private notify() {
-        console.log('[MapViewportStore] notify, count:', this.subscribers.size);
-        this.subscribers.forEach(cb => cb(this.currentRegion));
-    }
+    // Immediate callback with current value
+    callback(this.currentRegion);
+
+    return () => {
+        this.subscribers.delete(source);
+        logger.debug('MAP_VIEWPORT_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
+    };
+  }
+
+  private notify() {
+    logger.debug('[MapViewportStore] notify', { count: this.subscribers.size });
+    this.subscribers.forEach(cb => cb(this.currentRegion));
+  }
 }
 
 export const mapViewportStore = new MapViewportStore();

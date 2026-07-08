@@ -3,46 +3,38 @@ import { LogContext } from './LogContext';
 class TraceManager {
   private currentActionId: string | null = null;
   private currentTraceId: string | null = null;
-  private startTimes: Map<string, number> = new Map();
+  private timers: Map<string, number> = new Map();
 
-  generateId() {
-    return Math.random().toString(36).substring(2, 9);
-  }
-
-  startAction(name: string, context?: LogContext): string {
-    const actionId = this.generateId();
+  startAction(name: string, context: LogContext = {}): string {
+    const actionId = Math.random().toString(36).substring(7);
     this.currentActionId = actionId;
-    this.startTimes.set(`action_${actionId}`, Date.now());
+    this.startTimer(actionId);
     return actionId;
   }
 
-  getActionId() {
+  getActionId(): string | null {
     return this.currentActionId;
   }
 
-  startTrace(name: string): string {
-    const traceId = this.generateId();
-    this.currentTraceId = traceId;
-    this.startTimes.set(`trace_${traceId}`, Date.now());
-    return traceId;
-  }
-
-  getTraceId() {
+  getTraceId(): string | null {
     return this.currentTraceId;
   }
 
-  getDuration(id: string, type: 'action' | 'trace' | 'request'): number {
-    const startTime = this.startTimes.get(`${type}_${id}`);
-    return startTime ? Date.now() - startTime : 0;
+  startTimer(key: string) {
+    this.timers.set(key, Date.now());
   }
 
-  startTimer(id: string) {
-    this.startTimes.set(`request_${id}`, Date.now());
+  getDuration(key: string, type: 'action' | 'request' = 'request'): number {
+    const start = this.timers.get(key);
+    if (!start) return 0;
+    const duration = Date.now() - start;
+    if (type === 'action') this.timers.delete(key);
+    return duration;
   }
 
   clear() {
     this.currentActionId = null;
-    this.currentTraceId = null;
+    this.timers.clear();
   }
 }
 

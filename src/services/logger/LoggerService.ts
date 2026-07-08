@@ -62,7 +62,7 @@ class LoggerService {
       try {
           const stored = storageService.get<LogEntry[]>(this.PERSISTENT_LOG_KEY) || [];
           stored.push(entry);
-          if (stored.length > 500) stored.shift(); // Max 500 persistent logs
+          if (stored.length > 5000) stored.shift(); // Max 5000 as requested
           storageService.set(this.PERSISTENT_LOG_KEY, stored);
       } catch (e) {}
   }
@@ -110,25 +110,35 @@ class LoggerService {
     }
   }
 
-  logStateTransition(name: string, before: any, after: any, extra: LogContext = {}) {
-      this.info(`STATE_TRANSITION: ${name}`, {
-          source: 'store',
-          stateBefore: before,
-          stateAfter: after,
-          ...extra
-      });
-  }
-
   // Network Logging
   logRequest(method: string, url: string, requestId: string, payload?: any) {
     traceManager.startTimer(requestId);
-    this.debug(`NETWORK_START: ${method} ${url}`, { source: 'api', requestId, payload });
+
+    // Mask sensitive data
+    const safePayload = this.maskSensitiveData(payload);
+    const size = payload ? JSON.stringify(payload).length : 0;
+
+    this.debug(`NETWORK_START: ${method} ${url}`, {
+        source: 'api',
+        requestId,
+        payload: this.truncateObject(safePayload),
+        payloadSize: size
+    });
   }
 
   logResponse(requestId: string, status: number, data?: any) {
     const duration = traceManager.getDuration(requestId, 'request');
     const message = `NETWORK_END: ${status}`;
-    const context = { source: 'api', requestId, status, duration, response: data };
+    const size = data ? JSON.stringify(data).length : 0;
+
+    const context = {
+        source: 'api',
+        requestId,
+        status,
+        duration,
+        response: this.truncateObject(data),
+        responseSize: size
+    };
 
     if (duration > 1000) {
         this.warn(`SLOW_REQUEST: ${message}`, context);
@@ -137,34 +147,35 @@ class LoggerService {
     }
   }
 
-  logNetworkError(requestId: string, error: any, extra: any = {}) {
+  logNetworkError(requestId: string, error: any) {
     const duration = traceManager.getDuration(requestId, 'request');
-    const response = error.response?.data;
-    const status = error.response?.status;
-    const url = error.config?.url;
-    const method = error.config?.method;
-
     this.error(`NETWORK_ERROR`, {
         source: 'api',
         requestId,
         duration,
-        status,
-        url,
-        method,
         error: error.message,
-        response,
-        ...extra
+        status: error.response?.status,
+        response: this.truncateObject(error.response?.data)
     });
   }
 
-  // Cache Logging
-  logCache(event: 'CACHE_READ' | 'CACHE_WRITE' | 'CACHE_INVALIDATE' | 'CACHE_STALE' | 'CACHE_HIT', key: string, extra: LogContext = {}) {
-      this.debug(event, { source: 'store', key, ...extra });
+  private maskSensitiveData(data: any): any {
+      if (!data) return data;
+      const masked = { ...data };
+      const sensitiveKeys = ['password', 'token', 'userToken', 'code', 'otp'];
+      sensitiveKeys.forEach(key => {
+          if (masked[key]) masked[key] = '********';
+      });
+      return masked;
   }
 
-  // WebSocket Logging
-  logWS(event: 'WS_CONNECTED' | 'WS_DISCONNECTED' | 'WS_EVENT_RECEIVED' | 'WS_EVENT_DUPLICATE' | 'WS_EVENT_IGNORED', extra: LogContext = {}) {
-      this.debug(event, { source: 'websocket', ...extra });
+  private truncateObject(obj: any, limit: number = 1000): any {
+      if (!obj) return obj;
+      const str = JSON.stringify(obj);
+      if (str.length > limit) {
+          return { _truncated: true, length: str.length, original: str.substring(0, limit) + '...' };
+      }
+      return obj;
   }
 
   // UI Interaction Logging
@@ -179,6 +190,14 @@ class LoggerService {
 
   getPersistentLogs(): LogEntry[] {
       return storageService.get<LogEntry[]>(this.PERSISTENT_LOG_KEY) || [];
+  }
+
+  exportLogs(): string {
+      const logs = this.getPersistentLogs();
+      const date = new Date().toISOString().split('T')[0].replace(/-/g, '_');
+      const filename = `logs_${date}.json`;
+      // In a real app, we might use Share or FileSystem, but for now we return JSON
+      return JSON.stringify({ filename, logs }, null, 2);
   }
 
   clearPersistentLogs() {

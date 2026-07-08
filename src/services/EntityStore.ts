@@ -16,16 +16,6 @@ interface StoreMeta {
   lastSyncTime?: number;
 }
 
-const STATUS_PRIORITY: Record<string, number> = {
-    'CANCELLED': -1,
-    'PUBLISHED': 0,
-    'HAS_RESPONSES': 1,
-    'CLAIMED': 2,
-    'IN_PROGRESS': 3,
-    'COMPLETED': 4,
-    'REVIEWED': 5
-};
-
 class EntityStore {
   public ordersById: Map<string, Order> = new Map();
   public myOrders: Set<string> = new Set();
@@ -92,25 +82,6 @@ class EntityStore {
 
     const existing = this.ordersById.get(order.id);
 
-    // Status Rollback Protection
-    if (existing && order.status) {
-        const existingPriority = STATUS_PRIORITY[existing.status] ?? 0;
-        const incomingPriority = STATUS_PRIORITY[order.status] ?? 0;
-
-        if (incomingPriority < existingPriority) {
-            logger.warn('STATUS_ROLLBACK_BLOCKED', {
-                source: 'store',
-                orderId: order.id,
-                old: existing.status,
-                new: order.status,
-                trigger: source,
-                important: true
-            });
-            // Still merge other fields, but keep higher priority status
-            order.status = existing.status;
-        }
-    }
-
     // V11: Handle Partial Updates
     const incomingCoords = this.getCoords(order);
     const coords = incomingCoords || (existing ? this.getCoords(existing) : null);
@@ -144,8 +115,11 @@ class EntityStore {
     if (existing === mergedOrder) return;
 
     if (existing && existing.status !== mergedOrder.status) {
-        logger.logStateTransition(`Order_${order.id}_Status`, existing.status, mergedOrder.status, {
+        logger.info('ORDER_STATUS_TRANSITION', {
+            source: 'store',
             orderId: order.id,
+            old: existing.status,
+            new: mergedOrder.status,
             trigger: source
         });
     } else if (!existing) {
@@ -174,7 +148,6 @@ class EntityStore {
 
     this.meta.writes++;
     this.persist();
-    logger.logCache('CACHE_WRITE', `order:${order.id}`, { trigger: source });
   }
 
   removeOrder = (id: string, reason: string = 'unknown') => {
@@ -187,7 +160,6 @@ class EntityStore {
     this.myOrders.delete(id);
     this.meta.writes++;
     this.persist();
-    logger.logCache('CACHE_INVALIDATE', `order:${id}`, { reason });
   }
 
   applyPatch = (patch: { created?: Order[], updated?: Order[], deleted?: string[] }, source: string = 'api_patch') => {

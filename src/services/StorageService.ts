@@ -2,6 +2,7 @@
  * StorageService V11: High-performance synchronous storage using MMKV.
  * Hardened version with dynamic require and graceful degradation.
  */
+import { logger } from './logger/LoggerService';
 
 let _storage: any = null;
 let _isNativeUnavailable = false;
@@ -30,7 +31,7 @@ const getStorage = () => {
     return _storage;
   } catch (e: any) {
     if (!_isNativeUnavailable) {
-        console.warn(`[StorageService] Native storage unavailable: ${e.message}. Using in-memory fallback.`);
+        logger.warn(`[StorageService] Native storage unavailable: ${e.message}. Using in-memory fallback.`);
     }
     _isNativeUnavailable = true;
     return null;
@@ -52,7 +53,7 @@ export const storageService = {
           _memoryCache[key] = stringValue;
       }
     } catch (error) {
-      if (__DEV__) console.error(`[StorageService] Error setting key "${key}":`, error);
+      logger.error(`[StorageService] Error setting key "${key}":`, { error });
     }
   },
 
@@ -70,7 +71,7 @@ export const storageService = {
         return value as unknown as T;
       }
     } catch (error) {
-      if (__DEV__) console.error(`[StorageService] Error getting key "${key}":`, error);
+      logger.error(`[StorageService] Error getting key "${key}":`, { error });
       return null;
     }
   },
@@ -84,7 +85,7 @@ export const storageService = {
           delete _memoryCache[key];
       }
     } catch (error) {
-      if (__DEV__) console.error(`[StorageService] Error deleting key "${key}":`, error);
+      logger.error(`[StorageService] Error deleting key "${key}":`, { error });
     }
   },
 
@@ -97,7 +98,7 @@ export const storageService = {
           Object.keys(_memoryCache).forEach(k => delete _memoryCache[k]);
       }
     } catch (error) {
-      if (__DEV__) console.error('[StorageService] Error clearing storage:', error);
+      logger.error('[StorageService] Error clearing storage:', { error });
     }
   },
 
@@ -106,7 +107,7 @@ export const storageService = {
       const storage = getStorage();
       return storage ? (storage.getAllKeys() ?? []) : Object.keys(_memoryCache);
     } catch (error) {
-      if (__DEV__) console.error('[StorageService] Error getting all keys:', error);
+      logger.error('[StorageService] Error getting all keys:', { error });
       return [];
     }
   }

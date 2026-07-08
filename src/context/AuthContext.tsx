@@ -1,22 +1,25 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { mapEngine } from '../services/MapEngine'
-import { socketService } from '../services/SocketService'
-import { apiService } from '../services/ApiService'
+import { apiService } from '../services/ApiService';
+import { mapEngine } from '../services/MapEngine';
+import { requestRouter } from '../services/RequestRouter';
+import { UserProfile } from '../types';
+import { logger } from '../services/logger/LoggerService';
 
 interface AuthContextType {
-  user: any;
+  user: UserProfile | null;
+  token: string | null;
   loading: boolean;
-  signIn: (token: string, userData: any) => Promise<void>;
-  signOut: () => Promise<void>;
-  updateUser: (userData: any) => void;
-  checkAuth: () => Promise<void>;
+  login: (phone: string, code: string) => Promise<void>;
+  logout: () => Promise<void>;
+  updateUser: (updatedUser: UserProfile) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,74 +27,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const checkAuth = async () => {
-    console.log('[AuthContext] Initializing auth check...');
+    logger.info('[AuthContext] Initializing auth check...');
     try {
-      const token = await SecureStore.getItemAsync('userToken');
-      console.log('[AuthContext] Token status:', token ? 'Found' : 'Not found');
+      const storedToken = await SecureStore.getItemAsync('userToken');
+      logger.debug('[AuthContext] Token status', { found: !!storedToken });
 
-      if (token) {
-        console.log('[AuthContext] Attempting profile sync...');
-        const profilePromise = mapEngine.syncUser();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Sync Timeout')), 5000)
-        );
-
+      if (storedToken) {
+        setToken(storedToken);
+        logger.debug('[AuthContext] Attempting profile sync...');
         try {
-          const userData = await Promise.race([profilePromise, timeoutPromise]);
-          console.log('[AuthContext] Profile synced successfully');
-          setUser(userData);
-          socketService.connect(apiService.getBaseUrl());
-        } catch (syncError: any) {
-          console.warn('[AuthContext] Profile sync failed or timed out:', syncError.message);
-
-          // Task #7: If error is 404, the user record is gone, so logout
-          if (syncError.response?.status === 404) {
-              console.log('[AuthContext] User record not found, clearing session');
-              await signOut();
-              return;
+          // Attempt to fetch fresh profile
+          const profile = await mapEngine.syncUser(true);
+          if (profile) {
+            setUser(profile);
+            logger.info('[AuthContext] Profile synced successfully');
           }
+        } catch (syncError: any) {
+          logger.warn('[AuthContext] Profile sync failed', { error: syncError.message });
 
-          // Fallback: try to use cached user if sync fails (e.g. 500 or timeout)
-          const cachedUser = mapEngine.entityStore.getCurrentUser();
-          if (cachedUser) {
-              console.log('[AuthContext] Using cached user data');
-              setUser(cachedUser);
-              socketService.connect(apiService.getBaseUrl());
+          if (syncError.response?.status === 404) {
+              logger.error('[AuthContext] User record not found, clearing session');
+              await logout();
           } else {
-              setUser({ id: 'pending', role: null });
+              // Try to use cached data from EntityStore
+              const cachedUser = mapEngine.getCurrentUser();
+              if (cachedUser) {
+                setUser(cachedUser);
+                logger.info('[AuthContext] Using cached user data');
+              }
           }
         }
-      } else {
-        setUser(null);
       }
-    } catch (e) {
-      console.error("[AuthContext] Fatal auth error:", e);
-      setUser(null);
+    } catch (e: any) {
+      logger.error("[AuthContext] Fatal auth error", { error: e.message });
     } finally {
-      console.log('[AuthContext] Auth check finished');
       setLoading(false);
+      logger.info('[AuthContext] Auth check finished');
     }
   };
 
-  const signIn = async (token: string, userData: any) => {
-    await SecureStore.setItemAsync('userToken', token);
-    setUser(userData);
-    socketService.connect(apiService.getBaseUrl());
+  const login = async (phone: string, code: string) => {
+    const aid = logger.startAction('AUTH_LOGIN', { phone });
+    try {
+      const res = await apiService.verifyOtp(phone, code);
+      const { token, user } = res.data;
+
+      await SecureStore.setItemAsync('userToken', token);
+      setToken(token);
+      setUser(user);
+
+      // Initialize systems with new user
+      mapEngine.entityStore.setUser({ ...user, isMe: true });
+      logger.endAction('AUTH_LOGIN', { aid, userId: user.id });
+    } catch (error: any) {
+      logger.logNetworkError(aid, error);
+      throw error;
+    }
   };
 
-  const signOut = async () => {
+  const logout = async () => {
+    logger.info('AUTH_LOGOUT', { userId: user?.id });
     await SecureStore.deleteItemAsync('userToken');
+    setToken(null);
     setUser(null);
-    socketService.disconnect();
-    mapEngine.entityStore.clear(); // Clear cache on logout
+    mapEngine.entityStore.clear();
+    requestRouter.clear();
   };
 
-  const updateUser = (userData: any) => {
-    setUser(userData);
+  const updateUser = (updatedUser: UserProfile) => {
+    setUser(updatedUser);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, updateUser, checkAuth }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

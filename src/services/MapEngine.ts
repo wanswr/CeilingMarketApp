@@ -5,7 +5,7 @@ import { entityStore } from './EntityStore'
 import { GeoClusterService } from './GeoClusterService'
 import { spatialManager } from '../map/SpatialManager'
 import { mapViewportStore } from './MapViewportStore'
-import { socketService } from './SocketService'
+import { logger } from './logger/LoggerService'
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -44,11 +44,13 @@ class MapEngine {
   private updateSocketRoom(region: any) {
       const key = `${Math.floor(region.latitude * 10)}:${Math.floor(region.longitude * 10)}`;
       if (key !== this.lastGeoJoinKey) {
+          // Break circular dependency by dynamic require
+          const { socketService } = require('./SocketService');
           const socket = socketService.getSocket();
           if (socket?.connected) {
               socket.emit('geo.join', { lat: region.latitude, lng: region.longitude });
               this.lastGeoJoinKey = key;
-              if (__DEV__) console.log('MAP_GEO_ROOM_JOIN', { key });
+              logger.debug('MAP_GEO_ROOM_JOIN', { source: 'system', key });
           }
       }
   }
@@ -62,18 +64,18 @@ class MapEngine {
 
     const count = this.entityStore.getAllOrders().length;
     if (count > 0) {
-        if (__DEV__) console.log('STORE_HYDRATE', { count, source: 'storage' });
+        logger.debug('STORE_HYDRATE', { count, source: 'store' });
         this.triggerNotify();
     }
   }
 
   subscribe = (callback: OrderCallback, source: string) => {
     if (!source) {
-        console.warn('[MapEngine] Subscribe called without source');
+        logger.warn('[MapEngine] Subscribe called without source');
         source = 'unknown_' + Math.random().toString(36).substr(2, 5);
     }
     this.subscribers.set(source, callback);
-    if (__DEV__) console.log('MAP_SUBSCRIBE', { source, total: this.subscribers.size });
+    logger.debug('MAP_SUBSCRIBE', { source, total: this.subscribers.size });
 
     // V9: Immediate snapshot with source-aware clustering and fresh reference
     const isMap = source === 'MapScreen';
@@ -82,7 +84,7 @@ class MapEngine {
 
     return () => {
         this.subscribers.delete(source);
-        if (__DEV__) console.log('MAP_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
+        logger.debug('MAP_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
     };
   }
 
@@ -95,13 +97,11 @@ class MapEngine {
         mapOrders = this.recalculateClusteredOrders(currentRegion);
     }
 
-    if (__DEV__) {
-        console.log('MAP_NOTIFY', {
-            visible: mapOrders.length,
-            total: orders.length,
-            subscribers: this.subscribers.size
-        });
-    }
+    logger.debug('MAP_NOTIFY', {
+        visible: mapOrders.length,
+        total: orders.length,
+        subscribers: this.subscribers.size
+    });
 
     this.subscribers.forEach((cb, source) => {
         if (source === 'MapScreen') {
@@ -183,7 +183,7 @@ class MapEngine {
     const requestId = ++this.requestCounter;
 
     try {
-      if (__DEV__) console.log('MAP_FETCH_START', { lat: viewRegion.latitude, lng: viewRegion.longitude, requestId });
+      logger.debug('MAP_FETCH_START', { lat: viewRegion.latitude, lng: viewRegion.longitude, requestId });
       const startTime = Date.now();
 
       const response = await this.apiService.getSpatialOrders({
@@ -193,13 +193,13 @@ class MapEngine {
       }, { signal: this.currentAbortController?.signal });
 
       if (requestId !== this.requestCounter) {
-          if (__DEV__) console.log('MAP_FETCH_IGNORED_STALE_RESPONSE', { requestId, latest: this.requestCounter });
+          logger.debug('MAP_FETCH_IGNORED_STALE_RESPONSE', { requestId, latest: this.requestCounter });
           return;
       }
 
       if (response.data) {
         const returnedOrders = response.data.created || response.data.orders || [];
-        if (__DEV__) console.log('MAP_FETCH_END', { returnedOrders: returnedOrders.length, requestId, durationMs: Date.now() - startTime });
+        logger.debug('MAP_FETCH_END', { returnedOrders: returnedOrders.length, requestId, durationMs: Date.now() - startTime });
 
         // V9: PRUNING STALE SPATIAL DATA
         // Before applying the new patch, find orders that should be in this region but weren't returned
@@ -223,8 +223,8 @@ class MapEngine {
             }
         });
 
-        if (prunedCount > 0 && __DEV__) {
-            console.log('STORE_STALE_REMOVED', { count: prunedCount });
+        if (prunedCount > 0) {
+            logger.debug('STORE_STALE_REMOVED', { count: prunedCount });
         }
 
         this.entityStore.applyPatch(response.data, 'spatial_fetch');
@@ -241,12 +241,12 @@ class MapEngine {
             longitude: viewRegion.longitude,
             latitudeDelta: viewRegion.latitudeDelta
         };
-        console.log('MAP_DATA_SOURCE: API', { count: this.entityStore.getAllOrders().length });
+        logger.debug('MAP_DATA_SOURCE: API', { count: this.entityStore.getAllOrders().length });
         this.triggerNotify();
         this.entityStore.persist();
       }
     } catch (error: any) {
-        if (error.name !== 'AbortError') console.error('Map Sync Fail:', error.message);
+        if (error.name !== 'AbortError') logger.error('Map Sync Fail:', { error: error.message });
     } finally {
         this.syncLock = false;
         this.currentAbortController = null;
@@ -254,15 +254,14 @@ class MapEngine {
   }
 
   initialLoad = async (lat: number, lng: number) => {
-      // V5: Force a sync on initial load to ensure we are not looking at stale storage data
-      if (__DEV__) console.log('[MapEngine] Performing initial server sync...');
+      logger.info('[MapEngine] Performing initial server sync...');
       // Mark as NOT initial loaded to ensure the syncMap(true) actually runs and clears storage ghost orders
       this.entityStore.isInitialLoaded = false;
       return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.5, longitudeDelta: 0.5 });
   }
 
   private recalculateClusteredOrders = (region: any): any[] => {
-    if (__DEV__) console.log('MAP_VISIBLE_RECALC_START');
+    logger.debug('MAP_VISIBLE_RECALC_START');
     const startTime = Date.now();
     const latPadding = region.latitudeDelta * 0.7; // Wider padding for smoother panning
     const lngPadding = region.longitudeDelta * 0.7;
@@ -290,10 +289,8 @@ class MapEngine {
         // 2. Claimed/In Progress are visible ONLY to participants.
         const shouldShow = isPublic || (isMine && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
 
-        if (__DEV__) {
-            if (!shouldShow && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
-                console.log('MAP_FILTER_BUG', { id: order.id, status: order.status, isMine, myId });
-            }
+        if (!shouldShow && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
+            logger.debug('MAP_FILTER_DEBUG', { id: order.id, status: order.status, isMine, myId });
         }
 
         return shouldShow;
@@ -305,18 +302,16 @@ class MapEngine {
     const safeItems = result.filter((item: any) => {
         const coords = this.getOrderCoords(item);
         const isValid = coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
-        if (!isValid && __DEV__) console.log('MAP_INVALID_COORDS', { id: item.id });
+        if (!isValid) logger.debug('MAP_INVALID_COORDS', { id: item.id });
         return isValid;
     });
 
     this.lastClusteredOrders = safeItems;
-    if (__DEV__) {
-        console.log('MAP_VISIBLE_RECALC_END', {
-            candidates: candidates.length,
-            visible: safeItems.length,
-            duration: Date.now() - startTime
-        });
-    }
+    logger.debug('MAP_VISIBLE_RECALC_END', {
+        candidates: candidates.length,
+        visible: safeItems.length,
+        duration: Date.now() - startTime
+    });
     return safeItems;
   }
 
@@ -344,7 +339,7 @@ class MapEngine {
   getCurrentUser = () => {
       const user = this.entityStore?.getCurrentUser();
       if (!user) {
-          console.warn("[MapEngine] currentUser unavailable");
+          logger.warn("[MapEngine] currentUser unavailable");
       }
       return user;
   };
