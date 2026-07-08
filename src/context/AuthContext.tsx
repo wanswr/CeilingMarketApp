@@ -70,10 +70,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const aid = logger.startAction('AUTH_LOGIN', { phone });
     try {
       const res = await apiService.verifyOtp(phone, code);
-      const { token, user } = res.data;
+      const { access_token, user } = res.data;
 
-      await SecureStore.setItemAsync('userToken', token);
-      setToken(token);
+      if (!access_token) {
+          throw new Error('No access_token returned from server');
+      }
+
+      await SecureStore.setItemAsync('userToken', access_token);
+      setToken(access_token);
       setUser(user);
 
       // Initialize systems with new user
