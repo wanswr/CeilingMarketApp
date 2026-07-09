@@ -250,10 +250,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               setOrder(updated);
           } else {
               // Fallback to update just status locally if sync returns null
-              setOrder(prev => prev ? { ...prev, status: 'REVIEWED' as any } : undefined);
+              // V11: Don't update status to REVIEWED, orders stay COMPLETED
           }
 
-          logger.logStateTransition('SUBMIT_REVIEW', statusBefore, updated?.status || 'REVIEWED', { orderId, actionId: aid });
+          logger.logStateTransition('SUBMIT_REVIEW', statusBefore, updated?.status || 'COMPLETED', { orderId, actionId: aid });
           logger.endAction('SUBMIT_REVIEW', { aid });
           Alert.alert('Спасибо!', 'Ваш отзыв важен для нас');
           setShowReviewModal(false);
@@ -313,7 +313,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 order.status === 'CLAIMED' && { backgroundColor: 'rgba(59, 130, 246, 0.1)' },
                 order.status === 'IN_PROGRESS' && { backgroundColor: 'rgba(139, 92, 246, 0.1)' },
                 order.status === 'COMPLETED' && { backgroundColor: 'rgba(16, 185, 129, 0.1)' },
-                order.status === 'REVIEWED' && { backgroundColor: 'rgba(16, 185, 129, 0.2)' }
+                false
             ]}>
                <Text style={[
                    styles.statusText,
@@ -322,14 +322,14 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                    order.status === 'CLAIMED' && { color: '#3B82F6' },
                    order.status === 'IN_PROGRESS' && { color: '#8B5CF6' },
                    order.status === 'COMPLETED' && { color: '#10B981' },
-                   order.status === 'REVIEWED' && { color: '#059669' }
+                   false
                ]}>
                    {order.status === 'PUBLISHED' ? 'Ожидает исполнителя' :
                     order.status === 'HAS_RESPONSES' ? 'Есть отклики' :
                     order.status === 'CLAIMED' ? 'Исполнитель выбран' :
                     order.status === 'IN_PROGRESS' ? 'В работе' :
                     order.status === 'COMPLETED' ? 'Выполнено' :
-                    order.status === 'REVIEWED' ? 'Завершен и оценен' :
+
                     order.status === 'CANCELLED' ? 'Отменен' : order.status}
                </Text>
             </View>

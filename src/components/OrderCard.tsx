@@ -29,7 +29,7 @@ const getStatusDetails = (status: OrderStatus) => {
       return { label: 'В работе', color: '#8B5CF6', icon: 'hammer-outline' };
     case 'COMPLETED':
       return { label: 'Выполнено', color: '#10B981', icon: 'ribbon-outline' };
-    case 'REVIEWED':
+    // case 'REVIEWED': // Deprecated
       return { label: 'Оставлен отзыв', color: '#059669', icon: 'star-outline' };
     case 'CANCELLED':
       return { label: 'Отменен', color: COLORS.gray, icon: 'close-circle-outline' };
@@ -179,7 +179,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
 
           {(isEmployer || amIExecutor || hasApplied) && (
               <View style={{ flexDirection: "row", gap: 8 }}>
-                {((isEmployer && order.status === "COMPLETED") || (amIExecutor && (order.status === "COMPLETED" || order.status === "REVIEWED"))) &&
+                {((isEmployer && order.status === "COMPLETED") || (amIExecutor && (order.status === "COMPLETED" ))) &&
                  !order.reviews?.some(r => r.authorId === currentUserId) && (
                   <TouchableOpacity
                     style={[styles.chatButton, { backgroundColor: COLORS.warning + "20" }]}

@@ -22,8 +22,9 @@ export class OrdersService {
     [OrderStatus.HAS_RESPONSES]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
     [OrderStatus.CLAIMED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
     [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
-    [OrderStatus.COMPLETED]: [OrderStatus.REVIEWED],
+    [OrderStatus.COMPLETED]: [],
     [OrderStatus.REVIEWED]: [],
+
     [OrderStatus.CANCELLED]: [],
     [OrderStatus.DISPUTE]: [],
   };
