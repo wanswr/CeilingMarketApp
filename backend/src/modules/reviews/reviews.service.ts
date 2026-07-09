@@ -23,12 +23,12 @@ export class ReviewsService {
         throw new NotFoundException('Order not found');
     }
 
-    // V11: Robust ID comparison
-    const orderEmployerId = String(order.employerId).toLowerCase();
-    const currentUserId = String(userId).toLowerCase();
+    // V11: Robust ID comparison with trimming to handle potential whitespace from different DB/Auth providers
+    const orderEmployerId = String(order.employerId).trim().toLowerCase();
+    const currentUserId = String(userId).trim().toLowerCase();
 
     if (orderEmployerId !== currentUserId) {
-        console.warn(`[ReviewsService] Forbidden: User ${currentUserId} is not the employer ${orderEmployerId} for order ${order.id}`);
+        console.warn(`[ReviewsService] Forbidden: Authenticated user ID ${currentUserId} does not match order employer ID ${orderEmployerId} for order ${order.id}`);
         throw new ForbiddenException('Only employer can leave a review');
     }
     if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.REVIEWED) {

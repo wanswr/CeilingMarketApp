@@ -26,15 +26,19 @@ class MMKVAdapter implements StorageAdapter {
   get(key: string): string | null { return this.storage.getString(key) ?? null; }
   set(key: string, value: string): void { this.storage.set(key, value); }
   delete(key: string): void {
+      // V11: Explicit method detection and logging as per user requirement
       if (typeof this.storage.delete === 'function') {
           this.storage.delete(key);
           logger.info(`STORE_DELETE ${key}`);
       } else if (typeof this.storage.deleteMMKV === 'function') {
           this.storage.deleteMMKV(key);
           logger.info(`STORE_DELETE ${key}`);
+      } else if (typeof this.storage.removeItem === 'function') {
+          this.storage.removeItem(key);
+          logger.info(`STORE_DELETE ${key}`);
       } else {
           const methods = Object.keys(this.storage).filter(k => typeof this.storage[k] === 'function').join(', ');
-          logger.warn(`[MMKVAdapter] delete unavailable for key: ${key}. Methods: ${methods}`);
+          logger.warn(`[MMKVAdapter] delete unavailable for key: ${key}. Available methods: ${methods}`);
       }
   }
   clearAll(): void {
