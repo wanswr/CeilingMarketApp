@@ -32,11 +32,20 @@ export class LoggingInterceptor implements NestInterceptor {
       tap({
         next: (data) => {
           const duration = Date.now() - startTime;
-          this.logger.info('API_RESPONSE', `${method} ${url} [${duration}ms]`, {
+          const logData = {
               requestId,
               userId: request.user?.id,
               metadata: { duration }
-          });
+          };
+
+          // Move common GET requests and high-frequency endpoints to DEBUG level
+          const isHighFrequency = url.includes('/spatial') || url.includes('/profile') || (method === 'GET' && !url.includes('/pending'));
+
+          if (isHighFrequency) {
+              this.logger.debug('API_RESPONSE', `${method} ${url} [${duration}ms]`, logData);
+          } else {
+              this.logger.info('API_RESPONSE', `${method} ${url} [${duration}ms]`, logData);
+          }
         },
         error: (err) => {
           const duration = Date.now() - startTime;

@@ -40,7 +40,7 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleJoinGeo(@MessageBody() data: { lat: number; lng: number }, @ConnectedSocket() client: Socket) {
     const room = `geo:${Math.floor(data.lat * 10)}:${Math.floor(data.lng * 10)}`;
     client.join(room);
-    this.logger.debug('WS_JOIN_GEO', `Client joined geo room ${room}`);
+    this.logger.debug('WS_JOIN_GEO', `Client joined geo room ${room}`, { metadata: { room } });
   }
 
   @SubscribeMessage('chat.join')

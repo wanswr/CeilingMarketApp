@@ -16,9 +16,17 @@ export class LoggerService {
   }
 
   private get currentLevel(): LogLevel {
-    const env = process.env.NODE_ENV || 'development';
+    const logLevelEnv = process.env.LOG_LEVEL?.toLowerCase();
+
+    if (logLevelEnv === 'debug') return LogLevel.DEBUG;
+    if (logLevelEnv === 'info') return LogLevel.INFO;
+    if (logLevelEnv === 'warn') return LogLevel.WARN;
+    if (logLevelEnv === 'error') return LogLevel.ERROR;
+
+    const nodeEnv = process.env.NODE_ENV || 'development';
     const debugEnabled = process.env.DEBUG === 'true';
-    if (debugEnabled || env === 'development') return LogLevel.DEBUG;
+
+    if (debugEnabled || nodeEnv === 'development') return LogLevel.DEBUG;
     return LogLevel.INFO;
   }
 

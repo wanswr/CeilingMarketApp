@@ -409,6 +409,8 @@ export class OrdersService {
   }) {
     const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter } = params;
 
+    this.logger.debug('SPATIAL_SEARCH', 'Map spatial search', { metadata: { lat, lng, radius, minLat, maxLat } });
+
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
 
     if (lat !== undefined && lng !== undefined && radius !== undefined) {

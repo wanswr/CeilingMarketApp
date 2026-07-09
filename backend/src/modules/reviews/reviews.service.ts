@@ -15,7 +15,7 @@ export class ReviewsService {
   }
 
   async create(userId: string, dto: { orderId: string; rating: number; comment?: string }) {
-    this.logger.info('REVIEW_CREATED_REQUEST', `User ${userId} leaving review for order ${dto.orderId}`, { userId, orderId: dto.orderId });
+    this.logger.debug('REVIEW_CREATED_REQUEST', `User ${userId} leaving review for order ${dto.orderId}`, { userId, orderId: dto.orderId });
 
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
@@ -45,7 +45,6 @@ export class ReviewsService {
         throw new ConflictException('Order has no executor');
     }
 
-    // Check if this author already left a review for this order
     const alreadyReviewed = order.reviews.some(r => r.authorId === userId);
     if (alreadyReviewed) {
         throw new ConflictException('You have already left a review for this order');
@@ -54,7 +53,6 @@ export class ReviewsService {
     const targetId = isEmployer ? order.executorId! : order.employerId;
 
     const result = await this.prisma.$transaction(async (tx) => {
-      // 1. Create review
       const review = await tx.review.create({
         data: {
           orderId: dto.orderId,
@@ -65,7 +63,6 @@ export class ReviewsService {
         }
       });
 
-      // 2. Recompute target user rating
       const aggregate = await tx.review.aggregate({
         where: { targetId: targetId },
         _avg: { rating: true }
@@ -81,9 +78,16 @@ export class ReviewsService {
       return { review, order };
     });
 
-    this.logger.info('REVIEW_CREATED', `Review created successfully`, { userId, orderId: dto.orderId, metadata: { rating: dto.rating } });
+    this.logger.info('REVIEW_CREATED', `Review created successfully`, {
+        userId,
+        orderId: dto.orderId,
+        metadata: {
+            reviewerId: userId,
+            targetUserId: targetId,
+            rating: dto.rating
+        }
+    });
 
-    // Notify about status (broadcast order update to refresh UI)
     this.gateway.broadcast('order.status.changed', result.order);
     return result.review;
   }
