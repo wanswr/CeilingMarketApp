@@ -28,9 +28,10 @@ class MMKVAdapter implements StorageAdapter {
   delete(key: string): void {
       if (typeof this.storage.delete === 'function') {
           this.storage.delete(key);
+          logger.debug('STORE_DELETE', { key });
       } else if (typeof this.storage.deleteMMKV === 'function') {
-          // Compatibility with some MMKV v4 variations/Nitro
           this.storage.deleteMMKV(key);
+          logger.debug('STORE_DELETE', { key });
       } else {
           const methods = Object.keys(this.storage).filter(k => typeof this.storage[k] === 'function').join(', ');
           logger.warn(`[MMKVAdapter] delete unavailable for key: ${key}. Methods: ${methods}`);

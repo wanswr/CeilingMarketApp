@@ -68,6 +68,10 @@ class SocketService {
     this.socket.on('order.status.changed', (order: any) => {
       logger.info('WS_ORDER_STATUS_CHANGED', { source: 'websocket', orderId: order.id, status: order.status });
       requestRouter.metrics.websocketUpdates++;
+
+      // Force immediate sync to get full order details (like applications) if status changed
+      require('./MapEngine').mapEngine.syncOrder(order.id, true);
+
       entityStore.setOrder(order, 'websocket');
       require('./MapEngine').mapEngine.triggerNotify();
       entityStore.persist();

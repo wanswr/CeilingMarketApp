@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { apiService } from '../services/ApiService';
 import { mapEngine } from '../services/MapEngine';
 import { requestRouter } from '../services/RequestRouter';
+import { socketService } from '../services/SocketService';
 import { UserProfile } from '../types';
 import { logger } from '../services/logger/LoggerService';
 
@@ -41,6 +42,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (profile) {
             setUser(profile);
             logger.info('[AuthContext] Profile synced successfully');
+            // V11: Initialize real-time bridge
+            socketService.connect(apiService.getBaseUrl());
           }
         } catch (syncError: any) {
           logger.warn('[AuthContext] Profile sync failed', { error: syncError.message });
@@ -80,6 +83,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(access_token);
       setUser(user);
 
+      // V11: Initialize real-time bridge
+      socketService.connect(apiService.getBaseUrl());
+
       // Initialize systems with new user
       mapEngine.entityStore.setUser({ ...user, isMe: true });
       logger.endAction('AUTH_LOGIN', { aid, userId: user.id });
@@ -94,6 +100,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await SecureStore.deleteItemAsync('userToken');
     setToken(null);
     setUser(null);
+    socketService.disconnect();
     mapEngine.entityStore.clear();
     requestRouter.clear();
   };
