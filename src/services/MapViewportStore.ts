@@ -23,7 +23,7 @@ class MapViewportStore {
 
     if (isSignificant) {
         this.currentRegion = region;
-        logger.debug('MAP_VIEWPORT_CHANGED', {
+        logger.trace('MAP_VIEWPORT_CHANGED', {
             source: 'system',
             lat: region.latitude.toFixed(3),
             lng: region.longitude.toFixed(3),
@@ -51,7 +51,7 @@ class MapViewportStore {
   }
 
   private notify() {
-    logger.debug('[MapViewportStore] notify', { count: this.subscribers.size });
+    logger.trace('MAP_VIEWPORT_NOTIFY', { count: this.subscribers.size });
     this.subscribers.forEach(cb => cb(this.currentRegion));
   }
 }

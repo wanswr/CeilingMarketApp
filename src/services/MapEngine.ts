@@ -114,7 +114,7 @@ class MapEngine {
         mapOrders = this.recalculateClusteredOrders(currentRegion);
     }
 
-    logger.debug('MAP_NOTIFY', {
+    logger.trace('MAP_NOTIFY', {
         visible: mapOrders.length,
         total: orders.length,
         subscribers: Array.from(this.subscribers.keys())
@@ -134,12 +134,13 @@ class MapEngine {
 
       // Debounce notify to group multiple rapid updates (e.g. from websocket)
       this.notifyTimer = setTimeout(() => {
+          logger.trace('MAP_NOTIFY_EXECUTE');
           // Re-run clustering with current region
           const region = mapViewportStore.getRegion();
           const safeItems = this.recalculateClusteredOrders(region);
           this.notifySubscribers(safeItems);
           this.notifyTimer = null;
-      }, 50);
+      }, 200);
   };
 
   getOrdersArray = (myOnly: boolean = false): Order[] => {
@@ -308,7 +309,7 @@ class MapEngine {
     // V9: Filter map candidates by status
     const myId = this.entityStore.currentUserId;
 
-    logger.debug('MAP_VISIBLE_RECALC_START', {
+    logger.trace('MAP_VISIBLE_RECALC_START', {
         totalInStore: totalOrders.length,
         inBounds: rawCandidates.length,
         region: `${region.latitude.toFixed(3)},${region.longitude.toFixed(3)}`,
@@ -329,7 +330,7 @@ class MapEngine {
         const shouldShow = isPublic || (isMine && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
 
         if (!shouldShow && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
-            logger.debug('MAP_FILTER_DEBUG', { id: order.id, status: order.status, isMine, myId });
+            logger.trace('MAP_FILTER_DEBUG', { id: order.id, status: order.status, isMine, myId });
         }
 
         return shouldShow;
@@ -341,12 +342,12 @@ class MapEngine {
     const safeItems = result.filter((item: any) => {
         const coords = this.getOrderCoords(item);
         const isValid = coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
-        if (!isValid) logger.debug('MAP_INVALID_COORDS', { id: item.id });
+        if (!isValid) logger.trace('MAP_INVALID_COORDS', { id: item.id });
         return isValid;
     });
 
     this.lastClusteredOrders = safeItems;
-    logger.debug('MAP_VISIBLE_RECALC_END', {
+    logger.trace('MAP_VISIBLE_RECALC_END', {
         candidates: candidates.length,
         visible: safeItems.length,
         duration: Date.now() - startTime,

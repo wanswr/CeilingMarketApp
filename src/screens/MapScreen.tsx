@@ -38,6 +38,7 @@ const MapScreen = ({ navigation }: any) => {
   const [isMoving, setIsMoving] = useState(false);
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastPanDragRef = useRef<number>(0);
+  const lastHandledRegionRef = useRef<string>('');
   const currentUser = mapEngine.getCurrentUser();
   const myId = currentUser?.uid || currentUser?.id;
 
@@ -110,6 +111,10 @@ const MapScreen = ({ navigation }: any) => {
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     if (!newRegion || !newRegion.latitude || !newRegion.longitude || !isFocusedRef.current) return;
+
+    const regionKey = `${newRegion.latitude.toFixed(4)}_${newRegion.longitude.toFixed(4)}_${newRegion.latitudeDelta.toFixed(4)}`;
+    if (regionKey === lastHandledRegionRef.current) return;
+    lastHandledRegionRef.current = regionKey;
 
     if (movingTimeoutRef.current) clearTimeout(movingTimeoutRef.current);
     movingTimeoutRef.current = setTimeout(() => setIsMoving(false), 300);
