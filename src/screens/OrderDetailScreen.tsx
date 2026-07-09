@@ -225,7 +225,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const submitReview = async () => {
       if (rating === 0 || submitting) return;
-      const myReview = order?.reviews?.find(r => r.authorId === currentUser?.uid);
+      const myReview = order?.reviews?.find(r => normalizeId(r.authorId) === nid);
       if (myReview) {
           Alert.alert('Инфо', 'Вы уже оставили отзыв');
           setShowReviewModal(false);
@@ -245,15 +245,24 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
           // Force invalidate cache to prevent status rollback
           mapEngine.requestRouter.invalidate(`order:${orderId}`);
-          const updated = await mapEngine.syncOrder(orderId, true);
-          if (updated) {
-              setOrder(updated);
-          } else {
-              // Fallback to update just status locally if sync returns null
-              // V11: Don't update status to REVIEWED, orders stay COMPLETED
-          }
 
-          logger.logStateTransition('SUBMIT_REVIEW', statusBefore, updated?.status || 'COMPLETED', { orderId, actionId: aid });
+          // Update local state immediately with the new review
+          const newReview = res.data;
+          setOrder(prev => {
+              if (!prev) return prev;
+              const reviews = prev.reviews || [];
+              // Avoid duplicates
+              if (reviews.some(r => normalizeId(r.authorId) === nid)) return prev;
+              const updatedOrder = { ...prev, reviews: [...reviews, newReview] };
+              return updatedOrder;
+          });
+
+          logger.logStateTransition('SUBMIT_REVIEW', statusBefore, 'COMPLETED', { orderId, actionId: aid });
+
+          // Also sync from server to be sure
+          mapEngine.syncOrder(orderId, true).then(updated => {
+              if (updated) setOrder(updated);
+          });
           logger.endAction('SUBMIT_REVIEW', { aid });
           Alert.alert('Спасибо!', 'Ваш отзыв важен для нас');
           setShowReviewModal(false);
@@ -266,8 +275,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }
 
   const myId = currentUser?.uid || currentUser?.id;
-  const isEmployer = !!myId && !!order?.employerId && myId === order?.employerId;
-  const isExecutor = !!myId && !!order?.executorId && myId === order?.executorId;
+  const normalizeId = (id) => id?.toString().trim().toLowerCase();
+  const nid = normalizeId(myId);
+  const isEmployer = !!nid && !!order?.employerId && nid === normalizeId(order.employerId);
+  const isExecutor = !!nid && !!order?.executorId && nid === normalizeId(order.executorId);
   const hasApplied = !!myId && !!order?.applications?.some(a => a.executorId === myId);
 
   if (loading || !order) {
@@ -365,8 +376,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           <Text style={styles.description}>{order.details || 'Описание отсутствует'}</Text>
 
           {(() => {
-            const myReview = order?.reviews?.find(r => r.authorId === currentUser?.uid);
-            const otherReview = order?.reviews?.find(r => r.authorId !== currentUser?.uid);
+            const myReview = order?.reviews?.find(r => normalizeId(r.authorId) === nid);
+            const otherReview = order?.reviews?.find(r => normalizeId(r.authorId) !== nid);
 
             if (!myReview) return null;
 
@@ -475,7 +486,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       <BlurView intensity={90} tint="light" style={styles.footer}>
         <SafeAreaView edges={['bottom']} style={{ flexDirection: 'row', gap: 12 }}>
           {isEmployer ? (
-              order.status === 'COMPLETED' && !order.reviews?.some(r => r.authorId === currentUser?.uid) ? (
+              order.status === 'COMPLETED' && !(order?.reviews || []).some(r => normalizeId(r.authorId) === nid) ? (
                   <TouchableOpacity
                     style={[styles.applyBtn, { flex: 1 }]}
                     onPress={() => {
@@ -538,7 +549,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               )}
 
               {(order.status === 'COMPLETED' || order.status === 'REVIEWED') && (
-                order.reviews?.some(r => r.authorId === currentUser?.uid) ? (
+                order?.reviews?.some(r => normalizeId(r.authorId) === nid) ? (
                   <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.7 }]}>
                     <Text style={styles.applyBtnText}>Заказ выполнен</Text>
                   </View>

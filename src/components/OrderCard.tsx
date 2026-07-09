@@ -180,7 +180,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
           {(isEmployer || amIExecutor || hasApplied) && (
               <View style={{ flexDirection: "row", gap: 8 }}>
                 {((isEmployer && order.status === "COMPLETED") || (amIExecutor && (order.status === "COMPLETED" ))) &&
-                 !order.reviews?.some(r => r.authorId === currentUserId) && (
+                 !(order.reviews || []).some(r => r.authorId?.toString().trim().toLowerCase() === currentUserId?.toString().trim().toLowerCase()) && (
                   <TouchableOpacity
                     style={[styles.chatButton, { backgroundColor: COLORS.warning + "20" }]}
                     onPress={onPress}

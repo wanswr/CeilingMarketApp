@@ -87,7 +87,8 @@ class EntityStore {
     'CLAIMED': 2,
     'IN_PROGRESS': 3,
     'COMPLETED': 4,
-    'REVIEWED': 5,
+    'PARTIALLY_REVIEWED': 4,
+    'REVIEWED': 4,
     'CANCELLED': 6,
     'DISPUTE': 6
   };
