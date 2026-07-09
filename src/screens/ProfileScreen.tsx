@@ -40,8 +40,8 @@ const ProfileScreen = ({ route, navigation }: any) => {
       }
       setUser(userData);
 
-      // Fetch reviews if user is a worker
-      if (userData?.role === 'WORKER' || userData?.role === 'executor') {
+      // Fetch reviews
+      if (userData) {
           // @ts-ignore
           const revRes = await apiService.api.get(`reviews/master/${userData.id}`);
           setReviews(revRes.data);
@@ -125,10 +125,10 @@ const ProfileScreen = ({ route, navigation }: any) => {
         {/* Portfolio / Reviews Section */}
         <View style={styles.section}>
             <Text style={styles.sectionTitle}>
-                {user?.role === 'WORKER' ? 'Отзывы клиентов' : 'О себе'}
+                {'Отзывы'}
             </Text>
 
-            {user?.role === 'WORKER' ? (
+            {true ? (
                 reviews.length > 0 ? (
                     reviews.map((rev) => (
                         <View key={rev.id} style={styles.reviewCard}>

@@ -15,27 +15,39 @@ export class ReviewsService {
 
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
-      include: { review: true }
+      include: { reviews: true }
     });
 
     if (!order) {
-        console.error(`[ReviewsService] Order ${dto.orderId} not found`);
         throw new NotFoundException('Order not found');
     }
 
-    // V11: Robust ID comparison with trimming to handle potential whitespace from different DB/Auth providers
-    const orderEmployerId = String(order.employerId).trim().toLowerCase();
     const currentUserId = String(userId).trim().toLowerCase();
+    const employerId = String(order.employerId).trim().toLowerCase();
+    const executorId = order.executorId ? String(order.executorId).trim().toLowerCase() : null;
 
-    if (orderEmployerId !== currentUserId) {
-        console.warn(`[ReviewsService] Forbidden: Authenticated user ID ${currentUserId} does not match order employer ID ${orderEmployerId} for order ${order.id}`);
-        throw new ForbiddenException('Only employer can leave a review');
+    const isEmployer = currentUserId === employerId;
+    const isExecutor = currentUserId === executorId;
+
+    if (!isEmployer && !isExecutor) {
+        throw new ForbiddenException('Only order participants can leave a review');
     }
-    if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.REVIEWED) {
+
+    if (order.status !== OrderStatus.COMPLETED) {
       throw new ConflictException('Order must be completed to leave a review');
     }
-    if (order.review) throw new ConflictException('Review already exists for this order');
-    if (!order.executorId) throw new ConflictException('Order has no executor');
+
+    if (!executorId) {
+        throw new ConflictException('Order has no executor');
+    }
+
+    // Check if this author already left a review for this order
+    const alreadyReviewed = order.reviews.some(r => r.authorId === userId);
+    if (alreadyReviewed) {
+        throw new ConflictException('You have already left a review for this order');
+    }
+
+    const targetId = isEmployer ? order.executorId! : order.employerId;
 
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Create review
@@ -43,43 +55,82 @@ export class ReviewsService {
         data: {
           orderId: dto.orderId,
           authorId: userId,
-          targetUserId: order.executorId!,
+          targetId: targetId,
           rating: dto.rating,
           comment: dto.comment,
         }
       });
 
-      // 2. Update order status
-      const updatedOrder = await tx.order.update({
-        where: { id: dto.orderId },
-        data: { status: OrderStatus.REVIEWED }
-      });
-
-      // 3. Recompute user rating
+      // 2. Recompute target user rating
       const aggregate = await tx.review.aggregate({
-        where: { targetUserId: order.executorId! },
-        _avg: { rating: true },
-        _count: { id: true }
+        where: { targetId: targetId },
+        _avg: { rating: true }
       });
 
       await tx.user.update({
-        where: { id: order.executorId! },
+        where: { id: targetId },
         data: {
           rating: aggregate._avg.rating || 5.0,
-          // completedOrders is already incremented in completeWork
         }
       });
 
-      return { review, order: updatedOrder };
+      return { review, order };
     });
 
+    // Notify about status (broadcast order update to refresh UI)
     this.gateway.broadcast('order.status.changed', result.order);
     return result.review;
   }
 
+  async getPendingReviews(userId: string) {
+      // Get COMPLETED orders where user is participant and has not left a review
+      const orders = await this.prisma.order.findMany({
+          where: {
+              status: OrderStatus.COMPLETED,
+              OR: [
+                  { employerId: userId },
+                  { executorId: userId }
+              ],
+              NOT: {
+                  reviews: {
+                      some: { authorId: userId }
+                  }
+              }
+          },
+          include: {
+              reviews: true,
+              employer: { select: { id: true, name: true, avatar: true } },
+              executor: { select: { id: true, name: true, avatar: true } }
+          }
+      });
+      return orders;
+  }
+
+  async getMyReviews(userId: string) {
+      const authored = await this.prisma.review.findMany({
+          where: { authorId: userId },
+          include: {
+              target: { select: { id: true, name: true, avatar: true } },
+              order: { select: { id: true, title: true } }
+          },
+          orderBy: { createdAt: 'desc' }
+      });
+
+      const received = await this.prisma.review.findMany({
+          where: { targetId: userId },
+          include: {
+              author: { select: { id: true, name: true, avatar: true } },
+              order: { select: { id: true, title: true } }
+          },
+          orderBy: { createdAt: 'desc' }
+      });
+
+      return { authored, received };
+  }
+
   async getMasterReviews(masterId: string) {
       return this.prisma.review.findMany({
-          where: { targetUserId: masterId },
+          where: { targetId: masterId },
           include: {
               author: { select: { id: true, name: true, avatar: true } },
               order: { select: { title: true } }

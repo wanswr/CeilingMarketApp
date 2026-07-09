@@ -324,7 +324,7 @@ export class OrdersService {
             executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
           }
         },
-        review: true
+        reviews: true
       }
     });
     if (!order) throw new NotFoundException();

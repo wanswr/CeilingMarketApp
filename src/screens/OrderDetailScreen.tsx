@@ -366,16 +366,37 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
           {(() => {
             const myReview = order?.reviews?.find(r => r.authorId === currentUser?.uid);
+            const otherReview = order?.reviews?.find(r => r.authorId !== currentUser?.uid);
+
             if (!myReview) return null;
+
             return (
               <>
                   <View style={styles.divider} />
-                  <Text style={styles.sectionTitle}>Ваш отзыв</Text>
+                  <Text style={styles.sectionTitle}>Отзывы</Text>
                   <View style={styles.reviewContent}>
+                      <Text style={[styles.infoLabel, { marginBottom: 8 }]}>Ваш отзыв:</Text>
                       <View style={styles.starsRowLeft}>
                           {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= myReview.rating ? "star" : "star-outline"} size={16} color={COLORS.warning} />)}
                       </View>
                       {myReview.comment ? <Text style={styles.reviewComment}>{myReview.comment}</Text> : null}
+
+                      {!otherReview && (
+                        <Text style={[styles.infoValue, { fontSize: 12, marginTop: 12, color: COLORS.gray, fontStyle: 'italic' }]}>
+                          Вы оставили отзыв, ожидаем второго участника
+                        </Text>
+                      )}
+
+                      {otherReview && (
+                        <>
+                          <View style={[styles.divider, { marginVertical: 12, opacity: 0.5 }]} />
+                          <Text style={[styles.infoLabel, { marginBottom: 8 }]}>Отзыв от участника:</Text>
+                          <View style={styles.starsRowLeft}>
+                              {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= otherReview.rating ? "star" : "star-outline"} size={16} color={COLORS.warning} />)}
+                          </View>
+                          {otherReview.comment ? <Text style={styles.reviewComment}>{otherReview.comment}</Text> : null}
+                        </>
+                      )}
                   </View>
               </>
             );

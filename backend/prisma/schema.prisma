@@ -100,7 +100,7 @@ model Order {
   executor          User?          @relation("ExecutorOrders", fields: [executorId], references: [id])
   applications      Application[]
   chats             Chat[]
-  review            Review?
+  reviews           Review[]
 }
 
 model Chat {
@@ -159,14 +159,16 @@ model Subscription {
 
 model Review {
   id                String         @id @default(uuid())
-  orderId           String         @unique
+  orderId           String
   authorId          String
-  targetUserId      String
+  targetId      String
   rating            Int
   comment           String?
   createdAt         DateTime       @default(now())
 
   order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   author            User           @relation("AuthoredReviews", fields: [authorId], references: [id])
-  target            User           @relation("TargetedReviews", fields: [targetUserId], references: [id])
+  target            User           @relation("TargetedReviews", fields: [targetId], references: [id])
+
+  @@unique([orderId, authorId])
 }

@@ -93,6 +93,8 @@ class ApiService {
   // Reviews
   createReview = (data: { orderId: string, rating: number, comment?: string }) => this.api.post('reviews', data);
   getMasterReviews = (masterId: string) => this.api.get(`reviews/master/${masterId}`);
+  getPendingReviews = () => this.api.get("reviews/pending");
+  getMyReviews = () => this.api.get("reviews/my");
 
   // Subscriptions
   activateSubscription = (days: number) => this.api.post('subscriptions/activate', { days });

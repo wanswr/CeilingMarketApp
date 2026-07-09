@@ -12,6 +12,18 @@ export class ReviewsController {
     return this.reviewsService.create(req.user.id, dto);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('pending')
+  async getPending(@Req() req: any) {
+    return this.reviewsService.getPendingReviews(req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('my')
+  async getMy(@Req() req: any) {
+    return this.reviewsService.getMyReviews(req.user.id);
+  }
+
   @Get('master/:id')
   async getMasterReviews(@Param('id') id: string) {
     return this.reviewsService.getMasterReviews(id);
