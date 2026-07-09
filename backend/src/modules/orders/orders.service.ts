@@ -547,7 +547,7 @@ export class OrdersService {
 
     // 3. Extract Address (Heuristic: line with "ул", "мкад", or known cities)
     // V11: Expanded city list and added common landmarks like МКАД
-    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское', 'римского', 'корсако'];
+    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское', 'римского', 'корсако', 'судостроительная'];
     const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.', 'шоссе', 'мкад', 'жк', 'набережная', 'тупик', 'шоссе', 'кв', 'стр'];
 
     for (const line of lines) {
@@ -558,7 +558,7 @@ export class OrdersService {
        const hasCity = cities.some(c => lowerLine.includes(c));
        const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine.includes(' ' + k) || lowerLine === k);
        // Check for house number patterns like "11к1" or "д.5" (ensuring it's not a price or date)
-       const hasHouseNum = /\d+[а-я]?/.test(lowerLine) && !isPriceLine && !isDateLine && (lowerLine.includes(' ') || lowerLine.length < 15 || lowerLine.match(/\d+к\d+/));
+       const hasHouseNum = /\d+[а-я]?/.test(lowerLine) && !isPriceLine && !isDateLine && (lowerLine.includes(' ') || lowerLine.length < 10 || lowerLine.match(/\d+к\d+/));
 
        if ((hasCity || hasKeyword || hasHouseNum) && !isPriceLine && !isDateLine) {
          result.address = line;

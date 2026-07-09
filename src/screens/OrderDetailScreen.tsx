@@ -236,7 +236,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       const statusBefore = order?.status;
       setSubmitting(true);
       try {
-          await apiService.createReview({
+          const res = await apiService.createReview({
               rating,
               comment: reviewText,
               orderId
@@ -244,10 +244,15 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
           // Force invalidate cache to prevent status rollback
           mapEngine.requestRouter.invalidate(`order:${orderId}`);
-          const updated = await mapEngine.syncOrder(orderId);
-          setOrder(updated);
+          const updated = await mapEngine.syncOrder(orderId, true);
+          if (updated) {
+              setOrder(updated);
+          } else {
+              // Fallback to update just status locally if sync returns null
+              setOrder(prev => prev ? { ...prev, status: 'REVIEWED' as any } : undefined);
+          }
 
-          logger.logStateTransition('SUBMIT_REVIEW', statusBefore, updated?.status, { orderId, actionId: aid });
+          logger.logStateTransition('SUBMIT_REVIEW', statusBefore, updated?.status || 'REVIEWED', { orderId, actionId: aid });
           logger.endAction('SUBMIT_REVIEW', { aid });
           Alert.alert('Спасибо!', 'Ваш отзыв важен для нас');
           setShowReviewModal(false);
