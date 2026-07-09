@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus, WorkType, ApplicationStatus } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
+import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
 
 @Injectable()
@@ -11,11 +12,11 @@ export class OrdersService {
     private prisma: PrismaService,
     private gateway: AppGateway,
     private chatsService: ChatsService,
-  ) {}
+    private logger: LoggerService,
+  ) {
+    this.logger.setService('OrdersService');
+  }
 
-  /**
-   * Status transitions map: defines legal state changes.
-   */
   private readonly transitions: Record<OrderStatus, OrderStatus[]> = {
     [OrderStatus.PENDING]: [OrderStatus.PUBLISHED],
     [OrderStatus.PUBLISHED]: [OrderStatus.HAS_RESPONSES, OrderStatus.CANCELLED],
@@ -24,14 +25,10 @@ export class OrdersService {
     [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
     [OrderStatus.COMPLETED]: [],
     [OrderStatus.REVIEWED]: [],
-
     [OrderStatus.CANCELLED]: [],
     [OrderStatus.DISPUTE]: [],
   };
 
-  /**
-   * CREATE: Implements idempotency and sets initial status.
-   */
   async create(dto: CreateOrderDto, employerId: string) {
     if (dto.idempotencyKey) {
       const existing = await this.prisma.order.findUnique({
@@ -40,7 +37,6 @@ export class OrdersService {
       if (existing) return existing;
     }
 
-    console.log(`[OrdersService] Creating order for employer: ${employerId}`);
     const order = await this.prisma.order.create({
       data: {
         title: dto.title,
@@ -54,21 +50,19 @@ export class OrdersService {
         images: dto.images || [],
         employerId,
         idempotencyKey: dto.idempotencyKey,
-        status: OrderStatus.PUBLISHED, // Target status for new orders
+        status: OrderStatus.PUBLISHED,
       },
     });
 
     const room = `geo:${Math.floor(order.latitude * 10)}:${Math.floor(order.longitude * 10)}`;
     this.gateway.server.to(room).emit('order.created', order);
-
-    // Fallback for global listeners
     this.gateway.broadcast('order.created', { order, orderId: order.id, employerId: order.employerId });
+
+    this.logger.info('ORDER_CREATED', `Order created successfully`, { userId: employerId, orderId: order.id });
+
     return order;
   }
 
-  /**
-   * APPLY for order: Creates an Application and updates order status if needed.
-   */
   async apply(orderId: string, executorId: string, price?: number) {
     const result = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
@@ -78,7 +72,6 @@ export class OrdersService {
         throw new ConflictException('Order is no longer available for applications');
       }
 
-      // 2. Check for existing application (idempotency)
       const existingApp = await tx.application.findUnique({
         where: { orderId_executorId: { orderId, executorId } },
         include: {
@@ -88,7 +81,6 @@ export class OrdersService {
 
       if (existingApp) return { application: existingApp, order };
 
-      // 3. Create application
       const application = await tx.application.create({
         data: {
           orderId,
@@ -101,7 +93,6 @@ export class OrdersService {
         }
       });
 
-      // Update order status if first application
       let updatedOrder = order;
       if (order.status === OrderStatus.PUBLISHED) {
         updatedOrder = await tx.order.update({
@@ -115,6 +106,9 @@ export class OrdersService {
 
     this.gateway.server.to(`user:${result.order.employerId}`).emit('application.new', result.application);
     this.gateway.broadcast('order.status.changed', result.order);
+
+    this.logger.info('ORDER_APPLIED', `New application for order ${result.order.id}`, { orderId: result.order.id, userId: executorId });
+
     return result;
   }
 
@@ -137,9 +131,6 @@ export class OrdersService {
     return app;
   }
 
-  /**
-   * ACCEPT APPLICATION: Employer selects an executor.
-   */
   async acceptApplication(applicationId: string, employerId: string) {
     const result = await this.prisma.$transaction(async (tx) => {
       const application = await tx.application.findUnique({
@@ -150,13 +141,11 @@ export class OrdersService {
       if (!application) throw new NotFoundException('Application not found');
       if (application.order.employerId !== employerId) throw new ForbiddenException();
 
-      // Update application status
       await tx.application.update({
         where: { id: applicationId },
         data: { status: ApplicationStatus.ACCEPTED }
       });
 
-      // Reject other applications
       const otherApplications = await tx.application.findMany({
         where: { orderId: application.orderId, id: { not: applicationId } },
         select: { id: true, executorId: true }
@@ -167,7 +156,6 @@ export class OrdersService {
         data: { status: ApplicationStatus.REJECTED }
       });
 
-      // Update order
       const updatedOrder = await tx.order.update({
         where: { id: application.orderId },
         data: {
@@ -181,7 +169,6 @@ export class OrdersService {
         }
       });
 
-      // Task #2: Automatically create chat
       const chat = await this.chatsService.getOrCreateChat(application.orderId, application.executorId, employerId);
 
       return {
@@ -199,6 +186,8 @@ export class OrdersService {
       this.gateway.broadcast('application.rejected', { id });
     });
 
+    this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.order.id}`, { orderId: result.order.id, userId: employerId });
+
     return result;
   }
 
@@ -207,12 +196,12 @@ export class OrdersService {
     if (!order) throw new NotFoundException();
 
     if (order.executorId !== userId) {
-        console.warn(`[OrdersService] Forbidden: User ${userId} is not executor ${order.executorId} for order ${order.id}`);
+        this.logger.warn('ORDER_START_FORBIDDEN', `User ${userId} is not executor for order ${order.id}`, { userId, orderId: order.id });
         throw new ForbiddenException();
     }
 
     if (order.status !== OrderStatus.CLAIMED) {
-      console.warn(`[OrdersService] Conflict: Order ${orderId} has status ${order.status}, but CLAIMED is required to start`);
+      this.logger.warn('ORDER_START_CONFLICT', `Order ${orderId} has status ${order.status}, but CLAIMED is required`, { userId, orderId });
       throw new ConflictException('Order must be in CLAIMED status to start work');
     }
 
@@ -226,6 +215,7 @@ export class OrdersService {
     });
 
     this.gateway.broadcast('order.status.changed', result);
+    this.logger.info('ORDER_STARTED', `Order started by executor`, { orderId: result.id, userId: result.executorId });
     return result;
   }
 
@@ -233,7 +223,6 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
 
-    // Only executor can complete
     if (order.executorId !== userId) throw new ForbiddenException();
 
     if (order.status !== OrderStatus.IN_PROGRESS) {
@@ -249,31 +238,26 @@ export class OrdersService {
       }
     });
 
-    // Increment completed orders for user
     await this.prisma.user.update({
         where: { id: userId },
         data: { completedOrders: { increment: 1 } }
     });
 
     this.gateway.broadcast('order.status.changed', result);
+    this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result.id, userId: result.executorId });
     return result;
   }
 
-  /**
-   * TRANSITION: Guarded status changes using centralized transition map
-   */
   async transitionStatus(orderId: string, newStatus: OrderStatus, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
 
-    // Permissions check
     const isEmployer = order.employerId === userId;
     const isExecutor = order.executorId === userId;
     if (!isEmployer && !isExecutor) throw new ForbiddenException();
 
-    // State Machine Rules
     if (!this.canTransition(order.status, newStatus)) {
-      throw new ConflictException(`Transition ${order.status} -> ${newStatus} not allowed`);
+      throw new ConflictException(`Invalid transition from ${order.status} to ${newStatus}`);
     }
 
     const result = await this.prisma.order.update({
@@ -345,9 +329,10 @@ export class OrdersService {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
         executor: { select: { id: true, name: true, avatar: true } },
         applications: {
-          where: { executorId: userId },
-          select: { id: true, status: true, price: true }
-        }
+            where: { executorId: userId },
+            select: { id: true, status: true, price: true }
+        },
+        reviews: true
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -358,7 +343,6 @@ export class OrdersService {
     if (!order) throw new NotFoundException();
     if (order.employerId !== userId) throw new ForbiddenException();
 
-    // If status is being changed, validate transition
     if (dto.status && dto.status !== order.status) {
       if (!this.canTransition(order.status, dto.status)) {
         throw new ConflictException(`Transition ${order.status} -> ${dto.status} not allowed`);
@@ -389,11 +373,11 @@ export class OrdersService {
     const app = await this.prisma.application.findUnique({
       where: { orderId_executorId: { orderId, executorId } }
     });
+
     if (!app) throw new NotFoundException('Application not found');
 
-    // Rule: Cannot cancel if less than 24h before монтаж
-    const now = new Date();
     const orderDate = new Date(order.date);
+    const now = new Date();
     const diffHours = (orderDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     if (diffHours < 24) {
@@ -404,7 +388,6 @@ export class OrdersService {
       where: { id: app.id }
     });
 
-    // Check if HAS_RESPONSES status should be reverted
     const remainingApps = await this.prisma.application.count({
       where: { orderId }
     });
@@ -419,9 +402,6 @@ export class OrdersService {
     return { success: true };
   }
 
-  /**
-   * SPATIAL ENGINE V6: Universal spatial search supporting Radius and BBOX modes.
-   */
   async findSpatial(params: {
     lat?: number; lng?: number; radius?: number;
     minLat?: number; maxLat?: number; minLng?: number; maxLng?: number;
@@ -431,9 +411,8 @@ export class OrdersService {
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
 
-    // Mode A: Radius Search (approximate via bounding box for performance)
     if (lat !== undefined && lng !== undefined && radius !== undefined) {
-      const R = 6371; // Earth radius in km
+      const R = 6371;
       const deltaLat = (radius / R) * (180 / Math.PI);
       const deltaLng = (radius / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
 
@@ -444,7 +423,6 @@ export class OrdersService {
         maxLng: lng + deltaLng,
       };
     } else if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
-      // Mode B: BBOX Search
       searchBounds = { minLat, maxLat, minLng, maxLng };
     }
 
@@ -455,8 +433,6 @@ export class OrdersService {
         status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES, OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
         latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
         longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
-        // If updatedAfter is provided, we only want those changed.
-        // If not, we are doing a full region sync, so we rely on the pruning logic on frontend.
         updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
       },
       take: 1000,
@@ -469,11 +445,7 @@ export class OrdersService {
     return { created: orders, updated: [], deleted: [] };
   }
 
-  /**
-   * SMART PARSER: Heuristic NLP for ceiling order texts.
-   */
   parseOrderText(text: string) {
-    // 0. Clean text from common copy-paste metadata (timestamps like [10.06.2026 11:11])
     const cleanText = text.replace(/\[\d{2}\.\d{2}\.\d{4}\s\d{2}:\d{2}\].*?:/g, '').trim();
     const lines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
     const result: any = {
@@ -484,8 +456,6 @@ export class OrdersService {
       date: new Date(),
     };
 
-    // 1. Extract Price (Patterns: 15000, ЗП 15.000, 15.000р, 15000₽)
-    // V11: Enhanced price regex to capture numbers with dots/spaces even without currency symbols
     const priceRegex = /(?:зп|зарплата|цена|стоимость|выплата)[:\s-]*(\d[\d\s.,]{3,})/i;
     const priceMatch = text.match(priceRegex);
 
@@ -500,7 +470,6 @@ export class OrdersService {
         }
     }
 
-    // 2. Extract Date
     const today = new Date();
     const daysOfWeek: Record<string, number> = {
       'воскресенье': 0, 'понедельник': 1, 'вторник': 2, 'среда': 3, 'четверг': 4, 'пятница': 5, 'суббота': 6
@@ -517,7 +486,6 @@ export class OrdersService {
       dayAfter.setDate(today.getDate() + 2);
       result.date = dayAfter;
     } else {
-      // Check for day names (e.g., "на пятницу", "в четверг")
       for (const [dayName, dayIndex] of Object.entries(daysOfWeek)) {
         const dayRegex = new RegExp(`(?:на|в|во)?\\s*${dayName.slice(0, -1)}`, 'i');
         if (dayRegex.test(cleanText)) {
@@ -530,45 +498,26 @@ export class OrdersService {
           break;
         }
       }
-
-      // Look for DD.MM (overrides day of week if both present)
-      const dateRegex = /(\d{1,2})\.(\d{1,2})/;
-      const dateMatch = cleanText.match(dateRegex);
-      if (dateMatch) {
-        const d = parseInt(dateMatch[1], 10);
-        const m = parseInt(dateMatch[2], 10) - 1;
-        const targetDate = new Date(today.getFullYear(), m, d);
-        // If the date has already passed this year, assume next year (for late Dec -> Jan)
-        if (targetDate < today && m < today.getMonth()) {
-            targetDate.setFullYear(today.getFullYear() + 1);
-        }
-        result.date = targetDate;
-      }
     }
 
-    // 3. Extract Address (Heuristic: line with "ул", "мкад", or known cities)
-    // V11: Expanded city list and added common landmarks like МКАД
-    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское', 'римского', 'корсако', 'судостроительная'];
-    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.', 'шоссе', 'мкад', 'жк', 'набережная', 'тупик', 'шоссе', 'кв', 'стр'];
+    const addressKeywords = ['улица', 'ул', 'шоссе', 'ш', 'проспект', 'пр', 'бульвар', 'б-р', 'переулок', 'пер', 'набережная', 'наб', 'корпус', 'корп', 'дом', 'д', 'жк'];
+    const cities = ['москва', 'мск', 'балашиха', 'химки', 'подольск', 'королев', 'люберцы', 'мытищи', 'электросталь', 'железнодорожный', 'коломна', 'одинцово', 'красногорск', 'серпухов', 'орехово-зуево', 'щелково', 'домодедово', 'жуковский', 'пушкино', 'сергиев посад', 'ногинск', 'раменское', 'клин', 'реутов', 'воскресенск', 'чехов', 'ивантеевка', 'ступино', 'видное', 'дмитров'];
 
     for (const line of lines) {
        const lowerLine = line.toLowerCase();
-       const isDateLine = /завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\d{1,2}\.\d{1,2}/i.test(lowerLine);
        const isPriceLine = /зп|зарплата|цена|руб|₽/i.test(lowerLine);
+       const isDateLine = /завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\d{1,2}\.\d{1,2}/i.test(lowerLine);
 
        const hasCity = cities.some(c => lowerLine.includes(c));
        const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine.includes(' ' + k) || lowerLine === k);
-       // Check for house number patterns like "11к1" or "д.5" (ensuring it's not a price or date)
        const hasHouseNum = /\d+[а-я]?/.test(lowerLine) && !isPriceLine && !isDateLine && (lowerLine.includes(' ') || lowerLine.length < 10 || lowerLine.match(/\d+к\d+/));
 
        if ((hasCity || hasKeyword || hasHouseNum) && !isPriceLine && !isDateLine) {
          result.address = line;
-         // If it's a line like "Варшавское шоссе", check if next line adds detail (like "11к1")
          const idx = lines.indexOf(line);
          if (idx !== -1 && idx < lines.length - 1) {
              const nextLine = lines[idx+1];
              if (nextLine.length < 40 && !/зп|цена|руб|завтра|сегодня/i.test(nextLine)) {
-                 // If the current address is just a street, or next line looks like a house number or JK
                  if (nextLine.match(/\d+/) || line.length < 25 || nextLine.toLowerCase().includes('жк') || cities.some(c => nextLine.toLowerCase().includes(c))) {
                     result.address += ', ' + nextLine;
                  }
@@ -578,14 +527,12 @@ export class OrdersService {
        }
     }
 
-    // 4. Extract Title (First line that isn't a date or address, or looks like a job description)
     for (const line of lines) {
         if (result.address && result.address.includes(line)) continue;
         const lowerLine = line.toLowerCase();
         if (/завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\d{1,2}\.\d{1,2}/i.test(line)) continue;
         if (/зп|зарплата|цена|руб|₽/i.test(line)) continue;
 
-        // V11: Smarter title selection - prefer lines with job keywords
         if (lowerLine.includes('потолок') || lowerLine.includes('монтаж') || lowerLine.includes('замер') || lowerLine.includes('ремонт')) {
             result.title = line;
             break;

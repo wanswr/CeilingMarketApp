@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { logger } from '../services/logger/LoggerService';
 
 import {
   TouchableOpacity,
@@ -182,7 +183,7 @@ export default function CreateOrderScreen({ navigation }: any) {
         Alert.alert("Адрес не найден", "Попробуйте уточнить город или район, либо поставьте метку на карте вручную.");
       }
     } catch (err) {
-      console.warn("Geocoding failed:", err);
+      logger.warn("UI_WARN", { metadata: { info: "Geocoding failed:", err } });
     } finally {
       setIsGeocoding(false);
     }
@@ -251,7 +252,7 @@ export default function CreateOrderScreen({ navigation }: any) {
       Alert.alert("Успех", "Заказ опубликован!");
       navigation.navigate('Orders');
     } catch (e: any) {
-      console.error(e);
+      logger.error("UI_ERROR", { error: e });
       Alert.alert("Ошибка сохранения", e.message || "Произошла неизвестная ошибка");
     }
     finally { setLoading(false); }

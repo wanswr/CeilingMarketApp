@@ -191,6 +191,11 @@ class LoggerService {
       return obj;
   }
 
+    // Categories: UI, API, STORE, MAP, WEBSOCKET
+  action(name: string, category: 'UI' | 'API' | 'STORE' | 'MAP' | 'WEBSOCKET', context: LogContext = {}) {
+      this.info(`ACTION: ${name}`, { ...context, source: category.toLowerCase() });
+  }
+
   // UI Interaction Logging
   logClick(button: string, screen?: string, extra: LogContext = {}) {
       this.info(`BUTTON_PRESS: ${button}`, { source: 'ui', component: button, screen, ...extra });

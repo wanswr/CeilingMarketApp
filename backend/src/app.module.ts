@@ -9,6 +9,7 @@ import { GatewayModule } from './modules/gateway/gateway.module';
 import { ChatsModule } from './modules/chats/chats.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { LoggerModule } from './modules/logger/logger.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     ChatsModule,
     ReviewsModule,
     NotificationsModule,
+    LoggerModule,
   ],
 })
 export class AppModule {}

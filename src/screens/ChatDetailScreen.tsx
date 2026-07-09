@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { logger } from '../services/logger/LoggerService';
 
 import {
   TouchableOpacity,
@@ -71,7 +72,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
             }
         }
       } catch (e) {
-        console.error('Chat init error:', e);
+        logger.error("UI_ERROR", { error: 'Chat init error:', e });
       } finally {
         setLoading(false);
       }
@@ -123,7 +124,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     try {
         await apiService.sendMessage(activeChatId, textToSend);
     } catch (e) {
-        console.error('Send error:', e);
+        logger.error("UI_ERROR", { error: 'Send error:', e });
     }
   };
 

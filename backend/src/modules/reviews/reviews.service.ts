@@ -2,16 +2,20 @@ import { Injectable, NotFoundException, ConflictException, ForbiddenException } 
 import { PrismaService } from '../../prisma/prisma.service';
 import { OrderStatus } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
+import { LoggerService } from '../logger/logger.service';
 
 @Injectable()
 export class ReviewsService {
   constructor(
     private prisma: PrismaService,
     private gateway: AppGateway,
-  ) {}
+    private logger: LoggerService,
+  ) {
+    this.logger.setService('ReviewsService');
+  }
 
   async create(userId: string, dto: { orderId: string; rating: number; comment?: string }) {
-    console.log(`[ReviewsService] Create review request from user ${userId} for order ${dto.orderId}`);
+    this.logger.info('REVIEW_CREATED_REQUEST', `User ${userId} leaving review for order ${dto.orderId}`, { userId, orderId: dto.orderId });
 
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
@@ -77,13 +81,14 @@ export class ReviewsService {
       return { review, order };
     });
 
+    this.logger.info('REVIEW_CREATED', `Review created successfully`, { userId, orderId: dto.orderId, metadata: { rating: dto.rating } });
+
     // Notify about status (broadcast order update to refresh UI)
     this.gateway.broadcast('order.status.changed', result.order);
     return result.review;
   }
 
   async getPendingReviews(userId: string) {
-      // Get COMPLETED orders where user is participant and has not left a review
       const orders = await this.prisma.order.findMany({
           where: {
               status: OrderStatus.COMPLETED,

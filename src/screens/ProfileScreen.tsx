@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { logger } from '../services/logger/LoggerService';
 
 import {
   TouchableOpacity,
@@ -47,7 +48,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
           setReviews(revRes.data);
       }
     } catch (e) {
-      console.error(e);
+      logger.error("UI_ERROR", { error: e });
       if (!isMe) Alert.alert("Ошибка", "Не удалось загрузить профиль");
     } finally {
       setLoading(false);

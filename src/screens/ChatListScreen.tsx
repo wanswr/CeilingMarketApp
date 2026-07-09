@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { logger } from '../services/logger/LoggerService';
 import { TouchableOpacity, View, Text, StyleSheet, FlatList, TextInput, ActivityIndicator, RefreshControl } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS } from '../constants/theme'
@@ -18,7 +19,7 @@ const ChatListScreen = ({ navigation }: any) => {
       const res = await apiService.getMyChats();
       setChats(res.data);
     } catch (e) {
-      console.error('Fetch chats error:', e);
+      logger.error("UI_ERROR", { error: 'Fetch chats error:', e });
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { logger } from '../services/logger/LoggerService';
 
 import {
   TouchableOpacity,
@@ -43,7 +44,7 @@ export default function VerifyCodeScreen({ route, navigation }: any) {
     try {
       await login(phone, code);
     } catch (err: any) {
-      console.error(err);
+      logger.error("UI_ERROR", { error: err });
       Alert.alert("Ошибка", err.response?.data?.message || "Неверный код");
     }
     finally { setLoading(false); }

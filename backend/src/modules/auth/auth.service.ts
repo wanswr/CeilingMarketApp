@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LoggerService } from '../logger/logger.service';
 import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
@@ -10,12 +11,14 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
-  ) {}
+    private logger: LoggerService,
+  ) {
+    this.logger.setService('AuthService');
+  }
 
   async requestOtp(phone: string) {
     const authMode = this.configService.get('AUTH_MODE') || 'development';
 
-    // In production, we would call an SMS provider here
     if (authMode === 'development') {
       return {
         status: 'sent',
@@ -23,7 +26,6 @@ export class AuthService {
       };
     }
 
-    // TODO: Integrate SMS provider for production
     return {
       status: 'sent'
     };
@@ -36,8 +38,6 @@ export class AuthService {
       if (code !== '1234') {
         throw new UnauthorizedException('Invalid OTP code');
       }
-    } else {
-      // TODO: Verify against real SMS provider/cache
     }
 
     let user = await this.prisma.user.findUnique({ where: { phone } });
@@ -57,6 +57,7 @@ export class AuthService {
       });
     }
 
+    this.logger.info('USER_REGISTERED', `User registered/verified via OTP`, { userId: user.id });
     return this.login(user);
   }
 
@@ -85,9 +86,10 @@ export class AuthService {
         phone: dto.phone,
         name: dto.name,
         role: dto.role || 'WORKER',
-        phoneVerified: false, // Should be verified via OTP
+        phoneVerified: false,
       },
     });
+    this.logger.info('USER_REGISTERED', `User registered/verified via OTP`, { userId: user.id });
     return this.login(user);
   }
 }

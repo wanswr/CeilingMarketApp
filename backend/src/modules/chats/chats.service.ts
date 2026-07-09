@@ -1,13 +1,17 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
+import { LoggerService } from '../logger/logger.service';
 
 @Injectable()
 export class ChatsService {
   constructor(
     private prisma: PrismaService,
     private gateway: AppGateway,
-  ) {}
+    private logger: LoggerService,
+  ) {
+    this.logger.setService('ChatsService');
+  }
 
   async getOrCreateChat(orderId: string, executorId: string, employerId: string) {
     const chat = await this.prisma.chat.upsert({
@@ -27,6 +31,7 @@ export class ChatsService {
         executor: { select: { id: true, name: true, avatar: true } },
       }
     });
+    this.logger.info('CHAT_CREATED', `Chat initialized for order ${orderId}`, { orderId, userId: employerId });
     return chat;
   }
 
@@ -51,10 +56,8 @@ export class ChatsService {
       }
     });
 
-    // Notify participants via WebSocket room
     this.gateway.server.to(`chat:${chatId}`).emit('message.new', message);
 
-    // Also notify for list updates in private user rooms
     const recipientId = chat.employerId === senderId ? chat.executorId : chat.employerId;
     this.gateway.server.to(`user:${recipientId}`).emit('chat.update', { chatId, lastMessage: message });
 
@@ -78,7 +81,6 @@ export class ChatsService {
       orderBy: { updatedAt: 'desc' }
     });
 
-    // Calculate unread counts
     const chatsWithUnread = await Promise.all(chats.map(async (chat) => {
         const unreadCount = await this.prisma.message.count({
             where: {

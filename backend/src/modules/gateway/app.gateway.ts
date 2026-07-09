@@ -8,6 +8,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { LoggerService } from '../logger/logger.service';
 
 @WebSocketGateway({
   cors: {
@@ -15,40 +16,43 @@ import { Server, Socket } from 'socket.io';
   },
 })
 export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  constructor(private logger: LoggerService) {
+    this.logger.setService('WebSocket');
+  }
   @WebSocketServer()
   server: Server;
 
   handleConnection(client: Socket) {
-    console.log(`[WebSocket] Client connected: ${client.id}`);
+    this.logger.debug('WS_CONNECTED', `Client connected: ${client.id}`);
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`[WebSocket] Client disconnected: ${client.id}`);
+    this.logger.debug('WS_DISCONNECTED', `Client disconnected: ${client.id}`);
   }
 
   @SubscribeMessage('auth.join')
   handleJoinPrivate(@MessageBody() userId: string, @ConnectedSocket() client: Socket) {
     client.join(`user:${userId}`);
-    console.log(`[WebSocket] Client ${client.id} joined private room user:${userId}`);
+    this.logger.debug('WS_JOIN_PRIVATE', `Client joined private room`, { userId });
   }
 
   @SubscribeMessage('geo.join')
   handleJoinGeo(@MessageBody() data: { lat: number; lng: number }, @ConnectedSocket() client: Socket) {
     const room = `geo:${Math.floor(data.lat * 10)}:${Math.floor(data.lng * 10)}`;
     client.join(room);
-    console.log(`[WebSocket] Client ${client.id} joined geo room ${room}`);
+    this.logger.debug('WS_JOIN_GEO', `Client joined geo room ${room}`);
   }
 
   @SubscribeMessage('chat.join')
   handleJoinChat(@MessageBody() chatId: string, @ConnectedSocket() client: Socket) {
     client.join(`chat:${chatId}`);
-    console.log(`[WebSocket] Client ${client.id} joined chat:${chatId}`);
+    this.logger.debug('WS_JOIN_CHAT', `Client joined chat room`, { metadata: { chatId } });
   }
 
   @SubscribeMessage('chat.leave')
   handleLeaveChat(@MessageBody() chatId: string, @ConnectedSocket() client: Socket) {
     client.leave(`chat:${chatId}`);
-    console.log(`[WebSocket] Client ${client.id} left chat:${chatId}`);
+    this.logger.debug('WS_LEAVE_CHAT', `Client left chat room`, { metadata: { chatId } });
   }
 
   broadcast(event: string, payload: any) {

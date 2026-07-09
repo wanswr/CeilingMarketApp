@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { logger } from '../services/logger/LoggerService';
 
 import {
   TouchableOpacity,
@@ -48,7 +49,7 @@ export default function LoginScreen({ navigation }: any) {
           });
       }
     } catch (err: any) {
-      console.error(err);
+      logger.error("UI_ERROR", { error: err });
       let errorMsg = "Произошла ошибка при запросе кода.";
       if (err.message === "Network Error") {
         errorMsg = "Ошибка сети. Убедитесь, что сервер запущен.";

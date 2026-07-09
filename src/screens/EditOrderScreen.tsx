@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { logger } from '../services/logger/LoggerService';
 import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native'
 import { AppInput } from '../components/Input'
 import { mapEngine } from '../services/MapEngine'
@@ -33,7 +34,7 @@ export default function EditOrderScreen({ navigation, route }: any) {
         workType: order.workType || 'INSTALLATION'
       });
     } catch (e) {
-      console.error(e);
+      logger.error("UI_ERROR", { error: e });
       Alert.alert("Ошибка", "Не удалось загрузить заказ");
     } finally {
       setLoading(false);

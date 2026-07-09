@@ -97,7 +97,7 @@ const MapScreen = ({ navigation }: any) => {
                   await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
                 }
             } catch (e) {
-                console.error('[MapScreen] Init Error:', e);
+                logger.error("UI_ERROR", { error: '[MapScreen] Init Error:', e });
             }
           })();
       }

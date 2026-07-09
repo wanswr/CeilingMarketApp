@@ -1,0 +1,48 @@
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { tap } from 'rxjs/operators';
+import { LoggerService } from './logger.service';
+
+@Injectable()
+export class LoggingInterceptor implements NestInterceptor {
+  constructor(private logger: LoggerService) {
+    this.logger.setService('API');
+  }
+
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const request = context.switchToHttp().getRequest();
+    const { method, url, body } = request;
+    const requestId = Math.random().toString(36).substring(7);
+    request.requestId = requestId;
+
+    const startTime = Date.now();
+
+    // Mask sensitive data in body
+    const safeBody = { ...body };
+    const sensitiveKeys = ['password', 'token', 'code', 'otp'];
+    sensitiveKeys.forEach(key => {
+        if (safeBody[key]) safeBody[key] = '********';
+    });
+
+    this.logger.debug('API_REQUEST', `${method} ${url}`, { metadata: { body: safeBody } });
+
+    return next.handle().pipe(
+      tap({
+        next: (data) => {
+          const duration = Date.now() - startTime;
+          this.logger.info('API_RESPONSE', `${method} ${url} [${duration}ms]`, { metadata: { duration } });
+        },
+        error: (err) => {
+          const duration = Date.now() - startTime;
+          this.logger.error('API_ERROR', `${method} ${url} failed [${duration}ms]`, {
+              metadata: {
+                  duration,
+                  error: err.message,
+                  status: err.status
+              }
+          });
+        },
+      }),
+    );
+  }
+}
