@@ -147,7 +147,7 @@ export const storageService = {
   delete(key: string): void {
     try {
       const adapter = getAdapter();
-      adapter.delete(key);
+      adapter.remove(key);
     } catch (error) {
       logger.error(`[StorageService] Error deleting key "${key}":`, { error });
     }
