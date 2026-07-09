@@ -178,9 +178,20 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
           </View>
 
           {(isEmployer || amIExecutor || hasApplied) && (
-              <TouchableOpacity style={styles.chatButton} onPress={onChat}>
-                <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {((isEmployer && order.status === "COMPLETED") || (amIExecutor && (order.status === "COMPLETED" || order.status === "REVIEWED"))) &&
+                 !order.reviews?.some(r => r.authorId === currentUserId) && (
+                  <TouchableOpacity
+                    style={[styles.chatButton, { backgroundColor: COLORS.warning + "20" }]}
+                    onPress={onPress}
+                  >
+                    <Ionicons name="star-outline" size={20} color={COLORS.warning} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.chatButton} onPress={onChat}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+              </View>
           )}
         </View>
       </TouchableOpacity>

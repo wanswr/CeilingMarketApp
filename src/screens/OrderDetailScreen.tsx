@@ -225,7 +225,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const submitReview = async () => {
       if (rating === 0 || submitting) return;
-      if (order?.review) {
+      const myReview = order?.reviews?.find(r => r.authorId === currentUser?.uid);
+      if (myReview) {
           Alert.alert('Инфо', 'Вы уже оставили отзыв');
           setShowReviewModal(false);
           return;
@@ -363,18 +364,22 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           <Text style={styles.sectionTitle}>Описание задачи</Text>
           <Text style={styles.description}>{order.details || 'Описание отсутствует'}</Text>
 
-          {order.review && (
+          {(() => {
+            const myReview = order?.reviews?.find(r => r.authorId === currentUser?.uid);
+            if (!myReview) return null;
+            return (
               <>
                   <View style={styles.divider} />
                   <Text style={styles.sectionTitle}>Ваш отзыв</Text>
                   <View style={styles.reviewContent}>
                       <View style={styles.starsRowLeft}>
-                          {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= order.review!.rating ? "star" : "star-outline"} size={16} color={COLORS.warning} />)}
+                          {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= myReview.rating ? "star" : "star-outline"} size={16} color={COLORS.warning} />)}
                       </View>
-                      <Text style={styles.reviewComment}>{order.review.comment}</Text>
+                      {myReview.comment ? <Text style={styles.reviewComment}>{myReview.comment}</Text> : null}
                   </View>
               </>
-          )}
+            );
+          })()}
 
           <View style={styles.divider} />
 
@@ -449,7 +454,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       <BlurView intensity={90} tint="light" style={styles.footer}>
         <SafeAreaView edges={['bottom']} style={{ flexDirection: 'row', gap: 12 }}>
           {isEmployer ? (
-              order.status === 'COMPLETED' && !order.review ? (
+              order.status === 'COMPLETED' && !order.reviews?.some(r => r.authorId === currentUser?.uid) ? (
                   <TouchableOpacity
                     style={[styles.applyBtn, { flex: 1 }]}
                     onPress={() => {
@@ -512,9 +517,21 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               )}
 
               {(order.status === 'COMPLETED' || order.status === 'REVIEWED') && (
-                <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.7 }]}>
-                  <Text style={styles.applyBtnText}>Заказ выполнен</Text>
-                </View>
+                order.reviews?.some(r => r.authorId === currentUser?.uid) ? (
+                  <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.7 }]}>
+                    <Text style={styles.applyBtnText}>Заказ выполнен</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                    onPress={() => {
+                        logger.logClick('OpenReviewModal', 'OrderDetail', { orderId });
+                        setShowReviewModal(true);
+                    }}
+                  >
+                    <Text style={styles.applyBtnText}>Оставить отзыв</Text>
+                  </TouchableOpacity>
+                )
               )}
             </>
           ) : (
