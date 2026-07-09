@@ -23,11 +23,11 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   handleConnection(client: Socket) {
-    this.logger.debug('WS_CONNECTED', `Client connected: ${client.id}`);
+    this.logger.info('WS_CONNECTED', `Client connected: ${client.id}`);
   }
 
   handleDisconnect(client: Socket) {
-    this.logger.debug('WS_DISCONNECTED', `Client disconnected: ${client.id}`);
+    this.logger.info('WS_DISCONNECTED', `Client disconnected: ${client.id}`);
   }
 
   @SubscribeMessage('auth.join')

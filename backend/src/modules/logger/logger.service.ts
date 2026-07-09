@@ -23,11 +23,16 @@ export class LoggerService {
     if (logLevelEnv === 'warn') return LogLevel.WARN;
     if (logLevelEnv === 'error') return LogLevel.ERROR;
 
-    const nodeEnv = process.env.NODE_ENV || 'development';
+    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
     const debugEnabled = process.env.DEBUG === 'true';
 
-    if (debugEnabled || nodeEnv === 'development') return LogLevel.DEBUG;
-    return LogLevel.INFO;
+    // Production defaults to INFO
+    if (nodeEnv === 'production') {
+      return debugEnabled ? LogLevel.DEBUG : LogLevel.INFO;
+    }
+
+    // Development/Test defaults to DEBUG
+    return LogLevel.DEBUG;
   }
 
   private formatLog(level: string, action: string, message: string, data: any = {}) {

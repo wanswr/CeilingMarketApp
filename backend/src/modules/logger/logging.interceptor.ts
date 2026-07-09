@@ -23,6 +23,7 @@ export class LoggingInterceptor implements NestInterceptor {
         if (safeBody[key]) safeBody[key] = '********';
     });
 
+    // All normal request logs are DEBUG level
     this.logger.debug('API_REQUEST', `${method} ${url}`, {
         requestId,
         metadata: { body: safeBody }
@@ -38,17 +39,12 @@ export class LoggingInterceptor implements NestInterceptor {
               metadata: { duration }
           };
 
-          // Move common GET requests and high-frequency endpoints to DEBUG level
-          const isHighFrequency = url.includes('/spatial') || url.includes('/profile') || (method === 'GET' && !url.includes('/pending'));
-
-          if (isHighFrequency) {
-              this.logger.debug('API_RESPONSE', `${method} ${url} [${duration}ms]`, logData);
-          } else {
-              this.logger.info('API_RESPONSE', `${method} ${url} [${duration}ms]`, logData);
-          }
+          // All normal response logs are DEBUG level
+          this.logger.debug('API_RESPONSE', `${method} ${url} [${duration}ms]`, logData);
         },
         error: (err) => {
           const duration = Date.now() - startTime;
+          // Errors remain at ERROR level
           this.logger.error('API_ERROR', `${method} ${url} failed [${duration}ms]`, {
               requestId,
               userId: request.user?.id,
