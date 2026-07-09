@@ -1,6 +1,4 @@
-import { Injectable, Scope, Inject } from '@nestjs/common';
-import { REQUEST } from '@nestjs/core';
-import { Request } from 'express';
+import { Injectable, Scope } from '@nestjs/common';
 
 export enum LogLevel {
   DEBUG = 0,
@@ -12,11 +10,6 @@ export enum LogLevel {
 @Injectable({ scope: Scope.TRANSIENT })
 export class LoggerService {
   private serviceName: string = 'App';
-  private requestId: string;
-
-  constructor(@Inject(REQUEST) private request: Request) {
-    this.requestId = (request as any).requestId || Math.random().toString(36).substring(7);
-  }
 
   setService(name: string) {
     this.serviceName = name;
@@ -30,14 +23,14 @@ export class LoggerService {
   }
 
   private formatLog(level: string, action: string, message: string, data: any = {}) {
-    const { userId, orderId, metadata, ...rest } = data;
+    const { userId, orderId, requestId, metadata, ...rest } = data;
     return JSON.stringify({
       timestamp: new Date().toISOString(),
       level,
       service: this.serviceName,
       action,
-      requestId: this.requestId,
-      userId: userId || (this.request as any).user?.id,
+      requestId,
+      userId,
       orderId,
       message,
       metadata: metadata || rest,

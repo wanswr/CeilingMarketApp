@@ -176,7 +176,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         return;
     }
 
-    logger.logClick('StartWork', 'OrderDetail', { orderId });
+    logger.action('START_WORK', 'UI', { orderId });
     const aid = logger.startAction('START_WORK', { orderId });
     const statusBefore = order?.status;
     setSubmitting(true);
@@ -201,7 +201,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         return;
     }
 
-    logger.logClick('CompleteWork', 'OrderDetail', { orderId });
+    logger.action('COMPLETE_WORK', 'UI', { orderId });
     const aid = logger.startAction('COMPLETE_WORK', { orderId });
     const statusBefore = order?.status;
     setSubmitting(true);
@@ -232,7 +232,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           return;
       }
 
-      logger.logClick('SubmitReview', 'OrderDetail', { orderId, rating });
+      logger.action('SUBMIT_REVIEW', 'UI', { orderId, rating });
       const aid = logger.startAction('SUBMIT_REVIEW', { orderId, rating });
       const statusBefore = order?.status;
       setSubmitting(true);

@@ -17,24 +17,32 @@ export class LoggingInterceptor implements NestInterceptor {
 
     const startTime = Date.now();
 
-    // Mask sensitive data in body
     const safeBody = { ...body };
     const sensitiveKeys = ['password', 'token', 'code', 'otp'];
     sensitiveKeys.forEach(key => {
         if (safeBody[key]) safeBody[key] = '********';
     });
 
-    this.logger.debug('API_REQUEST', `${method} ${url}`, { metadata: { body: safeBody } });
+    this.logger.debug('API_REQUEST', `${method} ${url}`, {
+        requestId,
+        metadata: { body: safeBody }
+    });
 
     return next.handle().pipe(
       tap({
         next: (data) => {
           const duration = Date.now() - startTime;
-          this.logger.info('API_RESPONSE', `${method} ${url} [${duration}ms]`, { metadata: { duration } });
+          this.logger.info('API_RESPONSE', `${method} ${url} [${duration}ms]`, {
+              requestId,
+              userId: request.user?.id,
+              metadata: { duration }
+          });
         },
         error: (err) => {
           const duration = Date.now() - startTime;
           this.logger.error('API_ERROR', `${method} ${url} failed [${duration}ms]`, {
+              requestId,
+              userId: request.user?.id,
               metadata: {
                   duration,
                   error: err.message,

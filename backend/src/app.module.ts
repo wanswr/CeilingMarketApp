@@ -23,7 +23,6 @@ import { LoggerModule } from './modules/logger/logger.module';
     ChatsModule,
     ReviewsModule,
     NotificationsModule,
-    LoggerModule,
   ],
 })
 export class AppModule {}
