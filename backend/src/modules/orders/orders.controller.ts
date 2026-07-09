@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { GetOrdersSpatialDto } from './dto/get-orders-spatial.dto';
+import { FindAllOrdersDto } from './dto/find-all-orders.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('orders')
@@ -14,43 +16,16 @@ export class OrdersController {
   }
 
   @Get()
-  findAll(
-    @Query('lat') lat?: number,
-    @Query('lng') lng?: number,
-    @Query('radius') radius?: number,
-    @Query('minPrice') minPrice?: number,
-    @Query('status') status?: string,
-  ) {
-    return this.ordersService.findAll({
-      lat: lat ? Number(lat) : undefined,
-      lng: lng ? Number(lng) : undefined,
-      radius: radius ? Number(radius) : undefined,
-      minPrice: minPrice ? Number(minPrice) : undefined,
-      status
-    });
+  findAll(@Query() query: FindAllOrdersDto) {
+    return this.ordersService.findAll(query);
   }
 
 
   @Get('spatial')
-  getSpatialOrders(
-    @Query('lat') lat?: string,
-    @Query('lng') lng?: string,
-    @Query('radius') radius?: string,
-    @Query('minLat') minLat?: string,
-    @Query('maxLat') maxLat?: string,
-    @Query('minLng') minLng?: string,
-    @Query('maxLng') maxLng?: string,
-    @Query('updatedAfter') updatedAfter?: string,
-  ) {
+  getSpatialOrders(@Query() query: GetOrdersSpatialDto) {
     return this.ordersService.findSpatial({
-      lat: lat ? parseFloat(lat) : undefined,
-      lng: lng ? parseFloat(lng) : undefined,
-      radius: radius ? parseFloat(radius) : undefined,
-      minLat: minLat ? parseFloat(minLat) : undefined,
-      maxLat: maxLat ? parseFloat(maxLat) : undefined,
-      minLng: minLng ? parseFloat(minLng) : undefined,
-      maxLng: maxLng ? parseFloat(maxLng) : undefined,
-      updatedAfter: (updatedAfter && !isNaN(Number(updatedAfter))) ? new Date(Number(updatedAfter)) : undefined
+      ...query,
+      updatedAfter: (query.updatedAfter && !isNaN(Number(query.updatedAfter))) ? new Date(Number(query.updatedAfter)) : undefined
     });
   }
 
