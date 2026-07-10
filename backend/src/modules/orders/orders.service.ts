@@ -30,19 +30,16 @@ export class OrdersService {
       [OrderStatus.REVIEWED]: 7,
     };
 
-    // Special cases:
-    // 1. CANCELLED is a terminal state (mostly)
-    if (from === OrderStatus.CANCELLED) return false;
+    // V12 Hardened rules:
+    if (from === OrderStatus.CANCELLED) return false; // Terminal
+    if (from === OrderStatus.COMPLETED && to !== OrderStatus.REVIEWED) return false;
+    if (to === OrderStatus.CANCELLED) return true; // Allowed from anywhere except terminal
 
-    // 2. Allow transition to same status (idempotency)
-    if (from === to) return true;
-
-    // 3. Simple linear progression
+    // Strict forward progression only
     return priorities[to] > priorities[from];
   }
 
   private broadcast(event: string, payload: any) {
-      // V11: Attach eventId for frontend deduplication
       this.gateway.broadcast(event, {
           ...payload,
           eventId: randomUUID()
@@ -155,6 +152,11 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
 
+    // Safety check: cannot apply to already taken or completed orders
+    if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
+        throw new ConflictException('Order is no longer open for applications');
+    }
+
     const existing = await this.prisma.application.findUnique({
       where: { orderId_executorId: { orderId, executorId } }
     });
@@ -198,9 +200,9 @@ export class OrdersService {
      });
      if (!app || app.order.employerId !== userId) throw new ForbiddenException();
 
-     // Conflict Check: Is order already claimed?
+     // Conflict Check: Is order already claimed or in progress?
      if (app.order.status !== OrderStatus.HAS_RESPONSES && app.order.status !== OrderStatus.PUBLISHED) {
-         throw new ConflictException(`Cannot accept application. Order status is ${app.order.status}`);
+         throw new ConflictException(`Cannot accept application. Order status is already ${app.order.status}`);
      }
 
      const result = await this.prisma.$transaction(async (tx) => {
@@ -208,7 +210,8 @@ export class OrdersService {
              where: { id: app.orderId },
              data: {
                  status: OrderStatus.CLAIMED,
-                 executorId: app.executorId
+                 executorId: app.executorId,
+                 claimedAt: new Date()
              }
          });
 
@@ -217,7 +220,7 @@ export class OrdersService {
              data: { status: 'ACCEPTED' }
          });
 
-         // V11: Automatically reject other applications
+         // V12: Auto-reject all other applications for this order
          await tx.application.updateMany({
              where: {
                  orderId: app.orderId,
@@ -243,8 +246,9 @@ export class OrdersService {
       if (!order) throw new NotFoundException();
       if (order.executorId !== userId) throw new ForbiddenException();
 
+      // Production Guard: must be CLAIMED
       if (order.status !== OrderStatus.CLAIMED) {
-          throw new ConflictException(`Cannot start work. Status must be CLAIMED, current is ${order.status}`);
+          throw new ConflictException(`Cannot start work. Expected status CLAIMED, found ${order.status}`);
       }
 
       const result = await this.prisma.order.update({
@@ -262,8 +266,9 @@ export class OrdersService {
       if (!order) throw new NotFoundException();
       if (order.executorId !== userId) throw new ForbiddenException();
 
+      // Production Guard: must be IN_PROGRESS
       if (order.status !== OrderStatus.IN_PROGRESS) {
-          throw new ConflictException(`Cannot complete work. Status must be IN_PROGRESS, current is ${order.status}`);
+          throw new ConflictException(`Cannot complete work. Expected status IN_PROGRESS, found ${order.status}`);
       }
 
       const result = await this.prisma.order.update({
@@ -358,6 +363,7 @@ export class OrdersService {
           updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
         },
         take: 1000,
+        // V12 Lightweight Map DTO optimization:
         select: {
             id: true,
             latitude: true,
@@ -365,6 +371,7 @@ export class OrdersService {
             price: true,
             status: true,
             title: true,
+            workType: true,
             updatedAt: true,
             employer: { select: { id: true, name: true, rating: true, avatar: true } },
             applications: { select: { id: true, executorId: true, status: true, price: true } }
