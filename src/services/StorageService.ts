@@ -26,19 +26,39 @@ class MMKVAdapter implements StorageAdapter {
   get(key: string): string | null { return this.storage.getString(key) ?? null; }
   set(key: string, value: string): void { this.storage.set(key, value); }
   delete(key: string): void {
-      // V11: Explicit method detection and logging as per user requirement
+      // V11: Explicit method detection and logging
+      // react-native-mmkv usually has .delete(key)
       if (typeof this.storage.delete === 'function') {
           this.storage.delete(key);
           logger.info(`STORE_DELETE ${key}`);
-      } else if (typeof this.storage.deleteMMKV === 'function') {
+          return;
+      }
+
+      if (typeof this.storage.remove === 'function') {
+          this.storage.remove(key);
+          logger.info(`STORE_DELETE ${key}`);
+          return;
+      }
+
+      if (typeof this.storage.deleteMMKV === 'function') {
           this.storage.deleteMMKV(key);
           logger.info(`STORE_DELETE ${key}`);
-      } else if (typeof this.storage.removeItem === 'function') {
+          return;
+      }
+
+      if (typeof this.storage.removeItem === 'function') {
           this.storage.removeItem(key);
           logger.info(`STORE_DELETE ${key}`);
-      } else {
+          return;
+      }
+
+      // Fallback try-catch for cases where JSI methods might not be enumerable/detectable via typeof
+      try {
+          this.storage.delete(key);
+          logger.info(`STORE_DELETE ${key} (via fallback)`);
+      } catch (e) {
           const methods = Object.keys(this.storage).filter(k => typeof this.storage[k] === 'function').join(', ');
-          logger.warn(`[MMKVAdapter] delete unavailable for key: ${key}. Available methods: ${methods}`);
+          logger.warn(`[MMKVAdapter] all delete methods failed for key: ${key}. Available methods: ${methods}`);
       }
   }
   clearAll(): void {
