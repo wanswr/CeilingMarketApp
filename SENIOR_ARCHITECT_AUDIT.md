@@ -1,66 +1,63 @@
-# ТЕХНИЧЕСКИЙ АУДИТ ПРОЕКТА: CeilingsApp (Hardened MVP)
-**Роль:** Senior Software Architect / Lead Developer
-**Статус:** Рефакторинг Логирования и Инфраструктуры завершен.
+# 🛡️ CeilingsApp: Full Technical Pre-Release Audit Report
+
+**Version**: 1.0.0-pre-release
+**Status**: Critical Gaps Identified
+**Auditor**: Jules (Senior Software Engineer)
 
 ---
 
-## 1. Анализ логов (Audit Report)
-
-### 🔴 Реальные ошибки:
-- **Отсутствуют в текущем логе**, но наблюдались ранее как рассинхрон статусов (исправлено через Status Priority).
-- **Global Promise Rejections:** Были невидимы, теперь перехватываются `GlobalErrorHandler`.
-
-### ⚠️ WARN требующие внимания:
-1.  **MMKV Native Module:** `MMKV constructor is missing`.
-    - *Причина:* Пакет установлен, но нативные библиотеки не скомпилированы в текущую сборку (типично для Expo Go).
-    - *Решение:* Запустить `npx expo run:ios` для линковки или использовать Dev Client. Я внедрил `StorageService` fallback, так что приложение не падает, но работает медленнее (in-memory).
-2.  **Require Cycle:** `MapEngine -> SocketService -> MapEngine`.
-    - *Решение:* **Исправлено.** Цикл разорван через динамический `require` в методе `updateSocketRoom`.
-
-### ⚡ Потенциальные проблемы (Technical Debt):
-1.  **Slow Network:** `user/profile` занимает ~1с. Это много для локальной сети. Возможно, стоит проверить индексы в БД на поле `phone` или `id`.
-2.  **Order Sync Race:** При получении `order.created` через сокет и одновременном рефреше списка может возникнуть дубль. **Исправлено** через `seenEvents` и `eventId`.
-
-### ✅ Что работает нормально:
-1.  **Spatial Fetch:** Пространственный поиск (`orders/spatial`) работает быстро (195ms) и корректно мержит данные в Store.
-2.  **EntityStore Hydration:** Синхронное восстановление состояния при старте (Hydrate) проходит успешно.
-3.  **NLP Parser:** Эндпоинт `orders/parse` отрабатывает за 229ms, корректно выделяя параметры заказа из текста.
+## 🏁 Executive Summary
+The CeilingsApp project demonstrates a high-quality foundation with modular backend architecture and a reactive, viewport-aware frontend. However, as it stands, **it is NOT ready for public release**. There are four **Blocker**-level gaps that would likely lead to account takeovers, poor user retention, and App Store rejection.
 
 ---
 
-## 2. Проведенный рефакторинг
+## 1. Architecture & Scalability
+- **WebSocket (High Risk)**: The backend currently uses global broadcasts (`this.gateway.broadcast`) for almost all events. In production, this will flood every connected client with irrelevant data, causing massive CPU spikes and battery drain on mobile.
+- **Data Volume (Medium Risk)**: The spatial search (`findSpatial`) fetches up to 1000 orders at once. This lacks pagination or "cluster-first" fetching, which will degrade performance in high-density areas (e.g., Moscow city center).
+- **Service Dependency**: The tight coupling between `MapEngine` and `SocketService` (partially mitigated in V11 with dynamic requires) still poses a risk for complex state bugs.
 
-### Новая система логирования (`src/services/logger/`)
-- **LoggerService:** Поддерживает уровни DEBUG -> ERROR.
-- **TraceManager:** Автоматически генерирует `actionId` для отслеживания цепочки событий (например: Клик -> Запрос -> Ответ -> Store Update).
-- **Persistent Storage:** Логи сохраняются в MMKV (или fallback) с ротацией (макс 5000 записей).
-- **Network Interceptors:**
-    - Маскирование (скрытие `token`, `password`, `otp`).
-    - Траблшутинг: если payload > 1000 символов, он обрезается в консоли, но сохраняется размер.
-    - Метрики: время ответа и размер данных теперь в каждом логе.
+## 2. Authorization & Security
+- **OTP Mock (CRITICAL)**: The system still uses a hardcoded `1234` OTP or returns the code in the API response. This allows anyone to hijack any account knowing only a phone number.
+- **Refresh Tokens (High Risk)**: There is no refresh token logic. JWTs have a fixed expiry; users will be kicked out of the app unexpectedly during active use.
+- **Personal Data Exposure (Medium Risk)**: The `GET /orders/:id` endpoint returns full applicant details. Unassigned masters should not see the full profile and price offers of their competitors.
+- **Rate Limiting (High Risk)**: No protection on `/auth/request-otp`. An attacker could incur massive costs (once real SMS is added) or DOS the system.
 
-### Устранение циклов
-- **MapEngine:** Больше не импортирует `SocketService` на уровне топ-левела. Это предотвращает инициализацию `undefined` сервисов.
+## 3. Order Lifecycle & Business Logic
+- **Mutual Reviews**: Successfully implemented, but needs a "Dispute" state to be functional for a real marketplace.
+- **Race Conditions**: Two users accepting the same application simultaneously is handled by DB constraints (P2022/P2002), but the frontend lacks a "Conflict" state UI (409 error handling).
 
-### Глобальная отказоустойчивость
-- Добавлен перехват фатальных ошибок JS и отклоненных промисов. Теперь любой краш будет записан в лог перед падением.
+## 4. Database Integrity
+- **Indexes**: Added in V11 for `latitude`, `longitude`, and `status`. Good for initial scale.
+- **Cascades**: Most relations use `onDelete: Cascade`. **Risk**: Deleting a User should ideally anonymize their Reviews rather than deleting them, to keep ratings fair for the other party.
+
+## 5. Storage & Media (BLOCKER)
+- **Missing API**: The backend has **no endpoints** for multipart/form-data file uploads. The frontend `pickImage` logic has nowhere to send the data.
+- **Media Hosting**: No integration with S3, Cloudinary, or even a local `/uploads` static folder.
+- **Compression**: No client-side image manipulation. High risk of 413 (Payload Too Large) errors.
+
+## 6. Push Notifications (BLOCKER)
+- **Implementation Status**: The system currently only writes "Notifications" to the database. There is **no code** that actually pushes to Apple/Google servers (APNs/FCM). Without this, the marketplace "loop" (Order -> Apply -> Accept) is broken for mobile users.
 
 ---
 
-## 3. Конкретные указания (Lead Developer Guidance)
+## 🏁 Final Action Plan (Prioritized)
 
-| Файл | Проблема | Как исправить (Пример) |
-| :--- | :--- | :--- |
-| `src/services/StorageService.ts` | MMKV Crash | Использовать `try-catch` при инициализации (уже внедрено). |
-| `src/services/MapEngine.ts` | Coupling | Выносить логику сокетов в `SocketService`, вызывая его через EventBus или динамический импорт (уже внедрено). |
-| `src/services/ApiService.ts` | Security Leak | Добавить маскирование в логгер для заголовков Authorization (уже внедрено). |
+### Group A: CRITICAL (Must fix before release)
+1.  **SMS Integration**: Replace mock logic with Twilio/Sms.ru.
+2.  **Push Notification Engine**: Implement `expo-server-sdk` on backend; request permissions on frontend.
+3.  **Media Service**: Add Multer support to NestJS and connect to S3/Cloudinary.
+4.  **Account Deletion**: Add `DELETE /users/profile` to comply with App Store guidelines.
+
+### Group B: HIGH (Post-launch 0.1v)
+1.  **Refresh Tokens**: Implement sliding session window.
+2.  **Targeted WebSockets**: Change `broadcast` to `to(geoRoom)` or `to(userId)`.
+3.  **Image Compression**: Use `expo-image-manipulator` on the client.
+4.  **Rate Limiter**: Install `@nestjs/throttler`.
+
+### Group C: MEDIUM
+1.  **Pagination**: Add `cursor` or `offset` to order lists.
+2.  **Admin UI**: Minimal dashboard for manual dispute resolution.
+3.  **Deep Linking**: Support opening orders via URL.
 
 ---
-
-## 4. Как получить логи с устройства
-Для отладки в полевых условиях вызовите:
-```javascript
-import { logger } from './src/services/logger/LoggerService';
-const logJson = logger.exportLogs();
-// Отправить через Share.share({ message: logJson });
-```
+*Report generated by Jules (AI Senior Software Engineer)*
