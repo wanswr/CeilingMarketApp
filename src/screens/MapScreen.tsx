@@ -8,7 +8,8 @@ import {
   ActivityIndicator,
   TextInput,
   ScrollView,
-  Platform
+  Platform,
+  Modal
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
@@ -36,13 +37,13 @@ const MapScreen = ({ navigation }: any) => {
   const [radius, setRadius] = useState(100);
   const [showFilters, setShowFilters] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
+  const [pendingLocation, setPendingLocation] = useState<{latitude: number, longitude: number} | null>(null);
+
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastPanDragRef = useRef<number>(0);
   const lastHandledRegionRef = useRef<string>('');
   const currentUser = mapEngine.getCurrentUser();
   const myId = currentUser?.uid || currentUser?.id;
 
-  // 1. Static Subscriptions (Mount/Unmount)
   const isSubscribedRef = useRef(false);
 
   useEffect(() => {
@@ -68,11 +69,9 @@ const MapScreen = ({ navigation }: any) => {
     };
   }, []);
 
-  // 2. Active Focus Lifecycle
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
-
       setDisplayedOrders([...mapEngine.getOrders()]);
       setRegion(mapViewportStore.getRegion());
 
@@ -135,6 +134,12 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
+  const handleLongPress = (e: any) => {
+      const coords = e.nativeEvent.coordinate;
+      setPendingLocation(coords);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  };
+
   return (
     <ErrorBoundary>
       <View style={styles.container}>
@@ -144,7 +149,11 @@ const MapScreen = ({ navigation }: any) => {
           style={styles.map}
           initialRegion={region}
           showsUserLocation={true}
-          onPress={() => setSelectedOrder(null)}
+          onPress={() => {
+              setSelectedOrder(null);
+              setPendingLocation(null);
+          }}
+          onLongPress={handleLongPress}
           onRegionChange={() => {
               if (!isFocusedRef.current) return;
               if (!isMoving) setIsMoving(true);
@@ -184,11 +193,12 @@ const MapScreen = ({ navigation }: any) => {
 
             return (
               <Marker
-                key={`${item.id}_${item.status}`} // V11: status in key forces re-render if updated
+                key={`${item.id}_${item.status}`}
                 coordinate={coords}
                 onPress={(e) => {
                   e.stopPropagation();
                   setSelectedOrder(item);
+                  setPendingLocation(null);
                 }}
                 tracksViewChanges={false}
               >
@@ -212,6 +222,14 @@ const MapScreen = ({ navigation }: any) => {
               </Marker>
             );
           })}
+
+          {pendingLocation && (
+              <Marker coordinate={pendingLocation} pinColor={COLORS.primary}>
+                  <View style={styles.pendingMarker}>
+                      <Ionicons name="add-circle" size={32} color={COLORS.primary} />
+                  </View>
+              </Marker>
+          )}
         </MapView>
 
         <SafeAreaView style={styles.headerOverlay} pointerEvents="box-none">
@@ -354,6 +372,39 @@ const MapScreen = ({ navigation }: any) => {
               </View>
             </BlurView>
           </TouchableOpacity>
+        )}
+
+        {pendingLocation && (
+            <View style={styles.createOrderPrompt}>
+                <BlurView intensity={95} tint="light" style={styles.promptCard}>
+                    <Text style={styles.promptTitle}>Создать заказ здесь?</Text>
+                    <Text style={styles.promptSubtitle}>Вы выбрали точку на карте. Нажмите кнопку ниже, чтобы заполнить детали заказа.</Text>
+                    <View style={styles.promptActions}>
+                        <TouchableOpacity
+                            style={styles.promptCancel}
+                            onPress={() => setPendingLocation(null)}
+                        >
+                            <Text style={styles.promptCancelText}>Отмена</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.promptSubmit}
+                            onPress={() => {
+                                const coords = pendingLocation;
+                                setPendingLocation(null);
+                                navigation.navigate('MainTabs', {
+                                    screen: 'Add',
+                                    params: {
+                                        latitude: coords.latitude,
+                                        longitude: coords.longitude
+                                    }
+                                });
+                            }}
+                        >
+                            <Text style={styles.promptSubmitText}>Создать заказ</Text>
+                        </TouchableOpacity>
+                    </View>
+                </BlurView>
+            </View>
         )}
 
         {loading && displayedOrders.length === 0 && (
@@ -556,6 +607,71 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     ...SHADOWS.medium },
-  mainActionText: { color: '#fff', fontWeight: '900', fontSize: 14 } });
+  mainActionText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  pendingMarker: {
+      backgroundColor: '#fff',
+      padding: 4,
+      borderRadius: 20,
+      ...SHADOWS.medium,
+      borderWidth: 2,
+      borderColor: COLORS.primary
+  },
+  createOrderPrompt: {
+      position: 'absolute',
+      bottom: 20,
+      left: 20,
+      right: 20,
+      zIndex: 1001
+  },
+  promptCard: {
+      borderRadius: 24,
+      padding: 24,
+      ...SHADOWS.heavy,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.5)'
+  },
+  promptTitle: {
+      fontSize: 20,
+      fontWeight: '900',
+      color: COLORS.dark,
+      marginBottom: 8
+  },
+  promptSubtitle: {
+      fontSize: 14,
+      color: COLORS.gray,
+      lineHeight: 20,
+      marginBottom: 20
+  },
+  promptActions: {
+      flexDirection: 'row',
+      gap: 12
+  },
+  promptCancel: {
+      flex: 1,
+      height: 50,
+      justifyContent: 'center',
+      alignItems: 'center'
+  },
+  promptCancelText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: COLORS.gray
+  },
+  promptSubmit: {
+      flex: 2,
+      height: 50,
+      backgroundColor: COLORS.primary,
+      borderRadius: 15,
+      justifyContent: 'center',
+      alignItems: 'center',
+      ...SHADOWS.soft
+  },
+  promptSubmitText: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: '#fff'
+  }
+});
 
 export default MapScreen;
