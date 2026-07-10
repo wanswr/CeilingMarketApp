@@ -141,7 +141,7 @@ class MapEngine {
       if (res && res.data) {
         const { created } = res.data;
         if (created && created.length > 0) {
-            this.entityStore.setOrders(created);
+            this.entityStore.setOrders(created, 'spatial');
         }
 
         this.lastSyncRegion = {
@@ -247,7 +247,7 @@ class MapEngine {
     try {
       const res = await this.requestRouter.request('orders:my', () => this.apiService.getMyOrders(), 10000);
       if (res && res.data) {
-          this.entityStore.setOrders(res.data);
+          this.entityStore.setOrders(res.data, 'my');
           this.triggerNotify();
           return res.data;
       }

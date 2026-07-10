@@ -1,54 +1,32 @@
 import { Order, UserProfile } from '../types'
-import { storageService } from './StorageService'
-import { logger } from './logger/LoggerService'
-
-/**
- * EntityStore V11: Normalized Single Source of Truth with Camera-Data Decoupling.
- * Modernized with StorageService (MMKV) for synchronous hydration.
- */
-
-interface StoreMeta {
-  lastUpdated: Map<string, number>;
-  reads: number;
-  writes: number;
-  spatialSyncs: number;
-  lastClusterTime?: number;
-  lastSyncTime?: number;
-}
+import { logger } from './logger/LoggerService';
+import { storageService } from './StorageService';
 
 class EntityStore {
-  public ordersById: Map<string, Order> = new Map();
-  public myOrders: Set<string> = new Set();
-  public usersById: Map<string, UserProfile> = new Map();
-  public seenEvents: Set<string> = new Set();
-
+  private readonly PERSISTENCE_KEY = 'entity_store_v11';
+  private ordersById: Map<string, Order> = new Map();
+  private usersById: Map<string, UserProfile> = new Map();
   private spatialGrid: Map<string, Set<string>> = new Map();
-  public currentUserId: string | null = null;
+  private myOrders: Set<string> = new Set();
+  private seenEvents: Set<string> = new Set();
 
-  public loadedBounds: { north: number; south: number; east: number; west: number } | null = null;
+  public currentUserId: string | null = null;
   public isInitialLoaded = false;
   public isMyOrdersLoaded = false;
+  public loadedBounds: { north: number, south: number, east: number, west: number } | null = null;
 
-  public meta: StoreMeta = {
-    lastUpdated: new Map(),
-    reads: 0,
+  public meta = {
     writes: 0,
-    spatialSyncs: 0
+    reads: 0,
+    lastSync: 0
   };
-
-  private readonly PERSISTENCE_KEY = 'entity_store_v11';
 
   private isHydratedFlag = false;
 
-  constructor() {
-    // V11: Defer hydration to MapEngine to avoid race conditions and double-hydration
-  }
-
-  setCurrentUserId(id: string | null) {
-      if (this.currentUserId === id) return;
-      this.currentUserId = id;
-      logger.info('USER_CHANGED', { source: 'store', userId: id });
-      this.recomputeMyOrders();
+  setCurrentUserId(id: string) {
+    this.currentUserId = id;
+    this.recomputeMyOrders();
+    this.persist();
   }
 
   private recomputeMyOrders() {
@@ -57,33 +35,24 @@ class EntityStore {
       if (!myId) return;
 
       this.ordersById.forEach(order => {
-          const isMeEmployer = order.employerId === myId;
-          const isMeExecutor = order.executorId === myId;
-          const isMeApplicant = order.applications?.some(a => a.executorId === myId);
-
-          if (isMeEmployer || isMeExecutor || isMeApplicant) {
-              this.myOrders.add(order.id);
-          }
+          const isMine = order.employerId === myId ||
+                         order.executorId === myId ||
+                         order.applications?.some((a: any) => a.executorId === myId);
+          if (isMine) this.myOrders.add(order.id);
       });
-      logger.debug('STORE_RECOMPUTE_MY_ORDERS', { source: 'store', count: this.myOrders.size });
   }
 
-  private getCoords(order: any): { lat: number; lng: number } | null {
-      const lat = Number(order.latitude ?? order.lat ?? order.coordinates?.latitude ?? order.location?.latitude);
-      const lng = Number(order.longitude ?? order.lng ?? order.coordinates?.longitude ?? order.location?.longitude);
+  private getCoords(order: any) {
+      const lat = order.latitude ?? order.lat ?? order.coordinates?.latitude ?? order.location?.latitude;
+      const lng = order.longitude ?? order.lng ?? order.coordinates?.longitude ?? order.location?.longitude;
       if (isNaN(lat) || isNaN(lng)) return null;
       return { lat, lng };
   }
 
-  /**
-   * STATUS_PRIORITY defines the immutable flow of an order.
-   * We block updates that try to move an order backwards in status (e.g., from CLAIMED back to PUBLISHED)
-   * unless explicitly allowed by the backend (which isn't the case for regular sync).
-   */
   private readonly STATUS_PRIORITY: Record<string, number> = {
     'PENDING': 0,
     'PUBLISHED': 1,
-    'HAS_RESPONSES': 1, // Same as published for discovery
+    'HAS_RESPONSES': 1,
     'CLAIMED': 2,
     'IN_PROGRESS': 3,
     'COMPLETED': 4,
@@ -98,33 +67,20 @@ class EntityStore {
 
     const existing = this.ordersById.get(order.id);
 
-    // V11: Block status rollback (prevent API race condition where stale spatial data overwrites fresh status)
     if (existing && order.status) {
         const currentPrio = this.STATUS_PRIORITY[existing.status] || 0;
         const newPrio = this.STATUS_PRIORITY[order.status] || 0;
         if (newPrio < currentPrio) {
-            logger.warn('STATUS_ROLLBACK_BLOCKED', {
-                orderId: order.id,
-                current: existing.status,
-                incoming: order.status,
-                source
-            });
-            // Still update coordinates or other fields if it's the same or higher priority in business logic
-            // but for simple sync, if priority is lower, we ignore the whole update to be safe
+            logger.debug('STATUS_ROLLBACK_BLOCKED', { orderId: order.id, current: existing.status, incoming: order.status, source });
             return;
         }
     }
 
-    // V11: Handle Partial Updates
     const incomingCoords = this.getCoords(order);
     const coords = incomingCoords || (existing ? this.getCoords(existing) : null);
 
-    if (!coords) {
-        logger.warn('STORE_SET_ORDER_FAILED: Missing coordinates', { source: 'store', orderId: order.id, source_orig: source });
-        return;
-    }
+    if (!coords) return;
 
-    // V11: Robust merge of applications and executor data
     let mergedApplications = order.applications;
     if (!mergedApplications && existing?.applications) {
         mergedApplications = existing.applications;
@@ -153,18 +109,8 @@ class EntityStore {
 
     const mergedOrder = existing ? { ...existing, ...normalizedOrder } : normalizedOrder as Order;
 
-    if (existing === mergedOrder) return;
-
     if (existing && existing.status !== mergedOrder.status) {
-        logger.info('ORDER_STATUS_TRANSITION', {
-            source: 'store',
-            orderId: order.id,
-            old: existing.status,
-            new: mergedOrder.status,
-            trigger: source
-        });
-    } else if (!existing) {
-        logger.debug('ORDER_ADDED_TO_STORE', { source: 'store', orderId: order.id, status: mergedOrder.status, trigger: source });
+        logger.info('ORDER_STATUS_TRANSITION', { source: 'store', orderId: order.id, old: existing.status, new: mergedOrder.status, trigger: source });
     }
 
     if (existing) {
@@ -177,11 +123,9 @@ class EntityStore {
     this.updateOrderInGrid(mergedOrder);
 
     const myId = this.currentUserId;
-    const isMeEmployer = !!(myId && mergedOrder.employerId === myId);
-    const isMeExecutor = !!(myId && mergedOrder.executorId === myId);
-    const isMeApplicant = !!(myId && mergedOrder.applications?.some((a: any) => a.executorId === myId));
+    const isMine = !!(myId && (mergedOrder.employerId === myId || mergedOrder.executorId === myId || mergedOrder.applications?.some((a: any) => a.executorId === myId)));
 
-    if (isMeEmployer || isMeExecutor || isMeApplicant) {
+    if (isMine) {
       this.myOrders.add(mergedOrder.id);
     } else {
       this.myOrders.delete(mergedOrder.id);
@@ -209,18 +153,27 @@ class EntityStore {
       if (patch.deleted) patch.deleted.forEach(id => this.removeOrder(id, source));
   }
 
-  setOrders = (orders: Order[]) => {
+  /**
+   * Reconcile orders based on source.
+   * Spatial sync (map) should only add/update and NOT purge existing data.
+   * 'my' sync should reconcile only the user's participation list.
+   */
+  setOrders = (orders: Order[], source: 'spatial' | 'my' = 'spatial') => {
       const incomingIds = new Set(orders.map(o => o.id));
-      const myOrderIds = Array.from(this.myOrders);
 
-      myOrderIds.forEach(id => {
-          if (!incomingIds.has(id)) {
-              this.removeOrder(id, 'sync_reconciliation');
-          }
-      });
+      if (source === 'my') {
+          // Reconcile: remove local orders that I participate in but are missing from the "my orders" server response
+          const currentMyOrders = Array.from(this.myOrders);
+          currentMyOrders.forEach(id => {
+              if (!incomingIds.has(id)) {
+                  this.removeOrder(id, 'reconcile_my_orders');
+              }
+          });
+      }
 
-      orders.forEach(o => this.setOrder(o, 'sync_reconciliation'));
-      this.isMyOrdersLoaded = true;
+      orders.forEach(o => this.setOrder(o, `sync_${source}`));
+
+      if (source === 'my') this.isMyOrdersLoaded = true;
       this.persist();
   }
 
@@ -228,21 +181,12 @@ class EntityStore {
     const id = (user as any).id || user.uid;
     if (!id) return;
     const normalizedUser = { ...user, id, uid: id };
-
-    if ((user as any).isMe) {
-        this.setCurrentUserId(id);
-    }
-
+    if ((user as any).isMe) this.setCurrentUserId(id);
     this.usersById.set(id, normalizedUser);
   }
 
   getUser = (id: string): UserProfile | undefined => this.usersById.get(id);
-
-  getCurrentUser = (): UserProfile | undefined => {
-      if (!this.currentUserId) return undefined;
-      return this.getUser(this.currentUserId);
-  }
-
+  getCurrentUser = (): UserProfile | undefined => this.currentUserId ? this.getUser(this.currentUserId) : undefined;
   getOrder = (id: string): Order | undefined => this.ordersById.get(id);
   getAllOrders = (): Order[] => Array.from(this.ordersById.values());
   getMyOrders = (): Order[] => Array.from(this.myOrders).map(id => this.ordersById.get(id)).filter(Boolean) as Order[];
@@ -267,7 +211,6 @@ class EntityStore {
       const endX = Math.floor(maxLat * 2);
       const startY = Math.floor(minLng * 2);
       const endY = Math.floor(maxLng * 2);
-
       const resultIds = new Set<string>();
       for (let x = startX; x <= endX; x++) {
           for (let y = startY; y <= endY; y++) {
@@ -275,34 +218,24 @@ class EntityStore {
               if (ids) ids.forEach(id => resultIds.add(id));
           }
       }
-
-      return Array.from(resultIds)
-          .map(id => this.ordersById.get(id))
-          .filter(o => {
-              if (!o) return false;
-              const coords = this.getCoords(o);
-              if (!coords) return false;
-              return coords.lat >= minLat && coords.lat <= maxLat && coords.lng >= minLng && coords.lng <= maxLng;
-          }) as Order[];
+      return Array.from(resultIds).map(id => this.ordersById.get(id)).filter(o => {
+          if (!o) return false;
+          const coords = this.getCoords(o);
+          if (!coords) return false;
+          return coords.lat >= minLat && coords.lat <= maxLat && coords.lng >= minLng && coords.lng <= maxLng;
+      }) as Order[];
   }
 
   hydrate = () => {
     if (this.isHydratedFlag) return true;
     try {
-      logger.debug('STORE_HYDRATE_START', { source: 'store' });
       const data = storageService.get<any>(this.PERSISTENCE_KEY);
-      if (!data) {
-          return false;
-      }
-
+      if (!data) return false;
       const CACHE_TTL = 30 * 60 * 1000;
       if (!data.updatedAt || Date.now() - data.updatedAt > CACHE_TTL) {
-          logger.debug('STORE_HYDRATE_EXPIRED', { source: 'store' });
           storageService.delete(this.PERSISTENCE_KEY);
           return false;
       }
-
-      if (data.loadedBounds) this.loadedBounds = data.loadedBounds;
       if (data.currentUserId) this.currentUserId = data.currentUserId;
       if (data.orders) {
           data.orders.forEach((o: Order) => {
@@ -311,27 +244,20 @@ class EntityStore {
           });
           this.recomputeMyOrders();
       }
-      if (data.seenEvents) {
-          this.seenEvents = new Set(data.seenEvents);
-      }
-      logger.info('STORE_HYDRATED', { source: 'store', orders: data.orders?.length || 0 });
+      if (data.seenEvents) this.seenEvents = new Set(data.seenEvents);
       this.isHydratedFlag = true;
       return true;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
 
   persist = () => {
     try {
-      const data = {
+      storageService.set(this.PERSISTENCE_KEY, {
         orders: Array.from(this.ordersById.values()),
-        loadedBounds: this.loadedBounds,
         currentUserId: this.currentUserId,
         updatedAt: Date.now(),
         seenEvents: Array.from(this.seenEvents)
-      };
-      storageService.set(this.PERSISTENCE_KEY, data);
+      });
     } catch (e) {}
   }
 
@@ -340,16 +266,10 @@ class EntityStore {
     this.myOrders.clear();
     this.spatialGrid.clear();
     this.seenEvents.clear();
-    this.isInitialLoaded = false;
-    this.isMyOrdersLoaded = false;
     storageService.delete(this.PERSISTENCE_KEY);
-    logger.info('STORE_CLEARED', { source: 'store' });
   }
 
-  isEventSeen(eventId: string): boolean {
-    return this.seenEvents.has(eventId);
-  }
-
+  isEventSeen(eventId: string): boolean { return this.seenEvents.has(eventId); }
   markEventSeen(eventId: string) {
     this.seenEvents.add(eventId);
     if (this.seenEvents.size > 1000) {

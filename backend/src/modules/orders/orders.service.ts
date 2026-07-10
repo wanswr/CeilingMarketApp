@@ -4,6 +4,7 @@ import { OrderStatus, Prisma } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class OrdersService {
@@ -28,7 +29,24 @@ export class OrdersService {
       [OrderStatus.DISPUTE]: 6,
       [OrderStatus.REVIEWED]: 7,
     };
-    return priorities[to] >= priorities[from] || to === OrderStatus.CANCELLED;
+
+    // Special cases:
+    // 1. CANCELLED is a terminal state (mostly)
+    if (from === OrderStatus.CANCELLED) return false;
+
+    // 2. Allow transition to same status (idempotency)
+    if (from === to) return true;
+
+    // 3. Simple linear progression
+    return priorities[to] > priorities[from];
+  }
+
+  private broadcast(event: string, payload: any) {
+      // V11: Attach eventId for frontend deduplication
+      this.gateway.broadcast(event, {
+          ...payload,
+          eventId: randomUUID()
+      });
   }
 
   async create(dto: any, userId: string) {
@@ -40,7 +58,7 @@ export class OrdersService {
       },
     });
     this.logger.info('ORDER_CREATED', `Order created successfully`, { userId, orderId: order.id });
-    this.gateway.broadcast('order.created', order);
+    this.broadcast('order.created', order);
     return order;
   }
 
@@ -121,7 +139,7 @@ export class OrdersService {
       data: dto
     });
 
-    this.gateway.broadcast('order.status.changed', result);
+    this.broadcast('order.status.changed', result);
     return result;
   }
 
@@ -129,7 +147,7 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
     await this.prisma.order.delete({ where: { id } });
-    this.gateway.broadcast('order.deleted', { id });
+    this.broadcast('order.deleted', { id });
     return { id };
   }
 
@@ -156,8 +174,8 @@ export class OrdersService {
     });
 
     this.logger.info('ORDER_APPLIED', `New application for order ${result.order.id}`, { orderId: result.order.id, userId: executorId });
-    this.gateway.broadcast('application.new', result.app);
-    this.gateway.broadcast('order.status.changed', result.order);
+    this.broadcast('application.new', result.app);
+    this.broadcast('order.status.changed', result.order);
     return result.app;
   }
 
@@ -180,6 +198,11 @@ export class OrdersService {
      });
      if (!app || app.order.employerId !== userId) throw new ForbiddenException();
 
+     // Conflict Check: Is order already claimed?
+     if (app.order.status !== OrderStatus.HAS_RESPONSES && app.order.status !== OrderStatus.PUBLISHED) {
+         throw new ConflictException(`Cannot accept application. Order status is ${app.order.status}`);
+     }
+
      const result = await this.prisma.$transaction(async (tx) => {
          const updatedOrder = await tx.order.update({
              where: { id: app.orderId },
@@ -194,6 +217,15 @@ export class OrdersService {
              data: { status: 'ACCEPTED' }
          });
 
+         // V11: Automatically reject other applications
+         await tx.application.updateMany({
+             where: {
+                 orderId: app.orderId,
+                 id: { not: applicationId }
+             },
+             data: { status: 'REJECTED' }
+         });
+
          // Auto-create chat
          await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId);
 
@@ -201,14 +233,19 @@ export class OrdersService {
      });
 
      this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.id}`, { orderId: result.id, userId });
-     this.gateway.broadcast('order.status.changed', result);
-     this.gateway.broadcast('application.accepted', { orderId: result.id, executorId: app.executorId });
+     this.broadcast('order.status.changed', result);
+     this.broadcast('application.accepted', { orderId: result.id, executorId: app.executorId });
      return result;
   }
 
   async startWork(id: string, userId: string) {
       const order = await this.prisma.order.findUnique({ where: { id } });
-      if (!order || order.executorId !== userId) throw new ForbiddenException();
+      if (!order) throw new NotFoundException();
+      if (order.executorId !== userId) throw new ForbiddenException();
+
+      if (order.status !== OrderStatus.CLAIMED) {
+          throw new ConflictException(`Cannot start work. Status must be CLAIMED, current is ${order.status}`);
+      }
 
       const result = await this.prisma.order.update({
           where: { id },
@@ -216,13 +253,18 @@ export class OrdersService {
       });
 
       this.logger.info('ORDER_STARTED', `Order started by executor`, { orderId: result.id, userId });
-      this.gateway.broadcast('order.status.changed', result);
+      this.broadcast('order.status.changed', result);
       return result;
   }
 
   async completeWork(id: string, userId: string) {
       const order = await this.prisma.order.findUnique({ where: { id } });
-      if (!order || order.executorId !== userId) throw new ForbiddenException();
+      if (!order) throw new NotFoundException();
+      if (order.executorId !== userId) throw new ForbiddenException();
+
+      if (order.status !== OrderStatus.IN_PROGRESS) {
+          throw new ConflictException(`Cannot complete work. Status must be IN_PROGRESS, current is ${order.status}`);
+      }
 
       const result = await this.prisma.order.update({
           where: { id },
@@ -230,14 +272,18 @@ export class OrdersService {
       });
 
       this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result.id, userId });
-      this.gateway.broadcast('order.status.changed', result);
+      this.broadcast('order.status.changed', result);
       return result;
   }
 
   async transitionStatus(id: string, status: OrderStatus, userId: string) {
       const order = await this.prisma.order.findUnique({ where: { id } });
       if (!order) throw new NotFoundException();
-      // Simple guard: only employer can cancel/dispute, or specific role logic
+
+      if (!this.canTransition(order.status, status)) {
+          throw new ConflictException(`Transition ${order.status} -> ${status} not allowed`);
+      }
+
       return this.update(id, { status }, userId);
   }
 
@@ -312,10 +358,17 @@ export class OrdersService {
           updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
         },
         take: 1000,
-        include: {
-          employer: { select: { id: true, name: true, rating: true, avatar: true } },
-          applications: { select: { id: true, executorId: true, status: true, price: true } }
-        },
+        select: {
+            id: true,
+            latitude: true,
+            longitude: true,
+            price: true,
+            status: true,
+            title: true,
+            updatedAt: true,
+            employer: { select: { id: true, name: true, rating: true, avatar: true } },
+            applications: { select: { id: true, executorId: true, status: true, price: true } }
+        }
       });
 
       const duration = Date.now() - startTime;

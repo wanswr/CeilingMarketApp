@@ -33,7 +33,6 @@ class SocketService {
       logger.info('WEBSOCKET_CONNECTED', { source: 'websocket', socketId: this.socket?.id });
       this.joinPrivateRoom();
 
-      // V11: Re-join geo rooms via MapEngine to ensure proper region coverage and avoid duplication
       const { mapViewportStore } = require('./MapViewportStore');
       const { mapEngine } = require('./MapEngine');
       const region = mapViewportStore.getRegion();
@@ -42,37 +41,56 @@ class SocketService {
       }
     });
 
+    const handleEvent = (name: string, payload: any, action: (data: any) => void) => {
+        if (payload?.eventId && entityStore.isEventSeen(payload.eventId)) {
+            logger.debug('WS_EVENT_DEDUPLICATED', { source: 'websocket', eventId: payload.eventId, name });
+            return;
+        }
+        if (payload?.eventId) {
+            entityStore.markEventSeen(payload.eventId);
+        }
+        action(payload);
+    };
+
     this.socket.on('order.created', (payload: any) => {
-      const order = payload.order || payload;
-      logger.info('WS_ORDER_CREATED', { source: 'websocket', orderId: order.id, status: order.status });
-
-      requestRouter.metrics.websocketUpdates++;
-      entityStore.setOrder(order, 'websocket');
-      require('./MapEngine').mapEngine.triggerNotify();
-      entityStore.persist();
-    });
-
-    this.socket.on('order.status.changed', (order: any) => {
-      logger.info('WS_ORDER_STATUS_CHANGED', { source: 'websocket', orderId: order.id, status: order.status });
-      requestRouter.metrics.websocketUpdates++;
-      entityStore.setOrder(order, 'websocket');
-      require('./MapEngine').mapEngine.syncOrder(order.id, true);
-      require('./MapEngine').mapEngine.triggerNotify();
-      entityStore.persist();
-    });
-
-    this.socket.on('application.new', (application: any) => {
-      logger.info('WS_APPLICATION_NEW', { source: 'websocket', orderId: application.orderId });
-      requestRouter.metrics.websocketUpdates++;
-      require('./MapEngine').mapEngine.syncOrder(application.orderId, true).then(() => {
+      handleEvent('order.created', payload, (data) => {
+          const order = data.order || data;
+          logger.info('WS_ORDER_CREATED', { source: 'websocket', orderId: order.id, status: order.status });
+          requestRouter.metrics.websocketUpdates++;
+          entityStore.setOrder(order, 'websocket');
           require('./MapEngine').mapEngine.triggerNotify();
+          entityStore.persist();
       });
     });
 
-    this.socket.on('application.accepted', (data: any) => {
-       logger.info('WS_APPLICATION_ACCEPTED', { source: 'websocket', orderId: data.orderId });
-       require('./MapEngine').mapEngine.syncOrder(data.orderId, true).then(() => {
-           require('./MapEngine').mapEngine.triggerNotify();
+    this.socket.on('order.status.changed', (payload: any) => {
+      handleEvent('order.status.changed', payload, (data) => {
+          const order = data.order || data;
+          logger.info('WS_ORDER_STATUS_CHANGED', { source: 'websocket', orderId: order.id, status: order.status });
+          requestRouter.metrics.websocketUpdates++;
+          entityStore.setOrder(order, 'websocket');
+          require('./MapEngine').mapEngine.syncOrder(order.id, true);
+          require('./MapEngine').mapEngine.triggerNotify();
+          entityStore.persist();
+      });
+    });
+
+    this.socket.on('application.new', (payload: any) => {
+      handleEvent('application.new', payload, (data) => {
+          logger.info('WS_APPLICATION_NEW', { source: 'websocket', orderId: data.orderId });
+          requestRouter.metrics.websocketUpdates++;
+          require('./MapEngine').mapEngine.syncOrder(data.orderId, true).then(() => {
+              require('./MapEngine').mapEngine.triggerNotify();
+          });
+      });
+    });
+
+    this.socket.on('application.accepted', (payload: any) => {
+       handleEvent('application.accepted', payload, (data) => {
+           logger.info('WS_APPLICATION_ACCEPTED', { source: 'websocket', orderId: data.orderId });
+           require('./MapEngine').mapEngine.syncOrder(data.orderId, true).then(() => {
+               require('./MapEngine').mapEngine.triggerNotify();
+           });
        });
     });
 
@@ -81,11 +99,13 @@ class SocketService {
     });
 
     this.socket.on('order.deleted', (payload: any) => {
-      const orderId = payload.id || payload.orderId || payload;
-      logger.info('WS_ORDER_DELETED', { source: 'websocket', orderId });
-      requestRouter.metrics.websocketUpdates++;
-      entityStore.removeOrder(orderId);
-      require('./MapEngine').mapEngine.triggerNotify();
+      handleEvent('order.deleted', payload, (data) => {
+          const orderId = data.id || data.orderId || data;
+          logger.info('WS_ORDER_DELETED', { source: 'websocket', orderId });
+          requestRouter.metrics.websocketUpdates++;
+          entityStore.removeOrder(orderId);
+          require('./MapEngine').mapEngine.triggerNotify();
+      });
     });
 
     this.socket.on('disconnect', (reason) => {
