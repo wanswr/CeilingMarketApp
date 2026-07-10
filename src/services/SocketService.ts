@@ -33,46 +33,18 @@ class SocketService {
       logger.info('WEBSOCKET_CONNECTED', { source: 'websocket', socketId: this.socket?.id });
       this.joinPrivateRoom();
 
-      // V11: Re-join geo room on reconnect to ensure map remains reactive
+      // V11: Re-join geo rooms via MapEngine to ensure proper region coverage and avoid duplication
       const { mapViewportStore } = require('./MapViewportStore');
+      const { mapEngine } = require('./MapEngine');
       const region = mapViewportStore.getRegion();
-      if (region && this.socket) {
-          const lat = Math.floor(region.latitude * 10) / 10;
-          const lng = Math.floor(region.longitude * 10) / 10;
-          for (let i = -1; i <= 1; i++) {
-              for (let j = -1; j <= 1; j++) {
-                  this.socket.emit('geo.join', {
-                      lat: lat + (i * 0.1),
-                      lng: lng + (j * 0.1)
-                  });
-              }
-          }
+      if (region) {
+          mapEngine.updateSocketRoom(region, true);
       }
     });
 
     this.socket.on('order.created', (payload: any) => {
       const order = payload.order || payload;
       logger.info('WS_ORDER_CREATED', { source: 'websocket', orderId: order.id, status: order.status });
-
-      // V11: Add to store and notify UI immediately
-      requestRouter.metrics.websocketUpdates++;
-      entityStore.setOrder(order, 'websocket');
-      require('./MapEngine').mapEngine.triggerNotify();
-      entityStore.persist();
-
-      const loadedBounds = entityStore.loadedBounds;
-      if (loadedBounds) {
-          const centerLat = (loadedBounds.north + loadedBounds.south) / 2;
-          const centerLng = (loadedBounds.east + loadedBounds.west) / 2;
-          const lat = order.latitude ?? order.location?.latitude ?? order.lat;
-          const lng = order.longitude ?? order.location?.longitude ?? order.lng;
-          if (lat && lng) {
-              const distance = getDistance(lat, lng, centerLat, centerLng);
-              if (distance > 150) {
-                  return;
-              }
-          }
-      }
 
       requestRouter.metrics.websocketUpdates++;
       entityStore.setOrder(order, 'websocket');
@@ -83,14 +55,8 @@ class SocketService {
     this.socket.on('order.status.changed', (order: any) => {
       logger.info('WS_ORDER_STATUS_CHANGED', { source: 'websocket', orderId: order.id, status: order.status });
       requestRouter.metrics.websocketUpdates++;
-
-      // V11: Priority merge and notify
       entityStore.setOrder(order, 'websocket');
-
-      // Force immediate sync to get full order details (like applications) if status changed
-      // This will call triggerNotify again on completion to ensure UI consistency
       require('./MapEngine').mapEngine.syncOrder(order.id, true);
-
       require('./MapEngine').mapEngine.triggerNotify();
       entityStore.persist();
     });
@@ -98,7 +64,6 @@ class SocketService {
     this.socket.on('application.new', (application: any) => {
       logger.info('WS_APPLICATION_NEW', { source: 'websocket', orderId: application.orderId });
       requestRouter.metrics.websocketUpdates++;
-      // Sync order and notify list listeners
       require('./MapEngine').mapEngine.syncOrder(application.orderId, true).then(() => {
           require('./MapEngine').mapEngine.triggerNotify();
       });
@@ -106,7 +71,6 @@ class SocketService {
 
     this.socket.on('application.accepted', (data: any) => {
        logger.info('WS_APPLICATION_ACCEPTED', { source: 'websocket', orderId: data.orderId });
-       // Force sync and notify
        require('./MapEngine').mapEngine.syncOrder(data.orderId, true).then(() => {
            require('./MapEngine').mapEngine.triggerNotify();
        });

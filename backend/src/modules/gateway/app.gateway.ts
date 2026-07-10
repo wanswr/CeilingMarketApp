@@ -30,22 +30,29 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleDisconnect(client: Socket) {
     this.logger.info('WS_DISCONNECTED', `Client disconnected: ${client.id}`);
-    this.geoJoinCounters.delete(client.id);
+    const session = this.geoJoinCounters.get(client.id);
+    if (session) {
+        clearTimeout(session.timer);
+        this.geoJoinCounters.delete(client.id);
+    }
   }
 
   @SubscribeMessage('auth.join')
   handleJoinPrivate(@MessageBody() userId: string, @ConnectedSocket() client: Socket) {
     client.join(`user:${userId}`);
-    // Debug log for private room join is fine as it happens once
     this.logger.debug('WS_JOIN_PRIVATE', `Client joined private room`, { userId });
   }
 
   @SubscribeMessage('geo.join')
-  handleJoinGeo(@MessageBody() data: { lat: number; lng: number }, @ConnectedSocket() client: Socket) {
+  handleJoinGeo(@MessageBody() data: { lat: number; lng: number; clear?: boolean }, @ConnectedSocket() client: Socket) {
+    // V11: Clear old geo rooms if requested to prevent room accumulation
+    if (data.clear) {
+        this.leaveAllGeoRooms(client);
+    }
+
     const room = `geo:${Math.floor(data.lat * 10)}:${Math.floor(data.lng * 10)}`;
     client.join(room);
 
-    // Aggregating geo room joins to reduce noise
     let session = this.geoJoinCounters.get(client.id);
     if (session) {
         session.count++;
@@ -59,7 +66,7 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (finalSession) {
             this.logger.info('WS_GEO_ROOMS_JOINED', `Client joined multiple geo rooms`, {
                 userId: (client as any).userId || client.id,
-                metadata: { roomsCount: finalSession.count }
+                metadata: { roomsCount: finalSession.count, currentRooms: Array.from(client.rooms).filter(r => r.startsWith('geo:')) }
             });
             this.geoJoinCounters.delete(client.id);
         }
@@ -68,10 +75,14 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.geoJoinCounters.set(client.id, session);
   }
 
+  private leaveAllGeoRooms(client: Socket) {
+      const geoRooms = Array.from(client.rooms).filter(r => r.startsWith('geo:'));
+      geoRooms.forEach(room => client.leave(room));
+  }
+
   @SubscribeMessage('chat.join')
   handleJoinChat(@MessageBody() chatId: string, @ConnectedSocket() client: Socket) {
     client.join(`chat:${chatId}`);
-    // Minimal log for chat join
   }
 
   @SubscribeMessage('chat.leave')
