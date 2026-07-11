@@ -19,6 +19,18 @@ class SocketService {
 
   constructor() {
     // Register standard core listeners
+    this.on('connect', () => {
+      logger.info('WEBSOCKET_CONNECTED', { socketId: this.socket?.id, url: this.currentUrl });
+      this.joinPrivateRoom();
+
+      const { mapViewportStore } = require('./MapViewportStore');
+      const { mapEngine } = require('./MapEngine');
+      const region = mapViewportStore.getRegion();
+      if (region) {
+          mapEngine.updateSocketRoom(region, true);
+      }
+    });
+
     this.on('order.created', (order: any) => {
       logger.info('WS_ORDER_CREATED', { orderId: order.id });
       requestRouter.metrics.websocketUpdates++;
@@ -52,7 +64,6 @@ class SocketService {
       if (this.currentUrl === socketUrl) {
           if (this.socket.connected) {
               logger.info('[WebSocket] already connected', { url: socketUrl });
-              this.joinPrivateRoom();
           } else {
               logger.info('[WebSocket] socket exists, ensuring connection...', { url: socketUrl });
               this.socket.connect();
@@ -75,18 +86,6 @@ class SocketService {
         reconnectionDelayMax: 10000,
         timeout: 20000,
         transports: ['websocket'],
-    });
-
-    this.socket.on('connect', () => {
-      logger.info('WEBSOCKET_CONNECTED', { socketId: this.socket?.id, url: socketUrl });
-      this.joinPrivateRoom();
-
-      const { mapViewportStore } = require('./MapViewportStore');
-      const { mapEngine } = require('./MapEngine');
-      const region = mapViewportStore.getRegion();
-      if (region) {
-          mapEngine.updateSocketRoom(region, true);
-      }
     });
 
     this.socket.on('disconnect', (reason) => {

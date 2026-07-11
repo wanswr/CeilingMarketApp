@@ -71,6 +71,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }, [orderId]);
 
   const handleCancelApplication = async () => {
+    if (submitting) return;
     logger.logClick('CancelApplication', 'OrderDetail', { orderId });
     Alert.alert(
       'Отмена отклика',
@@ -106,6 +107,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const submitOffer = async () => {
+    if (submitting) return;
     const numericPrice = offerPrice ? parseFloat(offerPrice.replace(/\s/g, '')) : undefined;
     if (offerPrice !== '' && isNaN(numericPrice as number)) {
         Alert.alert('Ошибка', 'Введите корректное число');
@@ -130,6 +132,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleAcceptApplication = async (applicationId: string) => {
+    if (submitting) return;
     logger.logClick('AcceptApplication', 'OrderDetail', { orderId, applicationId });
     Alert.alert(
       'Выбор исполнителя',
@@ -727,11 +730,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                      </TouchableOpacity>
 
                      <TouchableOpacity
-                      style={styles.selectBtn}
+                      style={[styles.selectBtn, submitting && { opacity: 0.5 }]}
                       onPress={() => {
                           markViewed(app.id, app.status);
                           handleAcceptApplication(app.id);
                       }}
+                      disabled={submitting}
                      >
                        <Text style={styles.selectBtnText}>Выбрать</Text>
                      </TouchableOpacity>

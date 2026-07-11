@@ -300,7 +300,10 @@ export class OrdersService {
     const app = await this.prisma.application.findUnique({
       where: { orderId_executorId: { orderId, executorId } }
     });
-    if (!app) throw new NotFoundException('Application not found');
+    if (!app) {
+        // Idempotent: already cancelled or not found
+        return { success: true };
+    }
 
     const now = new Date();
     const orderDate = new Date(order.date);
