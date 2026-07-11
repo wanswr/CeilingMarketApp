@@ -14,6 +14,9 @@ class SocketService {
   private readonly receivedEvents = new Set<string>();
   private readonly MAX_RECEIVED_EVENTS = 1000;
 
+  // Local mutations register to block self-echo events
+  private readonly localMutations = new Map<string, number>();
+
   // Active listeners registry
   private readonly listeners = new Map<string, Set<Function>>();
 
@@ -181,6 +184,43 @@ class SocketService {
   }
 
   /**
+   * Register a local mutation key to prevent 'self-echo' WebSocket event loops.
+   */
+  registerLocalMutation(eventType: string, orderId: string, applicationId: string = 'none', status: string = 'none') {
+      const key = eventType + '_' + orderId + '_' + applicationId + '_' + status;
+      this.localMutations.set(key, Date.now());
+      logger.debug('[WebSocket] Registered local mutation key', { key });
+
+      if (this.localMutations.size > 100) {
+          const oldestKey = this.localMutations.keys().next().value;
+          if (oldestKey) this.localMutations.delete(oldestKey);
+      }
+  }
+
+  /**
+   * Verify if the incoming event matches a recently performed local client mutation.
+   */
+  isLocalMutationDuplicate(eventType: string, orderId: string, applicationId: string = 'none', status: string = 'none'): boolean {
+      const keys = [
+          eventType + '_' + orderId + '_' + applicationId + '_' + status,
+          eventType + '_' + orderId + '_any_' + status,
+          eventType + '_' + orderId + '_' + applicationId + '_any',
+          eventType + '_' + orderId + '_any_any'
+      ];
+      for (const key of keys) {
+          const mutationTime = this.localMutations.get(key);
+          if (mutationTime) {
+              const age = Date.now() - mutationTime;
+              const DEDUPLICATION_TTL = 5000; // 5 seconds sliding window
+              if (age < DEDUPLICATION_TTL) {
+                  return true;
+              }
+          }
+      }
+      return false;
+  }
+
+  /**
    * Register an event listener on the active socket instance.
    * Leverages internal registry so listeners automatically re-bind on reconnect or socket recreation.
    */
@@ -234,7 +274,34 @@ class SocketService {
           // 2. Extract unwrapped business data if it conforms to our { event, eventId, data } standard envelope
           const data = (payload && payload.data !== undefined) ? payload.data : payload;
 
-          // 3. Dispatch to all registered listeners
+          // 3. Extract business identifiers for secondary self-echo deduplication
+          let orderId = 'none';
+          let applicationId = 'none';
+          let status = 'none';
+
+          if (event === 'order.created' || event === 'order.status.changed') {
+              orderId = data?.id || 'none';
+              status = data?.status || 'none';
+          } else if (event === 'application.new') {
+              orderId = data?.orderId || 'none';
+              applicationId = data?.id || 'none';
+              status = data?.status || 'none';
+          }
+
+          if (this.isLocalMutationDuplicate(event, orderId, applicationId, status)) {
+              logger.debug('WS_EVENT_SELF_ECHO_BLOCKED', {
+                  source: 'websocket',
+                  metadata: {
+                      event,
+                      orderId,
+                      applicationId,
+                      status
+                  }
+              });
+              return;
+          }
+
+          // 4. Dispatch to all registered listeners
           const handlers = this.listeners.get(event);
           if (handlers) {
               handlers.forEach(handler => {

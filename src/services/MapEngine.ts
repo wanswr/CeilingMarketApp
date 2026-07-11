@@ -265,6 +265,10 @@ class MapEngine {
   createOrder = async (data: any) => {
     const res = await this.apiService.createOrder(data);
     this.requestRouter.invalidate('orders:my');
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.created', res.data.id, 'none', res.data.status);
+    } catch (e) {}
     this.entityStore?.setOrder(res.data, 'api_create');
     this.triggerNotify();
     return res.data;
@@ -273,6 +277,10 @@ class MapEngine {
   updateOrder = async (id: string, data: any) => {
     const res = await this.apiService.updateOrder(id, data);
     this.requestRouter.invalidate(`order:${id}`);
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', res.data.status);
+    } catch (e) {}
     this.entityStore?.setOrder(res.data, 'api_update');
     this.triggerNotify();
     return res.data;
@@ -282,6 +290,13 @@ class MapEngine {
     const res = await this.apiService.applyForOrder(id, price);
     if (res.data?.order) {
         this.requestRouter.invalidate(`order:${id}`);
+        try {
+            const { socketService } = require('./SocketService');
+            const app = res.data.app || res.data;
+            const appId = app?.id || 'any';
+            socketService.registerLocalMutation('application.new', id, appId, 'PENDING');
+            socketService.registerLocalMutation('order.status.changed', id, 'none', res.data.order.status);
+        } catch (e) {}
         this.entityStore.setOrder(res.data.order, 'api_apply');
         this.triggerNotify();
     }
@@ -291,6 +306,11 @@ class MapEngine {
   cancelApplication = async (id: string) => {
     const res = await this.apiService.cancelApplication(id);
     this.requestRouter.invalidate(`order:${id}`);
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', 'PUBLISHED');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', 'HAS_RESPONSES');
+    } catch (e) {}
     await this.syncOrder(id, true);
     this.triggerNotify();
     return res;
@@ -300,6 +320,11 @@ class MapEngine {
     const orderId = res.data?.orderId || res.data?.order?.id;
     if (orderId) {
         this.requestRouter.invalidate(`order:${orderId}`);
+        try {
+            const { socketService } = require('./SocketService');
+            const orderStatus = res.data?.order?.status || res.data?.status || 'CLAIMED';
+            socketService.registerLocalMutation('order.status.changed', orderId, 'none', orderStatus);
+        } catch (e) {}
         await this.syncOrder(orderId, true);
         this.triggerNotify();
     }
@@ -308,6 +333,10 @@ class MapEngine {
   startOrder = async (id: string) => {
     const res = await this.apiService.startOrder(id);
     this.requestRouter.invalidate(`order:${id}`);
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', 'IN_PROGRESS');
+    } catch (e) {}
     if (res.data) this.entityStore.setOrder(res.data, 'api_start');
     await this.syncOrder(id, true);
     this.triggerNotify();
@@ -316,6 +345,10 @@ class MapEngine {
   completeOrder = async (id: string) => {
     const res = await this.apiService.completeOrder(id);
     this.requestRouter.invalidate(`order:${id}`);
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', 'COMPLETED');
+    } catch (e) {}
     if (res.data) this.entityStore.setOrder(res.data, 'api_complete');
     await this.syncOrder(id, true);
     this.triggerNotify();
