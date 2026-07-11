@@ -91,6 +91,36 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   broadcast(event: string, payload: any) {
-    this.server.emit(event, payload);
+    const data = payload?.data || payload;
+    let emitted = false;
+
+    // 1. Identify and emit to geographic room if coordinates exist (for orders)
+    const lat = data?.latitude ?? data?.lat;
+    const lng = data?.longitude ?? data?.lng;
+
+    if (lat !== undefined && lng !== undefined) {
+        const room = `geo:${Math.floor(lat * 10)}:${Math.floor(lng * 10)}`;
+        this.server.to(room).emit(event, payload);
+        this.logger.debug('WS_BROADCAST_GEO', `Emitted event to geo room: ${room}`, { event });
+        emitted = true;
+    }
+
+    // 2. Identify and emit directly to private participant rooms (employer & executor)
+    const participants = new Set<string>();
+    if (data?.employerId) participants.add(data.employerId);
+    if (data?.executorId) participants.add(data.executorId);
+
+    participants.forEach(userId => {
+        const room = `user:${userId}`;
+        this.server.to(room).emit(event, payload);
+        this.logger.debug('WS_BROADCAST_PRIVATE', `Emitted event to private user room: ${room}`, { event });
+        emitted = true;
+    });
+
+    // 3. Fallback: If no participants and no coordinates, emit globally
+    if (!emitted) {
+        this.server.emit(event, payload);
+        this.logger.debug('WS_BROADCAST_GLOBAL', 'Fallback global broadcast', { event });
+    }
   }
 }

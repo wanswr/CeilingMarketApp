@@ -18,10 +18,20 @@ export class UsersService {
   }
 
   async update(id: string, dto: any) {
+    // Whitelist only safe, user-configurable profile fields to prevent Mass Assignment vulnerability (P0)
+    const allowedFields = ['name', 'avatar', 'experience', 'telegram', 'instagram', 'role'];
+    const filteredDto: any = {};
+
+    for (const key of allowedFields) {
+        if (dto[key] !== undefined) {
+            filteredDto[key] = dto[key];
+        }
+    }
+
     try {
         return await this.prisma.user.update({
           where: { id },
-          data: dto,
+          data: filteredDto,
         });
     } catch (error) {
         if (error.code === 'P2025') {

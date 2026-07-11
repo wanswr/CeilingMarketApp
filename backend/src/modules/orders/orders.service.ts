@@ -33,7 +33,16 @@ export class OrdersService {
     // V12 Hardened rules:
     if (from === OrderStatus.CANCELLED) return false; // Terminal
     if (from === OrderStatus.COMPLETED && to !== OrderStatus.REVIEWED) return false;
-    if (to === OrderStatus.CANCELLED) return true; // Allowed from anywhere except terminal
+    if (to === OrderStatus.CANCELLED) {
+        // Block cancellation if work has already started, completed, or is in dispute
+        if (from === OrderStatus.IN_PROGRESS ||
+            from === OrderStatus.COMPLETED ||
+            from === OrderStatus.REVIEWED ||
+            from === OrderStatus.DISPUTE) {
+            return false;
+        }
+        return true;
+    }
 
     // Strict forward progression only
     return priorities[to] > priorities[from];
@@ -165,6 +174,12 @@ export class OrdersService {
   async apply(orderId: string, executorId: string, price?: number) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
+
+    // Validate executor role (must be WORKER to apply)
+    const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
+    if (!executor || executor.role !== 'WORKER') {
+        throw new ForbiddenException('Only workers are allowed to apply to orders');
+    }
 
     // Safety check: cannot apply to already taken or completed orders
     if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
