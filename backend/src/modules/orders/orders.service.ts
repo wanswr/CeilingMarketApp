@@ -39,10 +39,23 @@ export class OrdersService {
     return priorities[to] > priorities[from];
   }
 
-  private broadcast(event: string, payload: any) {
+  private async broadcast(event: string, payload: any, userId?: string) {
+      let activeRole = 'none';
+      if (userId) {
+          try {
+              const user = await this.prisma.user.findUnique({ where: { id: userId } });
+              if (user) {
+                  activeRole = user.role || 'none';
+              }
+          } catch (e) {}
+      }
+
       this.gateway.broadcast(event, {
           event,
+          eventType: event,
           eventId: randomUUID(),
+          userId: userId || 'system',
+          activeRole,
           data: payload
       });
   }
@@ -56,7 +69,7 @@ export class OrdersService {
       },
     });
     this.logger.info('ORDER_CREATED', `Order created successfully`, { userId, orderId: order.id });
-    this.broadcast('order.created', order);
+    await this.broadcast('order.created', order, userId);
     return order;
   }
 
@@ -137,7 +150,7 @@ export class OrdersService {
       data: dto
     });
 
-    this.broadcast('order.status.changed', result);
+    await this.broadcast('order.status.changed', result, userId);
     return result;
   }
 
@@ -145,7 +158,7 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
     await this.prisma.order.delete({ where: { id } });
-    this.broadcast('order.deleted', { id });
+    await this.broadcast('order.deleted', { id }, userId);
     return { id };
   }
 
@@ -177,8 +190,8 @@ export class OrdersService {
     });
 
     this.logger.info('ORDER_APPLIED', `New application for order ${result.order.id}`, { orderId: result.order.id, userId: executorId });
-    this.broadcast('application.new', result.app);
-    this.broadcast('order.status.changed', result.order);
+    await this.broadcast('application.new', result.app, executorId);
+    await this.broadcast('order.status.changed', result.order, executorId);
     return result.app;
   }
 
@@ -237,8 +250,8 @@ export class OrdersService {
      });
 
      this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.id}`, { orderId: result.id, userId });
-     this.broadcast('order.status.changed', result);
-     this.broadcast('application.accepted', { orderId: result.id, executorId: app.executorId });
+     await this.broadcast('order.status.changed', result, userId);
+     await this.broadcast('application.accepted', { orderId: result.id, executorId: app.executorId }, userId);
      return result;
   }
 
@@ -258,7 +271,7 @@ export class OrdersService {
       });
 
       this.logger.info('ORDER_STARTED', `Order started by executor`, { orderId: result.id, userId });
-      this.broadcast('order.status.changed', result);
+      await this.broadcast('order.status.changed', result, userId);
       return result;
   }
 
@@ -278,7 +291,7 @@ export class OrdersService {
       });
 
       this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result.id, userId });
-      this.broadcast('order.status.changed', result);
+      await this.broadcast('order.status.changed', result, userId);
       return result;
   }
 
@@ -355,7 +368,7 @@ export class OrdersService {
     });
 
     if (updatedOrder) {
-      this.broadcast('order.status.changed', updatedOrder);
+      await this.broadcast('order.status.changed', updatedOrder, executorId);
     }
 
     return { success: true };
