@@ -114,7 +114,7 @@ class EntityStore {
     const mergedOrder = existing ? { ...existing, ...normalizedOrder } : normalizedOrder as Order;
 
     if (existing && existing.status !== mergedOrder.status) {
-        logger.info('ORDER_STATUS_TRANSITION', { source: 'store', orderId: order.id, old: existing.status, new: mergedOrder.status, trigger: source });
+        logger.info('ORDER_STATUS_TRANSITION', { source: 'store', orderId: order.id, old: existing.status, new: mergedOrder.status, trigger: source as any });
     }
 
     if (existing) {

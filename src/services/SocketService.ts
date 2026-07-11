@@ -20,7 +20,21 @@ class SocketService {
   constructor() {
     // Register standard core listeners
     this.on('connect', () => {
-      logger.info('WEBSOCKET_CONNECTED', { socketId: this.socket?.id, url: this.currentUrl });
+      const currentUser = entityStore.getCurrentUser();
+      const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
+      const activeRole = currentUser?.role || 'none';
+      const socketId = this.socket?.id || 'none';
+
+      logger.info('WEBSOCKET_CONNECTED', {
+          source: 'websocket',
+          metadata: {
+              socketId,
+              userId,
+              activeRole,
+              url: this.currentUrl
+          }
+      });
+
       this.joinPrivateRoom();
 
       const { mapViewportStore } = require('./MapViewportStore');
@@ -57,15 +71,48 @@ class SocketService {
     });
   }
 
-  connect(url: string) {
+  connect(url: string, source: string = 'unknown') {
     const socketUrl = url.replace('/api/', '');
+    const currentUser = entityStore.getCurrentUser();
+    const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
+    const activeRole = currentUser?.role || 'none';
+    const socketId = this.socket?.id || 'none';
+
+    logger.info('[WebSocket] connect() called', {
+        source: 'websocket',
+        metadata: {
+            userId,
+            activeRole,
+            socketId,
+            connectSource: source,
+            url: socketUrl
+        }
+    });
 
     if (this.socket) {
       if (this.currentUrl === socketUrl) {
           if (this.socket.connected) {
-              logger.info('[WebSocket] already connected', { url: socketUrl });
+              logger.info('[WebSocket] already connected', {
+                  source: 'websocket',
+                  metadata: {
+                      userId,
+                      activeRole,
+                      socketId,
+                      connectSource: source,
+                      url: socketUrl
+                  }
+              });
           } else {
-              logger.info('[WebSocket] socket exists, ensuring connection...', { url: socketUrl });
+              logger.info('[WebSocket] socket exists, ensuring connection...', {
+                  source: 'websocket',
+                  metadata: {
+                      userId,
+                      activeRole,
+                      socketId,
+                      connectSource: source,
+                      url: socketUrl
+                  }
+              });
               this.socket.connect();
           }
           return;
@@ -102,8 +149,19 @@ class SocketService {
 
   private joinPrivateRoom() {
       const currentUser = entityStore.getCurrentUser();
-      const myId = currentUser?.id || currentUser?.uid;
+      const myId = (currentUser as any)?.id || currentUser?.uid;
+      const activeRole = currentUser?.role || 'none';
+      const socketId = this.socket?.id || 'none';
+
       if (myId && this.socket?.connected) {
+          logger.info('[WebSocket] joinPrivateRoom() emitting auth.join', {
+              source: 'websocket',
+              metadata: {
+                  userId: myId,
+                  activeRole,
+                  socketId
+              }
+          });
           this.socket.emit('auth.join', myId);
       }
   }

@@ -60,7 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(profile);
             logger.info('[AuthContext] Profile synced successfully');
             // V11: Ensure socket is active
-            socketService.connect(apiService.getBaseUrl());
+            socketService.connect(apiService.getBaseUrl(), 'auth_sync');
           }
         } catch (syncError: any) {
           logger.warn('[AuthContext] Profile sync failed', { error: syncError.message });
@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUser(cachedUser);
                 logger.info('[AuthContext] Using cached user data');
                 // Even if offline, try to connect socket (it will auto-retry)
-                socketService.connect(apiService.getBaseUrl());
+                socketService.connect(apiService.getBaseUrl(), 'auth_offline_fallback');
               }
           }
         }
@@ -106,7 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(access_token);
       setUser(user);
 
-      socketService.connect(apiService.getBaseUrl());
+      socketService.connect(apiService.getBaseUrl(), 'auth_login');
       mapEngine.entityStore.setUser({ ...user, isMe: true });
       logger.endAction('AUTH_LOGIN', { aid, userId: user.id });
     } catch (error: any) {
