@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ChatsService {
@@ -56,10 +57,18 @@ export class ChatsService {
       }
     });
 
-    this.gateway.server.to(`chat:${chatId}`).emit('message.new', message);
+    this.gateway.server.to(`chat:${chatId}`).emit('message.new', {
+        event: 'message.new',
+        eventId: randomUUID(),
+        data: message
+    });
 
     const recipientId = chat.employerId === senderId ? chat.executorId : chat.employerId;
-    this.gateway.server.to(`user:${recipientId}`).emit('chat.update', { chatId, lastMessage: message });
+    this.gateway.server.to(`user:${recipientId}`).emit('chat.update', {
+        event: 'chat.update',
+        eventId: randomUUID(),
+        data: { chatId, lastMessage: message }
+    });
 
     return message;
   }
@@ -122,7 +131,11 @@ export class ChatsService {
     });
 
     const otherId = chat.employerId === userId ? chat.executorId : chat.employerId;
-    this.gateway.server.to(`user:${otherId}`).emit('message.read', { chatId });
+    this.gateway.server.to(`user:${otherId}`).emit('message.read', {
+        event: 'message.read',
+        eventId: randomUUID(),
+        data: { chatId }
+    });
 
     return { success: true };
   }

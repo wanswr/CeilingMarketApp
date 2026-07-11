@@ -41,8 +41,9 @@ export class OrdersService {
 
   private broadcast(event: string, payload: any) {
       this.gateway.broadcast(event, {
-          ...payload,
-          eventId: randomUUID()
+          event,
+          eventId: randomUUID(),
+          data: payload
       });
   }
 

@@ -268,7 +268,16 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           setShowReviewModal(false);
       } catch (e: any) {
           logger.logNetworkError(aid, e, { orderId });
-          Alert.alert('Ошибка', e.response?.data?.message || 'Не удалось отправить отзыв');
+          const errorMessage = e.response?.data?.message || '';
+          if (errorMessage.includes('already left a review') || errorMessage.includes('already reviewed') || e.response?.status === 409) {
+              Alert.alert('Инфо', 'Вы уже оставили отзыв на этот заказ');
+              setShowReviewModal(false);
+              mapEngine.syncOrder(orderId, true).then(updated => {
+                  if (updated) setOrder(updated);
+              });
+          } else {
+              Alert.alert('Ошибка', errorMessage || 'Не удалось отправить отзыв');
+          }
       } finally {
           setSubmitting(false);
       }
@@ -646,7 +655,11 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                       value={reviewText}
                       onChangeText={setReviewText}
                   />
-                  <TouchableOpacity style={styles.modalApplyBtn} onPress={submitReview} disabled={submitting}>
+                  <TouchableOpacity
+                      style={[styles.modalApplyBtn, submitting && { opacity: 0.6 }]}
+                      onPress={submitReview}
+                      disabled={submitting}
+                  >
                       {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalApplyBtnText}>Отправить отзыв</Text>}
                   </TouchableOpacity>
               </View>

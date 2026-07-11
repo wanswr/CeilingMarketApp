@@ -29,19 +29,14 @@ const ChatListScreen = ({ navigation }: any) => {
   useEffect(() => {
     fetchChats();
 
-    const socket = (socketService as any).socket;
-    if (socket) {
-        socket.on('chat.update', fetchChats);
-        socket.on('message.new', fetchChats);
-        socket.on('message.read', fetchChats);
-    }
+    socketService.on('chat.update', fetchChats);
+    socketService.on('message.new', fetchChats);
+    socketService.on('message.read', fetchChats);
 
     return () => {
-        if (socket) {
-            socket.off('chat.update', fetchChats);
-            socket.off('message.new', fetchChats);
-            socket.off('message.read', fetchChats);
-        }
+        socketService.off('chat.update', fetchChats);
+        socketService.off('message.new', fetchChats);
+        socketService.off('message.read', fetchChats);
     };
   }, []);
 

@@ -46,42 +46,6 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
   };
 
   useEffect(() => {
-    const initChat = async () => {
-      try {
-        let currentChatId = activeChatId;
-        if (!currentChatId && orderId && executorId) {
-          const res = await apiService.getOrCreateChat(orderId, executorId);
-          currentChatId = res.data.id;
-          setActiveChatId(currentChatId);
-          setMessages(res.data.messages || []);
-        } else if (currentChatId) {
-          const res = await apiService.getChatMessages(currentChatId);
-          setMessages(res.data);
-        }
-
-        if (currentChatId) {
-            markAsRead(currentChatId);
-            const socket = socketService.getSocket();
-            if (socket) {
-                socket.emit('chat.join', currentChatId);
-
-                // Task #4: Handle socket reconnect to re-join the room
-                socket.on('connect', () => {
-                    socket.emit('chat.join', currentChatId);
-                });
-            }
-        }
-      } catch (e) {
-        logger.error("UI_ERROR", { error: 'Chat init error:', e });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initChat();
-
-    const socket = socketService.getSocket();
-
     const onNewMessage = (msg: any) => {
         if (msg.chatId === activeChatId) {
             setMessages(prev => {
@@ -100,17 +64,54 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
         }
     };
 
-    if (socket) {
-        socket.on('message.new', onNewMessage);
-        socket.on('message.read', onMessagesRead);
-    }
+    const handleReconnect = () => {
+        const socket = socketService.getSocket();
+        if (socket && activeChatId) {
+            socket.emit('chat.join', activeChatId);
+        }
+    };
+
+    const initChat = async () => {
+      try {
+        let currentChatId = activeChatId;
+        if (!currentChatId && orderId && executorId) {
+          const res = await apiService.getOrCreateChat(orderId, executorId);
+          currentChatId = res.data.id;
+          setActiveChatId(currentChatId);
+          setMessages(res.data.messages || []);
+        } else if (currentChatId) {
+          const res = await apiService.getChatMessages(currentChatId);
+          setMessages(res.data);
+        }
+
+        if (currentChatId) {
+            markAsRead(currentChatId);
+            const socket = socketService.getSocket();
+            if (socket) {
+                socket.emit('chat.join', currentChatId);
+            }
+        }
+      } catch (e) {
+        logger.error("UI_ERROR", { error: 'Chat init error:', e });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initChat();
+
+    socketService.on('message.new', onNewMessage);
+    socketService.on('message.read', onMessagesRead);
+    socketService.on('connect', handleReconnect);
 
     return () => {
-        if (socket) {
-            socket.off('message.new', onNewMessage);
-            socket.off('message.read', onMessagesRead);
-            socket.off('connect'); // Remove the rejoin listener
-            if (activeChatId) socket.emit('chat.leave', activeChatId);
+        socketService.off('message.new', onNewMessage);
+        socketService.off('message.read', onMessagesRead);
+        socketService.off('connect', handleReconnect);
+
+        const socket = socketService.getSocket();
+        if (socket && activeChatId) {
+            socket.emit('chat.leave', activeChatId);
         }
     };
   }, [chatId, activeChatId]);
