@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { apiService } from '../services/ApiService';
 import { mapEngine } from '../services/MapEngine';
@@ -22,27 +23,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
     checkAuth();
+
+    // V11: Handle app wakeup (foreground transition)
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+        if (
+            appState.current.match(/inactive|background/) &&
+            nextAppState === 'active'
+        ) {
+            logger.info('[AuthContext] App moved to foreground, refreshing connection...');
+            // Non-blocking refresh to recover from long background periods
+            checkAuth();
+        }
+        appState.current = nextAppState;
+    });
+
+    return () => {
+        subscription.remove();
+    };
   }, []);
 
   const checkAuth = async () => {
     logger.info('[AuthContext] Initializing auth check...');
     try {
       const storedToken = await SecureStore.getItemAsync('userToken');
-      logger.debug('[AuthContext] Token status', { found: !!storedToken });
 
       if (storedToken) {
         setToken(storedToken);
-        logger.debug('[AuthContext] Attempting profile sync...');
         try {
           // Attempt to fetch fresh profile
           const profile = await mapEngine.syncUser(true);
           if (profile) {
             setUser(profile);
             logger.info('[AuthContext] Profile synced successfully');
-            // V11: Initialize real-time bridge
+            // V11: Ensure socket is active
             socketService.connect(apiService.getBaseUrl());
           }
         } catch (syncError: any) {
@@ -52,14 +69,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               logger.error('[AuthContext] User record not found, clearing session');
               await logout();
           } else {
-              // Try to use cached data from EntityStore
               const cachedUser = mapEngine.getCurrentUser();
               if (cachedUser) {
                 setUser(cachedUser);
                 logger.info('[AuthContext] Using cached user data');
+                // Even if offline, try to connect socket (it will auto-retry)
+                socketService.connect(apiService.getBaseUrl());
               }
           }
         }
+      } else {
+          // Token lost or logged out
+          if (token) {
+              await logout();
+          }
       }
     } catch (e: any) {
       logger.error("[AuthContext] Fatal auth error", { error: e.message });
@@ -83,10 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(access_token);
       setUser(user);
 
-      // V11: Initialize real-time bridge
       socketService.connect(apiService.getBaseUrl());
-
-      // Initialize systems with new user
       mapEngine.entityStore.setUser({ ...user, isMe: true });
       logger.endAction('AUTH_LOGIN', { aid, userId: user.id });
     } catch (error: any) {

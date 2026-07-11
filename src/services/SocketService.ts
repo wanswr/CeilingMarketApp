@@ -6,19 +6,25 @@ import { logger } from './logger/LoggerService'
 
 class SocketService {
   private socket: Socket | null = null;
+  private currentUrl: string | null = null;
 
   connect(url: string) {
+    const socketUrl = url.replace('/api/', '');
+    this.currentUrl = socketUrl;
+
     if (this.socket?.connected) {
+        logger.debug('[WebSocket] Already connected', { source: 'websocket' });
         this.joinPrivateRoom();
         return;
     }
+
     if (this.socket) {
+        logger.info('[WebSocket] Reconnecting existing socket...', { source: 'websocket' });
         this.socket.connect();
         return;
     }
 
-    const socketUrl = url.replace('/api/', '');
-    logger.info('[WebSocket] Connecting...', { source: 'websocket', url: socketUrl });
+    logger.info('[WebSocket] Initializing connection...', { source: 'websocket', url: socketUrl });
 
     this.socket = io(socketUrl, {
         reconnection: true,
