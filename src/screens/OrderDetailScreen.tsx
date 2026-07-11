@@ -134,6 +134,17 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const handleAcceptApplication = async (applicationId: string) => {
     if (submitting) return;
     logger.logClick('AcceptApplication', 'OrderDetail', { orderId, applicationId });
+
+    const appExists = order?.applications?.some(a => a.id === applicationId);
+    if (!appExists) {
+        Alert.alert('Внимание', 'Этот отклик был отозван исполнителем.');
+        setShowApplications(false);
+        mapEngine.syncOrder(orderId, true).then(updated => {
+            if (updated) setOrder(updated);
+        });
+        return;
+    }
+
     Alert.alert(
       'Выбор исполнителя',
       'Вы уверены, что хотите выбрать этого исполнителя? Остальные отклики будут отклонены.',
@@ -142,6 +153,17 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         {
           text: 'Подтвердить',
           onPress: async () => {
+            const currentOrder = mapEngine.getOrder(orderId);
+            const stillExists = currentOrder?.applications?.some(a => a.id === applicationId);
+            if (!stillExists) {
+                Alert.alert('Внимание', 'Этот отклик был отозван исполнителем.');
+                setShowApplications(false);
+                mapEngine.syncOrder(orderId, true).then(updated => {
+                    if (updated) setOrder(updated);
+                });
+                return;
+            }
+
             const aid = logger.startAction('ACCEPT_APPLICATION', { orderId, applicationId });
             setSubmitting(true);
             try {

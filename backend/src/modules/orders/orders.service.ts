@@ -321,11 +321,41 @@ export class OrdersService {
       where: { orderId }
     });
 
-    if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
-      await this.prisma.order.update({
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
+        return tx.order.update({
+          where: { id: orderId },
+          data: { status: OrderStatus.PUBLISHED },
+          include: {
+            employer: { select: { id: true, name: true, rating: true, avatar: true } },
+            executor: { select: { id: true, name: true, avatar: true } },
+            applications: {
+              include: {
+                executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+              }
+            },
+            reviews: true
+          }
+        });
+      }
+
+      return tx.order.findUnique({
         where: { id: orderId },
-        data: { status: OrderStatus.PUBLISHED }
+        include: {
+          employer: { select: { id: true, name: true, rating: true, avatar: true } },
+          executor: { select: { id: true, name: true, avatar: true } },
+          applications: {
+            include: {
+              executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+            }
+          },
+          reviews: true
+        }
       });
+    });
+
+    if (updatedOrder) {
+      this.broadcast('order.status.changed', updatedOrder);
     }
 
     return { success: true };
