@@ -1,42 +1,51 @@
 import { io, Socket } from 'socket.io-client'
 import { entityStore } from './EntityStore'
 import { requestRouter } from './RequestRouter'
-import { getDistance } from '../utils/geo'
 import { logger } from './logger/LoggerService'
 
+/**
+ * SocketService V11: Optimized for mobile reconnection and background wakeup.
+ */
 class SocketService {
   private socket: Socket | null = null;
   private currentUrl: string | null = null;
 
   connect(url: string) {
     const socketUrl = url.replace('/api/', '');
+
+    // V11: Handle dynamic URL changes during runtime
+    if (this.currentUrl && this.currentUrl !== socketUrl && this.socket) {
+        logger.info('[WebSocket] URL changed, recreating socket...', { from: this.currentUrl, to: socketUrl });
+        this.socket.disconnect();
+        this.socket = null;
+    }
+
     this.currentUrl = socketUrl;
 
     if (this.socket?.connected) {
-        logger.debug('[WebSocket] Already connected', { source: 'websocket' });
         this.joinPrivateRoom();
         return;
     }
 
     if (this.socket) {
-        logger.info('[WebSocket] Reconnecting existing socket...', { source: 'websocket' });
+        logger.info('[WebSocket] Reconnecting to existing socket...', { url: socketUrl });
         this.socket.connect();
         return;
     }
 
-    logger.info('[WebSocket] Initializing connection...', { source: 'websocket', url: socketUrl });
+    logger.info('[WebSocket] Initializing new connection...', { url: socketUrl });
 
     this.socket = io(socketUrl, {
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
+        reconnectionDelayMax: 10000, // V11: Increased max delay to save battery
         timeout: 20000,
         transports: ['websocket'],
     });
 
     this.socket.on('connect', () => {
-      logger.info('WEBSOCKET_CONNECTED', { source: 'websocket', socketId: this.socket?.id });
+      logger.info('WEBSOCKET_CONNECTED', { socketId: this.socket?.id, url: socketUrl });
       this.joinPrivateRoom();
 
       const { mapViewportStore } = require('./MapViewportStore');
@@ -49,7 +58,7 @@ class SocketService {
 
     const handleEvent = (name: string, payload: any, action: (data: any) => void) => {
         if (payload?.eventId && entityStore.isEventSeen(payload.eventId)) {
-            logger.debug('WS_EVENT_DEDUPLICATED', { source: 'websocket', eventId: payload.eventId, name });
+            logger.debug('WS_EVENT_DEDUPLICATED', { eventId: payload.eventId, name });
             return;
         }
         if (payload?.eventId) {
@@ -58,10 +67,11 @@ class SocketService {
         action(payload);
     };
 
+    // Standard Events
     this.socket.on('order.created', (payload: any) => {
       handleEvent('order.created', payload, (data) => {
           const order = data.order || data;
-          logger.info('WS_ORDER_CREATED', { source: 'websocket', orderId: order.id, status: order.status });
+          logger.info('WS_ORDER_CREATED', { orderId: order.id });
           requestRouter.metrics.websocketUpdates++;
           entityStore.setOrder(order, 'websocket');
           require('./MapEngine').mapEngine.triggerNotify();
@@ -72,7 +82,7 @@ class SocketService {
     this.socket.on('order.status.changed', (payload: any) => {
       handleEvent('order.status.changed', payload, (data) => {
           const order = data.order || data;
-          logger.info('WS_ORDER_STATUS_CHANGED', { source: 'websocket', orderId: order.id, status: order.status });
+          logger.info('WS_ORDER_STATUS_CHANGED', { orderId: order.id, status: order.status });
           requestRouter.metrics.websocketUpdates++;
           entityStore.setOrder(order, 'websocket');
           require('./MapEngine').mapEngine.syncOrder(order.id, true);
@@ -83,7 +93,7 @@ class SocketService {
 
     this.socket.on('application.new', (payload: any) => {
       handleEvent('application.new', payload, (data) => {
-          logger.info('WS_APPLICATION_NEW', { source: 'websocket', orderId: data.orderId });
+          logger.info('WS_APPLICATION_NEW', { orderId: data.orderId });
           requestRouter.metrics.websocketUpdates++;
           require('./MapEngine').mapEngine.syncOrder(data.orderId, true).then(() => {
               require('./MapEngine').mapEngine.triggerNotify();
@@ -91,35 +101,17 @@ class SocketService {
       });
     });
 
-    this.socket.on('application.accepted', (payload: any) => {
-       handleEvent('application.accepted', payload, (data) => {
-           logger.info('WS_APPLICATION_ACCEPTED', { source: 'websocket', orderId: data.orderId });
-           require('./MapEngine').mapEngine.syncOrder(data.orderId, true).then(() => {
-               require('./MapEngine').mapEngine.triggerNotify();
-           });
-       });
-    });
-
     this.socket.on('message.new', (msg: any) => {
-        logger.info('WS_MESSAGE_NEW', { source: 'websocket', chatId: msg.chatId, messageId: msg.id });
-    });
-
-    this.socket.on('order.deleted', (payload: any) => {
-      handleEvent('order.deleted', payload, (data) => {
-          const orderId = data.id || data.orderId || data;
-          logger.info('WS_ORDER_DELETED', { source: 'websocket', orderId });
-          requestRouter.metrics.websocketUpdates++;
-          entityStore.removeOrder(orderId);
-          require('./MapEngine').mapEngine.triggerNotify();
-      });
+        logger.info('WS_MESSAGE_NEW', { chatId: msg.chatId });
     });
 
     this.socket.on('disconnect', (reason) => {
-      logger.warn('WEBSOCKET_DISCONNECTED', { source: 'websocket', reason });
+      logger.warn('WEBSOCKET_DISCONNECTED', { reason, url: socketUrl });
     });
 
     this.socket.on('connect_error', (err) => {
-      logger.error('WEBSOCKET_CONNECT_ERROR', { source: 'websocket', error: err.message });
+      // V11: Log full error to identify IP issues
+      logger.error('WEBSOCKET_CONNECT_ERROR', { error: err.message, url: socketUrl });
     });
   }
 
@@ -127,14 +119,13 @@ class SocketService {
       const currentUser = entityStore.getCurrentUser();
       const myId = currentUser?.id || currentUser?.uid;
       if (myId && this.socket?.connected) {
-          logger.debug('[WebSocket] Joining private room', { source: 'websocket', userId: myId });
           this.socket.emit('auth.join', myId);
       }
   }
 
   disconnect() {
     if (this.socket) {
-      logger.info('[WebSocket] Disconnecting manually', { source: 'websocket' });
+      logger.info('[WebSocket] Disconnecting manually');
       this.socket.disconnect();
       this.socket = null;
     }

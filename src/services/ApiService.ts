@@ -2,7 +2,10 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { logger } from './logger/LoggerService';
 
-const DEFAULT_API_URL = 'http://192.168.1.124:3000/api/'; // Default for physical device.
+/**
+ * ApiService V11: Hardened connection logic with explicit host logging.
+ */
+const DEFAULT_API_URL = 'http://192.168.1.124:3000/api/';
 
 class ApiService {
   public api: AxiosInstance;
@@ -10,16 +13,23 @@ class ApiService {
 
   constructor() {
     this.baseURL = DEFAULT_API_URL;
+
+    // V11: Log initialization to help diagnose IP mismatches after sleep
+    logger.info('[ApiService] Initializing with Base URL:', { url: this.baseURL });
+
     this.api = axios.create({
       baseURL: this.baseURL,
       timeout: 15000,
       headers: {
-        'Content-Type': 'application/json' } });
+        'Content-Type': 'application/json'
+      }
+    });
 
     this.setupInterceptors();
   }
 
   setBaseUrl(url: string) {
+    logger.info('[ApiService] Base URL updated:', { from: this.baseURL, to: url });
     this.baseURL = url;
     this.api.defaults.baseURL = url;
   }
@@ -29,8 +39,9 @@ class ApiService {
       const token = await SecureStore.getItemAsync('userToken');
       const requestId = Math.random().toString(36).substring(7);
 
-      // Inject logger
       (config as any).requestId = requestId;
+
+      // V11: Added detailed logging for connection attempts
       logger.logRequest(config.method?.toUpperCase() || 'GET', config.url || '', requestId, config.data);
 
       if (token && config.headers) {
@@ -50,6 +61,16 @@ class ApiService {
         if (requestId) {
             logger.logNetworkError(requestId, error);
         }
+
+        // V11: Enhanced error detection for "overnight disconnect"
+        if (error.code === 'ERR_NETWORK' || !error.response) {
+            logger.error('NETWORK_DISCONNECT', {
+                url: error.config?.url,
+                host: this.baseURL,
+                message: error.message
+            });
+        }
+
         return Promise.reject(error);
       }
     );
