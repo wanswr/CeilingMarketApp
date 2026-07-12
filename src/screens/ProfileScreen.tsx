@@ -51,6 +51,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
     setSwitchingRole(true);
     try {
       const updatedUser = await mapEngine.updateProfile({ role: newRole });
+      mapEngine.entityStore.clear(); // Clear local cache on role change!
       setUser(updatedUser);
       updateUser(updatedUser);
       Alert.alert('Роль изменена', `Теперь вы используете приложение как ${newRole === 'EMPLOYER' ? 'Заказчик' : 'Исполнитель'}`);

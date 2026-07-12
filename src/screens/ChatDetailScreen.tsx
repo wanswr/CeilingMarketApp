@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-
 import {
   TouchableOpacity,
   View,
@@ -11,7 +10,7 @@ import {
   Platform,
   ImageBackground,
   ActivityIndicator
- } from 'react-native'
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS } from '../constants/theme'
@@ -24,17 +23,27 @@ interface Message {
   text: string;
   senderId: string;
   senderName?: string;
-  timestamp: string;
-  status: 'sent' | 'delivered' | 'read';
+  createdAt: string;
+  status?: 'sent' | 'delivered' | 'read';
 }
 
-const ChatDetailScreen = ({ route }: any) => {
+const formatTime = (dateInput: any): string => {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const ChatDetailScreen = ({ route, navigation }: any) => {
   const { name, chatId, orderId, executorId } = route.params || {};
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
   const [activeChatId, setActiveChatId] = useState(chatId);
   const flatListRef = useRef<FlatList>(null);
+  
   const currentUser = mapEngine.getCurrentUser();
   const myId = currentUser?.id || currentUser?.uid;
 
@@ -51,7 +60,7 @@ const ChatDetailScreen = ({ route }: any) => {
         } else if (currentChatId) {
           // @ts-ignore
           const res = await apiService.getChatMessages(currentChatId);
-          setMessages(res.data);
+          setMessages(res.data || []);
         }
       } catch (e) {
         console.error('Chat init error:', e);
@@ -61,26 +70,33 @@ const ChatDetailScreen = ({ route }: any) => {
     };
 
     initChat();
+  }, [chatId, orderId, executorId]);
+
+  useEffect(() => {
+    if (!activeChatId) return;
 
     const onNewMessage = (msg: any) => {
-        if (msg.chatId === activeChatId) {
-            setMessages(prev => [...prev, msg]);
-        }
+      if (msg.chatId === activeChatId) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      }
     };
 
     const socket = (socketService as any).socket;
     if (socket) {
-        socket.on('message.new', onNewMessage);
-        if (activeChatId) socket.emit('chat.join', activeChatId);
+      socket.on('message.new', onNewMessage);
+      socket.emit('chat.join', activeChatId);
     }
 
     return () => {
-        if (socket) {
-            socket.off('message.new', onNewMessage);
-            if (activeChatId) socket.emit('chat.leave', activeChatId);
-        }
+      if (socket) {
+        socket.off('message.new', onNewMessage);
+        socket.emit('chat.leave', activeChatId);
+      }
     };
-  }, [chatId, activeChatId]);
+  }, [activeChatId]);
 
   const sendMessage = async () => {
     if (inputText.trim() === '' || !activeChatId) return;
@@ -89,23 +105,35 @@ const ChatDetailScreen = ({ route }: any) => {
     setInputText('');
 
     try {
-        // @ts-ignore
-        await apiService.sendMessage(activeChatId, textToSend);
+      // @ts-ignore
+      await apiService.sendMessage(activeChatId, textToSend);
     } catch (e) {
-        console.error('Send error:', e);
+      console.error('Send error:', e);
     }
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isMe = item.senderId === 'me';
+    const isMe = item.senderId === myId;
+    const senderName = (item as any).sender?.name || item.senderName || 'Собеседник';
+    const messageTime = formatTime(item.createdAt);
+
     return (
-      <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.otherMessageWrapper]}>
-        {!isMe && <Text style={styles.senderName}>{item.senderName}</Text>}
-        <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.otherBubble]}>
-          <Text style={styles.messageText}>{item.text}</Text>
-          <View style={styles.messageFooter}>
-            <Text style={styles.timestamp}>{item.timestamp}</Text>
-            {isMe && <Ionicons name={item.status === 'read' ? "checkmark-done" : "checkmark"} size={16} color="#A7E5FF" style={{marginLeft: 4}} />}
+      <View style={[styles.messageContainer, isMe ? styles.myMessageContainer : styles.otherMessageContainer]}>
+        <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.otherMessageWrapper]}>
+          {!isMe && <Text style={styles.senderName}>{senderName}</Text>}
+          <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.otherBubble]}>
+            <Text style={styles.messageText}>{item.text}</Text>
+            <View style={styles.messageFooter}>
+              <Text style={styles.timestamp}>{messageTime}</Text>
+              {isMe && (
+                <Ionicons
+                  name={item.status === 'read' ? "checkmark-done" : "checkmark"}
+                  size={16}
+                  color={item.status === 'read' ? "#34B7F1" : COLORS.placeholder}
+                  style={{ marginLeft: 4 }}
+                />
+              )}
+            </View>
           </View>
         </View>
       </View>
@@ -113,24 +141,59 @@ const ChatDetailScreen = ({ route }: any) => {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#e5ddd5' }}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-        <ImageBackground source={{ uri: 'https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png' }} style={styles.background}>
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.listPadding}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-          />
-          <View style={styles.inputContainer}>
-            <TouchableOpacity style={styles.iconBtn}><Ionicons name="attach" size={26} color={COLORS.gray} /></TouchableOpacity>
-            <View style={styles.inputWrapper}>
-              <TextInput style={styles.input} placeholder="Сообщение" value={inputText} onChangeText={setInputText} multiline />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#e5ddd5' }} edges={['bottom']}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={24} color={COLORS.dark} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>{name || 'Чат'}</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <ImageBackground
+          source={{ uri: 'https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png' }}
+          style={styles.background}
+        >
+          {loading ? (
+            <View style={[styles.container, styles.center]}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
-            <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
-              <Ionicons name={inputText.length > 0 ? "send" : "mic"} size={22} color="#fff" />
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessage}
+              keyExtractor={item => item.id}
+              contentContainerStyle={styles.listPadding}
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+              onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            />
+          )}
+          <View style={styles.inputContainer}>
+            <TouchableOpacity style={styles.iconBtn}>
+              <Ionicons name="attach" size={26} color={COLORS.gray} />
+            </TouchableOpacity>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Сообщение"
+                value={inputText}
+                onChangeText={setInputText}
+                multiline
+                maxLength={1000}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.sendBtn, { backgroundColor: inputText.trim().length > 0 ? COLORS.primary : COLORS.gray }]}
+              onPress={sendMessage}
+              disabled={inputText.trim().length === 0}
+            >
+              <Ionicons name="send" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         </ImageBackground>
@@ -141,23 +204,50 @@ const ChatDetailScreen = ({ route }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  center: { justifyContent: 'center', alignItems: 'center' },
   background: { flex: 1 },
-  listPadding: { padding: 10 },
-  messageWrapper: { marginBottom: 4, maxWidth: '80%' },
-  myMessageWrapper: { alignSelf: 'flex-end' },
-  otherMessageWrapper: { alignSelf: 'flex-start' },
-  senderName: { fontSize: 12, fontWeight: 'bold', color: COLORS.secondary, marginLeft: 10, marginBottom: 2 },
-  messageBubble: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  header: {
+    height: 56,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  backBtn: { padding: 4 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.dark, flex: 1, textAlign: 'center', marginHorizontal: 10 },
+  listPadding: { padding: 10, paddingBottom: 20 },
+  messageContainer: { width: '100%', marginBottom: 8 },
+  myMessageContainer: { alignItems: 'flex-end' },
+  otherMessageContainer: { alignItems: 'flex-start' },
+  messageWrapper: { maxWidth: '80%' },
+  myMessageWrapper: { alignItems: 'flex-end' },
+  otherMessageWrapper: { alignItems: 'flex-start' },
+  senderName: { fontSize: 11, fontWeight: '700', color: COLORS.secondary, marginLeft: 8, marginBottom: 2 },
+  messageBubble: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
   myBubble: { backgroundColor: '#DCF8C6', borderTopRightRadius: 2 },
   otherBubble: { backgroundColor: '#fff', borderTopLeftRadius: 2 },
-  messageText: { fontSize: 16 },
-  messageFooter: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 2 },
-  timestamp: { fontSize: 11, color: '#66bb6a' },
-  inputContainer: { flexDirection: 'row', alignItems: 'flex-end' },
-  inputWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 25, marginHorizontal: 5, paddingHorizontal: 12, minHeight: 40 },
-  input: { flex: 1, fontSize: 16, paddingTop: 8, paddingBottom: 8 },
-  sendBtn: { backgroundColor: '#0088cc', width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center' },
-  iconBtn: { padding: 8 }
+  messageText: { fontSize: 16, color: COLORS.dark },
+  messageFooter: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 4 },
+  timestamp: { fontSize: 10, color: COLORS.gray },
+  inputContainer: { flexDirection: 'row', alignItems: 'flex-end', padding: 8, backgroundColor: '#f6f6f6' },
+  inputWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 20, marginHorizontal: 8, paddingHorizontal: 12, minHeight: 40, maxHeight: 100, justifyContent: 'center' },
+  input: { fontSize: 16, paddingTop: 8, paddingBottom: 8, color: COLORS.dark },
+  sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  iconBtn: { padding: 6, justifyContent: 'center', alignItems: 'center' }
 });
 
 export default ChatDetailScreen;
