@@ -3,7 +3,6 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { LoggingInterceptor } from './modules/logger/logging.interceptor';
 import { LoggerService } from './modules/logger/logger.service';
-import { PrismaExceptionFilter } from './prisma/prisma-exception.filter';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -17,10 +16,8 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.enableCors();
-  
   const logger = await app.resolve(LoggerService);
   app.useGlobalInterceptors(new LoggingInterceptor(logger));
-  app.useGlobalFilters(new PrismaExceptionFilter(logger));
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');

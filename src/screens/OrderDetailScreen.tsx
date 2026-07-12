@@ -122,11 +122,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         if (res?.order) setOrder(res.order);
 
         logger.endAction('SUBMIT_APPLICATION', { aid });
-        if (res?.warning) {
-            Alert.alert('Предупреждение', res.warning);
-        } else {
-            Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
-        }
+        Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
     } catch (error: any) {
         logger.logNetworkError(aid, error, { orderId });
         Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
@@ -176,13 +172,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
               logger.endAction('ACCEPT_APPLICATION', { aid });
               setShowApplications(false);
-
-              const warningStr = res.data?.warning;
-              const msg = warningStr 
-                  ? `Исполнитель выбран. Чат создан.\n\n⚠️ Обратите внимание: ${warningStr}` 
-                  : 'Исполнитель выбран. Чат создан.';
-
-              Alert.alert('Успех', msg, [
+              Alert.alert('Успех', 'Исполнитель выбран. Чат создан.', [
                   { text: 'В чат', onPress: () => navigation.navigate('ChatDetail', { chatId: res.data.chat.id, name: res.data.order.executor.name }) },
                   { text: 'ОК' }
               ]);

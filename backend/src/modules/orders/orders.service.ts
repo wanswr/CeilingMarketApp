@@ -48,15 +48,6 @@ export class OrdersService {
     return priorities[to] > priorities[from];
   }
 
-  private getDayRange(date: Date) {
-    const year = date.getUTCFullYear();
-    const month = date.getUTCMonth();
-    const day = date.getUTCDate();
-    const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
-    const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999));
-    return { startOfDay, endOfDay };
-  }
-
   private async broadcast(event: string, payload: any, userId?: string) {
       let activeRole = 'none';
       if (userId) {
@@ -200,23 +191,6 @@ export class OrdersService {
     });
     if (existing) throw new ConflictException('Already applied');
 
-    // Master busy check (Double-booking warning)
-    let warning: string | undefined = undefined;
-    const { startOfDay, endOfDay } = this.getDayRange(order.date);
-    const busyOrder = await this.prisma.order.findFirst({
-        where: {
-            executorId,
-            status: { in: [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
-            date: {
-                gte: startOfDay,
-                lte: endOfDay,
-            }
-        }
-    });
-    if (busyOrder) {
-        warning = 'Вы уже взяли заказ на эту дату. Уверены, что хотите откликнуться?';
-    }
-
     const result = await this.prisma.$transaction(async (tx) => {
       const app = await tx.application.create({
         data: { orderId, executorId, price, status: 'PENDING' }
@@ -233,7 +207,7 @@ export class OrdersService {
     this.logger.info('ORDER_APPLIED', `New application for order ${result.order.id}`, { orderId: result.order.id, userId: executorId });
     await this.broadcast('application.new', result.app, executorId);
     await this.broadcast('order.status.changed', result.order, executorId);
-    return { app: result.app, order: result.order, warning };
+    return result.app;
   }
 
   async markApplicationViewed(applicationId: string, userId: string) {
@@ -260,23 +234,6 @@ export class OrdersService {
          throw new ConflictException(`Cannot accept application. Order status is already ${app.order.status}`);
      }
 
-     // Double-booking check for acceptor (Employer warning)
-     let warning: string | undefined = undefined;
-     const { startOfDay, endOfDay } = this.getDayRange(app.order.date);
-     const busyOrder = await this.prisma.order.findFirst({
-         where: {
-             executorId: app.executorId,
-             status: { in: [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
-             date: {
-                 gte: startOfDay,
-                 lte: endOfDay,
-             }
-         }
-     });
-     if (busyOrder) {
-         warning = 'Исполнитель уже занят на выбранную дату другого заказа.';
-     }
-
      const result = await this.prisma.$transaction(async (tx) => {
          const updatedOrder = await tx.order.update({
              where: { id: app.orderId },
@@ -284,11 +241,6 @@ export class OrdersService {
                  status: OrderStatus.CLAIMED,
                  executorId: app.executorId,
                  claimedAt: new Date()
-             },
-             include: {
-                 employer: { select: { id: true, name: true, rating: true, avatar: true } },
-                 executor: { select: { id: true, name: true, rating: true, avatar: true } },
-                 applications: { select: { id: true, executorId: true, status: true, price: true } }
              }
          });
 
@@ -307,15 +259,15 @@ export class OrdersService {
          });
 
          // Auto-create chat
-         const chat = await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId);
+         await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId);
 
-         return { order: updatedOrder, chat };
+         return updatedOrder;
      });
 
-     this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.order.id}`, { orderId: result.order.id, userId });
-     await this.broadcast('order.status.changed', result.order, userId);
-     await this.broadcast('application.accepted', { orderId: result.order.id, executorId: app.executorId }, userId);
-     return { order: result.order, chat: result.chat, warning };
+     this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.id}`, { orderId: result.id, userId });
+     await this.broadcast('order.status.changed', result, userId);
+     await this.broadcast('application.accepted', { orderId: result.id, executorId: app.executorId }, userId);
+     return result;
   }
 
   async startWork(id: string, userId: string) {
