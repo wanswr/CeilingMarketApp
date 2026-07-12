@@ -559,15 +559,13 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                        <Text style={styles.appChatText}>Чат</Text>
                      </TouchableOpacity>
 
-                     {(order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES') && (
-                       <TouchableOpacity
-                        style={styles.selectBtn}
-                        onPress={() => handleAcceptApplication(app.id)}
-                        disabled={submitting}
-                       >
-                         <Text style={styles.selectBtnText}>Выбрать</Text>
-                       </TouchableOpacity>
-                     )}
+                     <TouchableOpacity
+                      style={styles.selectBtn}
+                      onPress={() => handleAcceptApplication(app.id)}
+                      disabled={submitting}
+                     >
+                       <Text style={styles.selectBtnText}>Выбрать</Text>
+                     </TouchableOpacity>
                   </View>
                 </View>
               ))}
