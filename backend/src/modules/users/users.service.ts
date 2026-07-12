@@ -19,7 +19,7 @@ export class UsersService {
 
   async update(id: string, dto: any) {
     // Whitelist only safe, user-configurable profile fields to prevent Mass Assignment vulnerability (P0)
-    const allowedFields = ['name', 'avatar', 'experience', 'telegram', 'instagram', 'role'];
+    const allowedFields = ['name', 'avatar', 'experience', 'telegram', 'instagram', 'portfolio', 'description'];
     const filteredDto: any = {};
 
     for (const key of allowedFields) {
