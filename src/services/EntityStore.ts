@@ -23,6 +23,7 @@ class EntityStore {
 
   private spatialGrid: Map<string, Set<string>> = new Map();
   public currentUserId: string | null = null;
+  public isBatching = false;
 
   public loadedBounds: { north: number; south: number; east: number; west: number } | null = null;
   public isInitialLoaded = false;
@@ -102,7 +103,24 @@ class EntityStore {
 
     const mergedOrder = existing ? { ...existing, ...normalizedOrder } : normalizedOrder;
 
-    if (existing === mergedOrder) return;
+    if (existing) {
+        const hasChanges =
+            existing.status !== mergedOrder.status ||
+            existing.price !== mergedOrder.price ||
+            existing.title !== mergedOrder.title ||
+            existing.details !== mergedOrder.details ||
+            existing.address !== mergedOrder.address ||
+            existing.workType !== mergedOrder.workType ||
+            existing.latitude !== mergedOrder.latitude ||
+            existing.longitude !== mergedOrder.longitude ||
+            existing.executorId !== mergedOrder.executorId ||
+            existing.employerId !== mergedOrder.employerId ||
+            JSON.stringify(existing.applications) !== JSON.stringify(mergedOrder.applications);
+
+        if (!hasChanges) {
+            return;
+        }
+    }
 
     if (__DEV__) console.log('STORE_UPSERT', { id: order.id, status: mergedOrder.status, source });
 
@@ -149,18 +167,23 @@ class EntityStore {
   }
 
   setOrders = (orders: Order[]) => {
-      const incomingIds = new Set(orders.map(o => o.id));
-      const myOrderIds = Array.from(this.myOrders);
+      this.isBatching = true;
+      try {
+          const incomingIds = new Set(orders.map(o => o.id));
+          const myOrderIds = Array.from(this.myOrders);
 
-      myOrderIds.forEach(id => {
-          if (!incomingIds.has(id)) {
-              this.removeOrder(id, 'sync_reconciliation');
-          }
-      });
+          myOrderIds.forEach(id => {
+              if (!incomingIds.has(id)) {
+                  this.removeOrder(id, 'sync_reconciliation');
+              }
+          });
 
-      orders.forEach(o => this.setOrder(o, 'sync_reconciliation'));
-      this.isMyOrdersLoaded = true;
-      this.persist();
+          orders.forEach(o => this.setOrder(o, 'sync_reconciliation'));
+          this.isMyOrdersLoaded = true;
+      } finally {
+          this.isBatching = false;
+          this.persist();
+      }
   }
 
   setUser = (user: UserProfile) => {
@@ -261,6 +284,7 @@ class EntityStore {
   }
 
   persist = () => {
+    if (this.isBatching) return;
     try {
       const data = {
         orders: Array.from(this.ordersById.values()),

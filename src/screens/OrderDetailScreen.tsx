@@ -52,6 +52,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }, [orderId]);
 
   const handleCancelApplication = async () => {
+    if (submitting) return;
     Alert.alert(
       'Отмена отклика',
       'Вы уверены, что хотите отозвать свой отклик?',
@@ -60,6 +61,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         {
           text: 'Да, отозвать',
           onPress: async () => {
+            if (submitting) return;
             setSubmitting(true);
             try {
               await mapEngine.cancelApplication(orderId);
@@ -82,6 +84,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const submitOffer = async () => {
+    if (submitting) return;
     const numericPrice = offerPrice ? parseFloat(offerPrice.replace(/\s/g, '')) : undefined;
     if (offerPrice !== '' && isNaN(numericPrice as number)) {
         Alert.alert('Ошибка', 'Введите корректное число');
@@ -101,6 +104,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleAcceptApplication = async (applicationId: string) => {
+    if (submitting) return;
     Alert.alert(
       'Выбор исполнителя',
       'Вы уверены, что хотите выбрать этого исполнителя? Остальные отклики будут отклонены.',
@@ -109,6 +113,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         {
           text: 'Подтвердить',
           onPress: async () => {
+            if (submitting) return;
             setSubmitting(true);
             try {
               await mapEngine.acceptApplication(applicationId);
@@ -126,6 +131,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleStartWork = async () => {
+    if (submitting) return;
     setSubmitting(true);
     try {
       await mapEngine.startOrder(orderId);
@@ -138,6 +144,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleCompleteWork = async () => {
+    if (submitting) return;
     setSubmitting(true);
     try {
       await mapEngine.completeOrder(orderId);
@@ -519,6 +526,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                      <TouchableOpacity
                       style={styles.selectBtn}
                       onPress={() => handleAcceptApplication(app.id)}
+                      disabled={submitting}
                      >
                        <Text style={styles.selectBtnText}>Выбрать</Text>
                      </TouchableOpacity>
