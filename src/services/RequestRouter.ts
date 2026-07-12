@@ -11,6 +11,7 @@ interface CacheEntry {
 class RequestRouter {
   private cache: Map<string, CacheEntry> = new Map();
   private inFlight: Map<string, Promise<any>> = new Map();
+  private lastResolved: Map<string, number> = new Map();
 
   // Task #6: Metrics
   public metrics = {
@@ -28,12 +29,6 @@ class RequestRouter {
 
   /**
    * Primary request method with deduplication and caching.
-   * @param key Unique key for the request (e.g., 'user:profile', 'order:uuid')
-   * @param fetchFn The function that performs the actual API call
-   * @param ttl Cache Time-To-Live in milliseconds (default: 30s)
-   */
-  /**
-   * Primary request method with deduplication and caching.
    * Handles In-Flight locking (Deduplication) first to prevent race conditions.
    */
   request = async <T>(key: string, fetchFn: () => Promise<T>, ttl: number = 30000): Promise<T> => {
@@ -46,9 +41,10 @@ class RequestRouter {
       return this.inFlight.get(key);
     }
 
-    // 2. Check Cache (Cache-First)
+    // 2. Check Cache (Cache-First) with a 500ms rapid-consecutive fetch guard
     const cached = this.cache.get(key);
-    if (cached && (now - cached.timestamp) < ttl) {
+    const lastResolvedTime = this.lastResolved.get(key) || 0;
+    if (cached && ((now - cached.timestamp) < ttl || (now - lastResolvedTime) < 500)) {
       if (__DEV__) {
         console.log(`[RequestRouter] CACHE HIT: ${key}`);
       }
@@ -65,7 +61,9 @@ class RequestRouter {
     const promise = (async () => {
       try {
         const data = await fetchFn();
-        this.cache.set(key, { data, timestamp: Date.now() });
+        const resolveTime = Date.now();
+        this.cache.set(key, { data, timestamp: resolveTime });
+        this.lastResolved.set(key, resolveTime);
         return data;
       } catch (error: any) {
         if (error.name === 'AbortError' || error.message === 'canceled') {
@@ -91,6 +89,7 @@ class RequestRouter {
    */
   invalidate = (key: string) => {
     this.cache.delete(key);
+    this.lastResolved.delete(key);
   }
 
   /**
@@ -99,6 +98,7 @@ class RequestRouter {
   clear = () => {
     this.cache.clear();
     this.inFlight.clear();
+    this.lastResolved.clear();
     this.metrics.apiCalls = 0;
     this.metrics.cacheHits = 0;
     this.metrics.bboxHits = 0;

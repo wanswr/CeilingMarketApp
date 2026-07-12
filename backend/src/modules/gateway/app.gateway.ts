@@ -28,14 +28,22 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('chat.join')
   handleJoinChat(@MessageBody() chatId: string, @ConnectedSocket() client: Socket) {
-    client.join(`chat_${chatId}`);
-    console.log(`[WebSocket] Client ${client.id} joined chat_${chatId}`);
+    const roomName = `chat_${chatId}`;
+    if (client.rooms.has(roomName)) {
+      return;
+    }
+    client.join(roomName);
+    console.log(`[WebSocket] Client ${client.id} joined ${roomName}`);
   }
 
   @SubscribeMessage('chat.leave')
   handleLeaveChat(@MessageBody() chatId: string, @ConnectedSocket() client: Socket) {
-    client.leave(`chat_${chatId}`);
-    console.log(`[WebSocket] Client ${client.id} left chat_${chatId}`);
+    const roomName = `chat_${chatId}`;
+    if (!client.rooms.has(roomName)) {
+      return;
+    }
+    client.leave(roomName);
+    console.log(`[WebSocket] Client ${client.id} left ${roomName}`);
   }
 
   broadcast(event: string, payload: any) {

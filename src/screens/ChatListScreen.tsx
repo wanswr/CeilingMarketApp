@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TouchableOpacity,
   View,
@@ -35,6 +35,9 @@ const ChatListScreen = ({ navigation }: any) => {
   const currentUser = mapEngine.getCurrentUser();
   const myId = currentUser?.id || currentUser?.uid;
 
+  // Ref to track currently joined rooms client-side
+  const joinedRoomsRef = useRef<Set<string>>(new Set());
+
   const fetchChats = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
@@ -42,11 +45,14 @@ const ChatListScreen = ({ navigation }: any) => {
       const chatsData = res.data || [];
       setChats(chatsData);
 
-      // Join socket rooms for all loaded chats
+      // Join socket rooms for any new chats
       const socket = (socketService as any).socket;
       if (socket) {
         chatsData.forEach((chat: any) => {
-          socket.emit('chat.join', chat.id);
+          if (!joinedRoomsRef.current.has(chat.id)) {
+            socket.emit('chat.join', chat.id);
+            joinedRoomsRef.current.add(chat.id);
+          }
         });
       }
     } catch (e) {
@@ -63,6 +69,7 @@ const ChatListScreen = ({ navigation }: any) => {
     }
   }, [isFocused]);
 
+  // Mount-only listener registration to avoid leaving and re-joining on state changes
   useEffect(() => {
     const socket = (socketService as any).socket;
     
@@ -97,12 +104,14 @@ const ChatListScreen = ({ navigation }: any) => {
     return () => {
       if (socket) {
         socket.off('message.new', onNewMessage);
-        chats.forEach((chat: any) => {
-          socket.emit('chat.leave', chat.id);
+        // Clean up: leave only the rooms we actually joined
+        joinedRoomsRef.current.forEach((chatId) => {
+          socket.emit('chat.leave', chatId);
         });
+        joinedRoomsRef.current.clear();
       }
     };
-  }, [chats]);
+  }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

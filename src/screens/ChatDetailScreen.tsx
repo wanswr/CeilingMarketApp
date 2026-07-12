@@ -47,6 +47,9 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
   const currentUser = mapEngine.getCurrentUser();
   const myId = currentUser?.id || currentUser?.uid;
 
+  // Ref to track which room we are currently joined to
+  const joinedRoomRef = useRef<string | null>(null);
+
   useEffect(() => {
     const initChat = async () => {
       try {
@@ -87,13 +90,24 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     const socket = (socketService as any).socket;
     if (socket) {
       socket.on('message.new', onNewMessage);
-      socket.emit('chat.join', activeChatId);
+      
+      // De-duplicate join: only emit join if room changed
+      if (joinedRoomRef.current !== activeChatId) {
+        if (joinedRoomRef.current) {
+          socket.emit('chat.leave', joinedRoomRef.current);
+        }
+        socket.emit('chat.join', activeChatId);
+        joinedRoomRef.current = activeChatId;
+      }
     }
 
     return () => {
       if (socket) {
         socket.off('message.new', onNewMessage);
-        socket.emit('chat.leave', activeChatId);
+        if (joinedRoomRef.current) {
+          socket.emit('chat.leave', joinedRoomRef.current);
+          joinedRoomRef.current = null;
+        }
       }
     };
   }, [activeChatId]);

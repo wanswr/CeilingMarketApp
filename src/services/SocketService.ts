@@ -4,6 +4,35 @@ import { getDistance } from '../utils/geo'
 
 class SocketService {
   private socket: Socket | null = null;
+  private processedEvents: Set<string> = new Set();
+
+  private isDuplicateEvent(eventName: string, payload: any): boolean {
+    if (!payload) return false;
+    
+    // Extract a unique identifier for the payload object
+    const id = payload.id || payload.orderId || payload.order?.id || '';
+    const status = payload.status || payload.order?.status || '';
+    const updatedAt = payload.updatedAt || payload.order?.updatedAt || '';
+    
+    const eventKey = `${eventName}:${id}:${status}:${updatedAt}`;
+    
+    if (this.processedEvents.has(eventKey)) {
+      if (__DEV__) console.log(`[SocketService] Duplicate event skipped: ${eventKey}`);
+      return true;
+    }
+    
+    this.processedEvents.add(eventKey);
+    
+    // Cap size at 1000 items
+    if (this.processedEvents.size > 1000) {
+      const oldest = this.processedEvents.values().next().value;
+      if (oldest) {
+        this.processedEvents.delete(oldest);
+      }
+    }
+    
+    return false;
+  }
 
   connect(url: string) {
     if (this.socket?.connected) return;
@@ -28,6 +57,8 @@ class SocketService {
     });
 
     this.socket.on('order.created', (payload: any) => {
+      if (this.isDuplicateEvent('order.created', payload)) return;
+
       const order = payload.order || payload;
 
       // V9 Optimization: Only add order if it's within 100km of our currently loaded area center
@@ -56,6 +87,8 @@ class SocketService {
     });
 
     this.socket.on('order.status.changed', (order: any) => {
+      if (this.isDuplicateEvent('order.status.changed', order)) return;
+
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.setOrder(order, 'websocket');
@@ -66,6 +99,8 @@ class SocketService {
     });
 
     this.socket.on('order.updated', (order: any) => {
+      if (this.isDuplicateEvent('order.updated', order)) return;
+
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.setOrder(order, 'websocket');
@@ -76,12 +111,16 @@ class SocketService {
     });
 
     this.socket.on('application.new', (application: any) => {
+      if (this.isDuplicateEvent('application.new', application)) return;
+
       mapEngine.requestRouter.metrics.websocketUpdates++;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'application.new', orderId: application.orderId });
       mapEngine.syncOrder(application.orderId);
     });
 
     this.socket.on('order.completed', (order: any) => {
+      if (this.isDuplicateEvent('order.completed', order)) return;
+
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.setOrder(order, 'websocket');
@@ -92,12 +131,13 @@ class SocketService {
     });
 
     this.socket.on('order.deleted', (payload: any) => {
+      if (this.isDuplicateEvent('order.deleted', payload)) return;
+
       const orderId = payload.id || payload.orderId || payload;
       const countBefore = mapEngine.entityStore?.getAllOrders().length;
       mapEngine.requestRouter.metrics.websocketUpdates++;
       mapEngine.entityStore?.removeOrder(orderId);
       mapEngine.triggerNotify();
-      // removeOrder already persists
       const countAfter = mapEngine.entityStore?.getAllOrders().length;
       console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.deleted', id: orderId, countBefore, countAfter });
     });
