@@ -99,6 +99,18 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post(':id/reject-assigned')
+  async rejectAssigned(@Param('id') id: string, @Req() req: any) {
+    return this.ordersService.rejectClaimedOrder(id, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/cancel-selection')
+  async cancelSelection(@Param('id') id: string, @Req() req: any) {
+    return this.ordersService.cancelExecutorSelection(id, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch(':id/status')
   updateStatus(
     @Param('id') id: string,

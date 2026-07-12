@@ -4,6 +4,7 @@ import { OrderStatus, Prisma } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class OrdersService {
     private gateway: AppGateway,
     private logger: LoggerService,
     private chats: ChatsService,
+    private subscriptionService: SubscriptionService,
   ) {
     this.logger.setService('OrdersService');
   }
@@ -188,6 +190,12 @@ export class OrdersService {
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
     if (!executor || executor.role !== 'WORKER') {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
+    }
+
+    // Issue 3.1: Active Subscription check for masters
+    const hasSubscription = await this.subscriptionService.checkActiveSubscription(executorId);
+    if (!hasSubscription) {
+        throw new ForbiddenException('Для отклика на заказ требуется активная подписка');
     }
 
     // Safety check: cannot apply to already taken or completed orders
@@ -435,6 +443,152 @@ export class OrdersService {
     }
 
     return { success: true };
+  }
+
+  // Issue Б.2 / А.2: Master rejects assigned job in CLAIMED status
+  async rejectClaimedOrder(id: string, executorId: string) {
+      const order = await this.prisma.order.findUnique({
+          where: { id },
+          include: { applications: true }
+      });
+      if (!order) throw new NotFoundException('Order not found');
+      if (order.executorId !== executorId) throw new ForbiddenException('You are not the assigned master for this order');
+
+      if (order.status !== OrderStatus.CLAIMED) {
+          throw new ConflictException(`Cannot decline. Expected status CLAIMED, found ${order.status}`);
+      }
+
+      const result = await this.prisma.$transaction(async (tx) => {
+          // Reject this master's application
+          await tx.application.update({
+              where: { orderId_executorId: { orderId: id, executorId } },
+              data: { status: 'REJECTED' }
+          });
+
+          // Restore other master applications to PENDING so employer can select again
+          await tx.application.updateMany({
+              where: {
+                  orderId: id,
+                  executorId: { not: executorId }
+              },
+              data: { status: 'PENDING' }
+          });
+
+          const remainingActiveApps = await tx.application.count({
+              where: {
+                  orderId: id,
+                  executorId: { not: executorId }
+              }
+          });
+
+          const newStatus = remainingActiveApps > 0 ? OrderStatus.HAS_RESPONSES : OrderStatus.PUBLISHED;
+
+          // Revert order status and clear executor
+          const updatedOrder = await tx.order.update({
+              where: { id },
+              data: {
+                  status: newStatus,
+                  executorId: null,
+                  claimedAt: null
+              },
+              include: {
+                  employer: { select: { id: true, name: true, rating: true, avatar: true } },
+                  executor: { select: { id: true, name: true, avatar: true } },
+                  applications: {
+                      include: {
+                          executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+                      }
+                  },
+                  reviews: true
+              }
+          });
+
+          // Apply penalty to the master's rating for cancellation (e.g. -0.2 star)
+          const user = await tx.user.findUnique({ where: { id: executorId } });
+          if (user) {
+              const newRating = Math.max(1.0, user.rating - 0.2);
+              await tx.user.update({
+                  where: { id: executorId },
+                  data: { rating: newRating }
+              });
+          }
+
+          return updatedOrder;
+      });
+
+      this.logger.info('ORDER_DECLINED_BY_WORKER', `Executor ${executorId} declined job ${id}`, { orderId: id });
+      await this.broadcast('order.status.changed', result, executorId);
+      return result;
+  }
+
+  // Issue А.1: Employer cancels executor selection / releases unresponsive worker in CLAIMED status
+  async cancelExecutorSelection(id: string, employerId: string) {
+      const order = await this.prisma.order.findUnique({
+          where: { id },
+          include: { applications: true }
+      });
+      if (!order) throw new NotFoundException('Order not found');
+      if (order.employerId !== employerId) throw new ForbiddenException('Only the employer can cancel selection');
+
+      if (order.status !== OrderStatus.CLAIMED) {
+          throw new ConflictException(`Cannot cancel selection. Expected status CLAIMED, found ${order.status}`);
+      }
+
+      const previousExecutorId = order.executorId;
+
+      const result = await this.prisma.$transaction(async (tx) => {
+          if (previousExecutorId) {
+              // Reject the previous executor's application
+              await tx.application.update({
+                  where: { orderId_executorId: { orderId: id, executorId: previousExecutorId } },
+                  data: { status: 'REJECTED' }
+              });
+          }
+
+          // Restore other master applications to PENDING
+          await tx.application.updateMany({
+              where: {
+                  orderId: id,
+                  executorId: previousExecutorId ? { not: previousExecutorId } : undefined
+              },
+              data: { status: 'PENDING' }
+          });
+
+          const remainingActiveApps = await tx.application.count({
+              where: {
+                  orderId: id,
+                  executorId: previousExecutorId ? { not: previousExecutorId } : undefined
+              }
+          });
+
+          const newStatus = remainingActiveApps > 0 ? OrderStatus.HAS_RESPONSES : OrderStatus.PUBLISHED;
+
+          // Revert order status and clear executor
+          const updatedOrder = await tx.order.update({
+              where: { id },
+              data: {
+                  status: newStatus,
+                  executorId: null,
+                  claimedAt: null
+              },
+              include: {
+                  employer: { select: { id: true, name: true, rating: true, avatar: true } },
+                  executor: { select: { id: true, name: true, avatar: true } },
+                  applications: {
+                      include: {
+                          executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+                      }
+                  },
+                  reviews: true
+              }
+          });
+
+          return updatedOrder;
+      });
+
+      this.logger.info('ORDER_SELECTION_CANCELLED_BY_EMPLOYER', `Employer ${employerId} cancelled executor selection for order ${id}`, { orderId: id });
+      await this.broadcast('order.status.changed', result, employerId);
+      return result;
   }
 
   async findSpatial(params: {
