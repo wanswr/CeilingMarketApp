@@ -523,13 +523,25 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                        <Text style={styles.appChatText}>Чат</Text>
                      </TouchableOpacity>
 
-                     <TouchableOpacity
-                      style={styles.selectBtn}
-                      onPress={() => handleAcceptApplication(app.id)}
-                      disabled={submitting}
-                     >
-                       <Text style={styles.selectBtnText}>Выбрать</Text>
-                     </TouchableOpacity>
+                     {order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES' ? (
+                       <TouchableOpacity
+                        style={styles.selectBtn}
+                        onPress={() => handleAcceptApplication(app.id)}
+                        disabled={submitting}
+                       >
+                         <Text style={styles.selectBtnText}>Выбрать</Text>
+                       </TouchableOpacity>
+                     ) : (
+                       app.executorId === order.executorId || app.status === 'ACCEPTED' ? (
+                         <View style={[styles.selectBtn, { backgroundColor: '#10B981', opacity: 0.8 }]}>
+                           <Text style={styles.selectBtnText}>Выбран</Text>
+                         </View>
+                       ) : (
+                         <View style={[styles.selectBtn, { backgroundColor: COLORS.gray, opacity: 0.5 }]}>
+                           <Text style={styles.selectBtnText}>Отклонен</Text>
+                         </View>
+                       )
+                     )}
                   </View>
                 </View>
               ))}
