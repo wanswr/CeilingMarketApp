@@ -30,15 +30,24 @@ export class OrdersService {
       [OrderStatus.REVIEWED]: 7,
     };
 
+    const fromStatus: any = from;
+
     // V12 Hardened rules:
-    if (from === OrderStatus.CANCELLED) return false; // Terminal
-    if (from === OrderStatus.COMPLETED && to !== OrderStatus.REVIEWED) return false;
+    if (fromStatus === OrderStatus.CANCELLED) return false; // Terminal
+    if (fromStatus === OrderStatus.DISPUTE) return false; // Dispute is terminal/blocked for normal transitions
+    if (fromStatus === OrderStatus.COMPLETED && to !== OrderStatus.REVIEWED && to !== OrderStatus.DISPUTE) return false;
+
+    if (to === OrderStatus.DISPUTE) {
+        // Allow transition to DISPUTE from CLAIMED, IN_PROGRESS, or COMPLETED
+        return fromStatus === OrderStatus.CLAIMED || fromStatus === OrderStatus.IN_PROGRESS || fromStatus === OrderStatus.COMPLETED;
+    }
+
     if (to === OrderStatus.CANCELLED) {
         // Block cancellation if work has already started, completed, or is in dispute
-        if (from === OrderStatus.IN_PROGRESS ||
-            from === OrderStatus.COMPLETED ||
-            from === OrderStatus.REVIEWED ||
-            from === OrderStatus.DISPUTE) {
+        if (fromStatus === OrderStatus.IN_PROGRESS ||
+            fromStatus === OrderStatus.COMPLETED ||
+            fromStatus === OrderStatus.REVIEWED ||
+            fromStatus === OrderStatus.DISPUTE) {
             return false;
         }
         return true;
@@ -200,8 +209,7 @@ export class OrdersService {
     });
     if (existing) throw new ConflictException('Already applied');
 
-    // Master busy check (Double-booking warning)
-    let warning: string | undefined = undefined;
+    // Double-booking check: hard block (ConflictException) as required for marketplace integrity
     const { startOfDay, endOfDay } = this.getDayRange(order.date);
     const busyOrder = await this.prisma.order.findFirst({
         where: {
@@ -214,7 +222,7 @@ export class OrdersService {
         }
     });
     if (busyOrder) {
-        warning = 'Вы уже взяли заказ на эту дату. Уверены, что хотите откликнуться?';
+        throw new ConflictException('Вы уже заняты на выбранную дату (у вас есть принятый заказ в работе).');
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -233,7 +241,7 @@ export class OrdersService {
     this.logger.info('ORDER_APPLIED', `New application for order ${result.order.id}`, { orderId: result.order.id, userId: executorId });
     await this.broadcast('application.new', result.app, executorId);
     await this.broadcast('order.status.changed', result.order, executorId);
-    return { app: result.app, order: result.order, warning };
+    return { app: result.app, order: result.order };
   }
 
   async markApplicationViewed(applicationId: string, userId: string) {
@@ -260,8 +268,7 @@ export class OrdersService {
          throw new ConflictException(`Cannot accept application. Order status is already ${app.order.status}`);
      }
 
-     // Double-booking check for acceptor (Employer warning)
-     let warning: string | undefined = undefined;
+     // Double-booking check for acceptor: hard block (ConflictException)
      const { startOfDay, endOfDay } = this.getDayRange(app.order.date);
      const busyOrder = await this.prisma.order.findFirst({
          where: {
@@ -274,7 +281,7 @@ export class OrdersService {
          }
      });
      if (busyOrder) {
-         warning = 'Исполнитель уже занят на выбранную дату другого заказа.';
+         throw new ConflictException('Исполнитель уже занят на выбранную дату другого принятого заказа.');
      }
 
      const result = await this.prisma.$transaction(async (tx) => {
@@ -315,7 +322,7 @@ export class OrdersService {
      this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.order.id}`, { orderId: result.order.id, userId });
      await this.broadcast('order.status.changed', result.order, userId);
      await this.broadcast('application.accepted', { orderId: result.order.id, executorId: app.executorId }, userId);
-     return { order: result.order, chat: result.chat, warning };
+     return { order: result.order, chat: result.chat };
   }
 
   async startWork(id: string, userId: string) {
@@ -495,15 +502,7 @@ export class OrdersService {
               }
           });
 
-          // Apply penalty to the master's rating for cancellation (e.g. -0.2 star)
-          const user = await tx.user.findUnique({ where: { id: executorId } });
-          if (user) {
-              const newRating = Math.max(1.0, user.rating - 0.2);
-              await tx.user.update({
-                  where: { id: executorId },
-                  data: { rating: newRating }
-              });
-          }
+
 
           return updatedOrder;
       });
@@ -581,6 +580,70 @@ export class OrdersService {
       this.logger.info('ORDER_SELECTION_CANCELLED_BY_EMPLOYER', `Employer ${employerId} cancelled executor selection for order ${id}`, { orderId: id });
       await this.broadcast('order.status.changed', result, employerId);
       return result;
+  }
+
+  // Dispute Support: both parties can open a dispute on a Claimed, In-Progress, or Completed order
+  async openDispute(id: string, userId: string, reason?: string) {
+      const order = await this.prisma.order.findUnique({ where: { id } });
+      if (!order) throw new NotFoundException('Order not found');
+
+      // Check if user is a participant (either Employer or Executor)
+      const isEmployer = order.employerId === userId;
+      const isExecutor = order.executorId === userId;
+      if (!isEmployer && !isExecutor) {
+          throw new ForbiddenException('Only order participants can open a dispute');
+      }
+
+      // Check status transition validity
+      if (!this.canTransition(order.status, OrderStatus.DISPUTE)) {
+          throw new ConflictException(`Cannot transition from ${order.status} to DISPUTE`);
+      }
+
+      const roleStr = isEmployer ? 'Работодатель' : 'Исполнитель';
+      const cleanReason = reason ? reason.trim() : 'Причина не указана';
+      const disputeLog = `\n\n=== СПОР (Открыл ${roleStr}) ===\nПричина: ${cleanReason}\nДата: ${new Date().toLocaleString('ru-RU')}`;
+
+      const updatedDetails = order.details ? `${order.details}${disputeLog}` : disputeLog.trim();
+
+      const result = await this.prisma.order.update({
+          where: { id },
+          data: {
+              status: OrderStatus.DISPUTE,
+              details: updatedDetails
+          },
+          include: {
+              employer: { select: { id: true, name: true, rating: true, avatar: true } },
+              executor: { select: { id: true, name: true, avatar: true } },
+              applications: {
+                  include: {
+                      executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+                  }
+              },
+              reviews: true
+          }
+      });
+
+      this.logger.info('ORDER_DISPUTE_OPENED', `Dispute opened on order ${id} by ${roleStr} (${userId})`, { orderId: id, userId });
+      await this.broadcast('order.status.changed', result, userId);
+      return result;
+  }
+
+  // Stuck Orders Identification (Technical Foundation for TTL / SLA)
+  async findStuckOrders(thresholdHours: number = 24) {
+      const cutoff = new Date(Date.now() - thresholdHours * 60 * 60 * 1000);
+      return this.prisma.order.findMany({
+          where: {
+              status: { in: [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
+              OR: [
+                  { updatedAt: { lt: cutoff } },
+                  { date: { lt: cutoff } }
+              ]
+          },
+          include: {
+              employer: { select: { id: true, name: true, phone: true } },
+              executor: { select: { id: true, name: true, phone: true } }
+          }
+      });
   }
 
   async findSpatial(params: {

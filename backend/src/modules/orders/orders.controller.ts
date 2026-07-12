@@ -47,6 +47,13 @@ export class OrdersController {
     return this.ordersService.create(createOrderDto, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('stuck')
+  async getStuckOrders(@Query('thresholdHours') thresholdHours?: string) {
+    const hours = thresholdHours ? parseInt(thresholdHours, 10) : 24;
+    return this.ordersService.findStuckOrders(hours);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
@@ -108,6 +115,16 @@ export class OrdersController {
   @Post(':id/cancel-selection')
   async cancelSelection(@Param('id') id: string, @Req() req: any) {
     return this.ordersService.cancelExecutorSelection(id, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/dispute')
+  async openDispute(
+    @Param('id') id: string,
+    @Body('reason') reason: string,
+    @Req() req: any
+  ) {
+    return this.ordersService.openDispute(id, req.user.id, reason);
   }
 
   @UseGuards(JwtAuthGuard)
