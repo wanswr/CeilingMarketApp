@@ -228,6 +228,7 @@ const MapScreen = ({ navigation }: any) => {
                 <Marker
                   key={item.id}
                   coordinate={coords}
+                  tracksViewChanges={false}
                   onPress={() => {
                       mapRef.current?.animateToRegion({
                           latitude: coords.latitude,
