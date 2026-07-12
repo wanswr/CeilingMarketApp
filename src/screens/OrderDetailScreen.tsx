@@ -12,11 +12,6 @@ import { formatDate } from '../utils/date'
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
-  const REVIEW_KEY_PREFIX = 'order_reviewed_';
-  const [hasReviewed, setHasReviewed] = useState(() => {
-    const { storageService } = require('../services/StorageService');
-    return !!storageService.get(`${REVIEW_KEY_PREFIX}${orderId}`);
-  });
   const [loading, setLoading] = useState(!order);
   const [submitting, setSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
@@ -173,9 +168,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               text: reviewText,
               orderId
           });
-          const { storageService } = require('../services/StorageService');
-          storageService.set(`${REVIEW_KEY_PREFIX}${orderId}`, true);
-          setHasReviewed(true);
           Alert.alert('Спасибо!', 'Ваш отзыв важен для нас');
           setShowReviewModal(false);
       } catch (e) {
@@ -354,31 +346,13 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
       <BlurView intensity={90} tint="light" style={styles.footer}>
         <SafeAreaView edges={['bottom']} style={{ flexDirection: 'row', gap: 12 }}>
           {isEmployer ? (
-            <>
-              <TouchableOpacity
-                style={styles.chatButtonFooter}
-                onPress={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: order.id } })}
-              >
-                <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
-                <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
-              </TouchableOpacity>
-
-              {order.status === 'COMPLETED' && (
-                hasReviewed ? (
-                  <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.7 }]}>
-                    <Text style={styles.applyBtnText}>Отзыв оставлен</Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.warning }]}
-                    onPress={() => setShowReviewModal(true)}
-                  >
-                    <Text style={styles.applyBtnText}>Оставить отзыв</Text>
-                  </TouchableOpacity>
-                )
-              )}
-            </>
+            <TouchableOpacity
+              style={styles.chatButtonFooter}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: order.id } })}
+            >
+              <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+              <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
+            </TouchableOpacity>
           ) : isExecutor ? (
             <>
               <TouchableOpacity
@@ -411,19 +385,9 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               )}
 
               {order.status === 'COMPLETED' && (
-                hasReviewed ? (
-                  <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.7 }]}>
-                    <Text style={styles.applyBtnText}>Отзыв оставлен</Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.warning }]}
-                    onPress={() => setShowReviewModal(true)}
-                  >
-                    <Text style={styles.applyBtnText}>Оставить отзыв</Text>
-                  </TouchableOpacity>
-                )
+                <View style={[styles.applyBtn, { flex: 1, backgroundColor: COLORS.gray, opacity: 0.7 }]}>
+                  <Text style={styles.applyBtnText}>Заказ выполнен</Text>
+                </View>
               )}
             </>
           ) : (
