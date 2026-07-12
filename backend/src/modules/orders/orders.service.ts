@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { OrderStatus, Prisma, Role } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
@@ -177,7 +177,7 @@ export class OrdersService {
 
     // Validate executor role (must be WORKER to apply)
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
-    if (!executor || executor.role !== 'WORKER') {
+    if (!executor || executor.role !== Role.WORKER) {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
     }
 
