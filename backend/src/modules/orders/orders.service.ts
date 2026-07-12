@@ -4,7 +4,6 @@ import { OrderStatus, Prisma } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
-import { SubscriptionService } from '../subscription/subscription.service';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -14,7 +13,6 @@ export class OrdersService {
     private gateway: AppGateway,
     private logger: LoggerService,
     private chats: ChatsService,
-    private subscriptionService: SubscriptionService,
   ) {
     this.logger.setService('OrdersService');
   }
@@ -190,12 +188,6 @@ export class OrdersService {
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
     if (!executor || executor.role !== 'WORKER') {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
-    }
-
-    // Issue 3.1: Active Subscription check for masters
-    const hasSubscription = await this.subscriptionService.checkActiveSubscription(executorId);
-    if (!hasSubscription) {
-        throw new ForbiddenException('Для отклика на заказ требуется активная подписка');
     }
 
     // Safety check: cannot apply to already taken or completed orders
