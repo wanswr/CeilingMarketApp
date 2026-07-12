@@ -5,8 +5,8 @@ class MapViewportStore {
     private currentRegion: Region = {
         latitude: 55.751244,
         longitude: 37.618423,
-        latitudeDelta: 0.5,
-        longitudeDelta: 0.5 };
+        latitudeDelta: 0.9,
+        longitudeDelta: 0.9 };
 
     private subscribers: Map<string, (region: Region) => void> = new Map();
     private debounceTimer: NodeJS.Timeout | null = null;

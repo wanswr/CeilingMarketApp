@@ -104,8 +104,8 @@ const MapScreen = ({ navigation }: any) => {
                   const userRegion = {
                     latitude: loc.coords.latitude,
                     longitude: loc.coords.longitude,
-                    latitudeDelta: 0.25,
-                    longitudeDelta: 0.25
+                    latitudeDelta: 0.9,
+                    longitudeDelta: 0.9
                   };
                   mapViewportStore.setRegion(userRegion);
                   await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);

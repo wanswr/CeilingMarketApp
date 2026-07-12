@@ -380,11 +380,8 @@ class MapEngine {
 
   applyForOrder = async (id: string, price?: number) => {
     const res = await this.apiService.applyForOrder(id, price);
-    if (res.data?.order) {
-        this.requestRouter.invalidate(`order:${id}`);
-        this.entityStore.setOrder(res.data.order, 'api_apply');
-        this.notifySubscribers();
-    }
+    this.requestRouter.invalidate(`order:${id}`);
+    await this.syncOrder(id);
     return res.data;
   }
 
