@@ -337,6 +337,7 @@ class MapEngine {
     const res = await this.requestRouter.request(`order:${orderId}`, () => this.apiService.getOrderDetails(orderId), 10000);
     if (res && res.data) {
         this.entityStore.setOrder(res.data, 'api_sync');
+        this.triggerNotify();
         return res.data;
     }
     return this.entityStore.getOrder(orderId);
