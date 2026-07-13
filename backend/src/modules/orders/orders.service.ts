@@ -558,4 +558,36 @@ export class OrdersService {
 
     return result;
   }
+
+  async openDispute(orderId: string, userId: string, reason: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (order.employerId !== userId && order.executorId !== userId) {
+        throw new ForbiddenException('Only order participants can open a dispute');
+    }
+
+    const result = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.DISPUTE }
+    });
+
+    this.logger.info('ORDER_DISPUTED', `Dispute opened by user ${userId} for reason: ${reason}`, { orderId, userId });
+    await this.broadcast('order.status.changed', result, userId);
+    return result;
+  }
+
+  async findStuckOrders(hours: number) {
+    const threshold = new Date(Date.now() - hours * 60 * 60 * 1000);
+    return this.prisma.order.findMany({
+      where: {
+        status: { in: [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
+        updatedAt: { lt: threshold }
+      },
+      include: {
+        employer: { select: { id: true, name: true, rating: true, avatar: true } },
+        executor: { select: { id: true, name: true, avatar: true } }
+      }
+    });
+  }
 }
