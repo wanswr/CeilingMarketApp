@@ -39,3 +39,7 @@ esc/
 
 # testing
 coverage/
+
+# logs
+backend.log
+*.log

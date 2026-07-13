@@ -1,8 +1,34 @@
-export type OrderStatus = 'PENDING' | 'PUBLISHED' | 'HAS_RESPONSES' | 'CLAIMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DISPUTE';
+export type OrderStatus = 'PENDING' | 'PUBLISHED' | 'HAS_RESPONSES' | 'CLAIMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DISPUTE' | 'REVIEWED';
 
 export type WorkType = 'FROZE' | 'INSTALLATION' | 'SERVICE' | 'REPAIR' | 'OTHER';
 export interface LatLng { latitude: number; longitude: number; }
+
+export interface Review {
+  id: string;
+  orderId: string;
+  authorId: string;
+  targetId: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  author?: {
+    id: string;
+    name: string;
+    avatar?: string;
+  };
+  target?: {
+    id: string;
+    name: string;
+    avatar?: string;
+  };
+  order?: {
+    id: string;
+    title: string;
+  };
+}
+
 export interface UserProfile {
+  id: string;
   uid: string;
   name: string;
   phone: string;
@@ -70,4 +96,5 @@ export interface Order {
   distance?: number;
   employer?: UserProfile;
   executor?: UserProfile;
+  reviews?: Review[];
 }

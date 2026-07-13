@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { logger } from '../services/logger/LoggerService';
 import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Button } from '../components/Button'
@@ -26,7 +27,7 @@ const RegisterDetailsScreen = ({ navigation }: any) => {
       updateUser(data);
       navigation.navigate('RoleSelection');
     } catch (err: any) {
-      console.error(err);
+      logger.error("UI_ERROR", { error: err });
       Alert.alert("Ошибка", err.response?.data?.message || "Не удалось зарегистрироваться");
     } finally {
       setLoading(false);

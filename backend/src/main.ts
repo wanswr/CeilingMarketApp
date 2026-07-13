@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { LoggingInterceptor } from './modules/logger/logging.interceptor';
+import { LoggerService } from './modules/logger/logger.service';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -14,9 +16,15 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.enableCors();
+  const logger = await app.resolve(LoggerService);
+  app.useGlobalInterceptors(new LoggingInterceptor(logger));
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
-  console.log(`Application is running on: http://0.0.0.0:${port}/api`);
+
+  logger.setService('Bootstrap');
+  logger.info('SERVER_STARTED', `Application is running on: http://0.0.0.0:${port}/api`, {
+      metadata: { port, nodeEnv: process.env.NODE_ENV }
+  });
 }
 bootstrap();

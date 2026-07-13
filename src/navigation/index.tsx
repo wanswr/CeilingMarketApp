@@ -15,6 +15,7 @@ import SubscriptionScreen from '../screens/SubscriptionScreen';
 import VerificationScreen from '../screens/VerificationScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const Stack = createStackNavigator();
 
@@ -44,7 +45,8 @@ export default function Navigation() {
           <Stack.Screen name="Subscription" component={SubscriptionScreen} options={{headerShown: true, title: 'Подписка'}} />
           <Stack.Screen name="Verification" component={VerificationScreen} options={{headerShown: true, title: 'Верификация'}} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{headerShown: true, title: 'Редактировать профиль'}} />
-          <Stack.Screen name="ChatDetail" component={ChatDetailScreen} options={{headerShown: true, title: 'Чат'}} />
+          <Stack.Screen name="ChatDetail" component={ChatDetailScreen} options={{headerShown: false}} />
+          <Stack.Screen name="Profile" component={ProfileScreen} options={{headerShown: true, title: 'Профиль'}} />
         </>
       )}
     </Stack.Navigator>

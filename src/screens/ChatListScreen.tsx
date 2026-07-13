@@ -1,62 +1,25 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  TouchableOpacity,
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TextInput,
-  RefreshControl,
-  ActivityIndicator
-} from 'react-native'
-import { useIsFocused } from '@react-navigation/native'
+import React, { useState, useEffect } from 'react';
+import { logger } from '../services/logger/LoggerService';
+import { TouchableOpacity, View, Text, StyleSheet, FlatList, TextInput, ActivityIndicator, RefreshControl } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS } from '../constants/theme'
 import { apiService } from '../services/ApiService'
 import { socketService } from '../services/SocketService'
 import { mapEngine } from '../services/MapEngine'
 
-const formatTime = (dateInput: any): string => {
-  if (!dateInput) return '';
-  const d = new Date(dateInput);
-  if (isNaN(d.getTime())) return '';
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
-};
-
 const ChatListScreen = ({ navigation }: any) => {
   const [chats, setChats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const isFocused = useIsFocused();
-
   const currentUser = mapEngine.getCurrentUser();
   const myId = currentUser?.id || currentUser?.uid;
 
-  // Ref to track currently joined rooms client-side
-  const joinedRoomsRef = useRef<Set<string>>(new Set());
-
-  const fetchChats = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
+  const fetchChats = async () => {
     try {
       const res = await apiService.getMyChats();
-      const chatsData = res.data || [];
-      setChats(chatsData);
-
-      // Join socket rooms for any new chats
-      const socket = (socketService as any).socket;
-      if (socket) {
-        chatsData.forEach((chat: any) => {
-          if (!joinedRoomsRef.current.has(chat.id)) {
-            socket.emit('chat.join', chat.id);
-            joinedRoomsRef.current.add(chat.id);
-          }
-        });
-      }
+      setChats(res.data);
     } catch (e) {
-      console.error('[ChatListScreen] fetchChats error:', e);
+      logger.error("UI_ERROR", { error: 'Fetch chats error:', e });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -64,149 +27,80 @@ const ChatListScreen = ({ navigation }: any) => {
   };
 
   useEffect(() => {
-    if (isFocused) {
-      fetchChats(chats.length === 0);
-    }
-  }, [isFocused]);
+    fetchChats();
 
-  // Mount-only listener registration to avoid leaving and re-joining on state changes
-  useEffect(() => {
-    const socket = (socketService as any).socket;
-    
-    const onNewMessage = (msg: any) => {
-      setChats(prevChats => {
-        const chatIndex = prevChats.findIndex(c => c.id === msg.chatId);
-        if (chatIndex === -1) {
-          fetchChats(false);
-          return prevChats;
-        }
-
-        const updatedChats = [...prevChats];
-        const chat = { ...updatedChats[chatIndex] };
-        
-        chat.messages = [msg];
-        chat.updatedAt = msg.createdAt;
-        
-        updatedChats[chatIndex] = chat;
-        
-        return updatedChats.sort((a, b) => {
-          const tA = new Date(a.updatedAt || a.messages?.[0]?.createdAt || 0).getTime();
-          const tB = new Date(b.updatedAt || b.messages?.[0]?.createdAt || 0).getTime();
-          return tB - tA;
-        });
-      });
-    };
-
-    if (socket) {
-      socket.on('message.new', onNewMessage);
-    }
+    socketService.on('chat.update', fetchChats);
+    socketService.on('message.new', fetchChats);
+    socketService.on('message.read', fetchChats);
 
     return () => {
-      if (socket) {
-        socket.off('message.new', onNewMessage);
-        // Clean up: leave only the rooms we actually joined
-        joinedRoomsRef.current.forEach((chatId) => {
-          socket.emit('chat.leave', chatId);
-        });
-        joinedRoomsRef.current.clear();
-      }
+        socketService.off('chat.update', fetchChats);
+        socketService.off('message.new', fetchChats);
+        socketService.off('message.read', fetchChats);
     };
   }, []);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchChats(false);
-  }, []);
+  const renderChatItem = ({ item }: { item: any }) => {
+    const isEmployer = item.employerId === myId;
+    const partner = isEmployer ? item.executor : item.employer;
+    const lastMsg = item.messages?.[0];
 
-  const filteredChats = chats.filter(chat => {
-    const isEmployer = myId === chat.employerId;
-    const otherUser = isEmployer ? chat.executor : chat.employer;
-    const name = otherUser?.name || '';
-    const title = chat.order?.title || '';
     return (
-      name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      title.toLowerCase().includes(searchQuery.toLowerCase())
+      <TouchableOpacity
+        style={styles.chatItem}
+        onPress={() => navigation.navigate('ChatDetail', {
+            chatId: item.id,
+            name: partner?.name || 'Пользователь'
+        })}
+      >
+        <View style={[styles.avatar, { backgroundColor: COLORS.primary }]}>
+          <Text style={styles.avatarText}>{(partner?.name || '?')[0]}</Text>
+        </View>
+        <View style={styles.chatInfo}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.chatName} numberOfLines={1}>{item.order?.title || 'Чат по заказу'}</Text>
+            {lastMsg && <Text style={styles.chatTime}>{new Date(lastMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>}
+          </View>
+          <View style={styles.lastMsgRow}>
+            <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.unreadText]} numberOfLines={1}>
+                {lastMsg ? (lastMsg.senderId === myId ? 'Вы: ' : '') + lastMsg.text : 'Нет сообщений'}
+            </Text>
+            {item.unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadCountText}>{item.unreadCount}</Text>
+                </View>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
     );
-  });
+  };
 
-  if (loading && chats.length === 0) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
+  if (loading) {
+      return (
+          <View style={styles.center}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+      )
   }
 
   return (
     <View style={styles.container}>
       <View style={styles.searchBar}>
         <Ionicons name="search" size={20} color={COLORS.gray} />
-        <TextInput
-          placeholder="Поиск чатов..."
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={18} color={COLORS.gray} />
-          </TouchableOpacity>
-        )}
+        <TextInput placeholder="Поиск чатов..." style={styles.searchInput} />
       </View>
       <FlatList
-        data={filteredChats}
+        data={chats}
         keyExtractor={item => item.id}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
-        }
+        renderItem={renderChatItem}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchChats(); }} />}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={64} color={COLORS.border} />
-            <Text style={styles.emptyText}>У вас пока нет активных чатов</Text>
-          </View>
+            <View style={styles.emptyContainer}>
+                <Ionicons name="chatbubbles-outline" size={64} color={COLORS.border} />
+                <Text style={styles.emptyText}>У вас пока нет активных чатов</Text>
+            </View>
         }
-        renderItem={({ item }) => {
-          const isEmployer = myId === item.employerId;
-          const otherUser = isEmployer ? item.executor : item.employer;
-          const otherUserName = otherUser?.name || 'Пользователь';
-          const orderTitle = item.order?.title || 'Заказ';
-          const chatName = `${orderTitle} (${otherUserName})`;
-
-          const lastMsg = item.messages?.[0];
-          let lastMessageText = 'Нет сообщений';
-          let timeDisplay = '';
-
-          if (lastMsg) {
-            const senderName = lastMsg.senderId === myId ? 'Вы' : (lastMsg.sender?.name || otherUserName);
-            lastMessageText = `${senderName}: ${lastMsg.text}`;
-            timeDisplay = formatTime(lastMsg.createdAt);
-          }
-
-          return (
-            <TouchableOpacity
-              style={styles.chatItem}
-              onPress={() =>
-                navigation.navigate('ChatDetail', {
-                  chatId: item.id,
-                  name: chatName,
-                  orderId: item.orderId,
-                  executorId: item.executorId
-                })
-              }
-            >
-              <View style={[styles.avatar, { backgroundColor: isEmployer ? COLORS.secondary : COLORS.primary }]}>
-                <Ionicons name="person" size={24} color="#fff" />
-              </View>
-              <View style={styles.chatInfo}>
-                <View style={styles.chatHeader}>
-                  <Text style={styles.chatName} numberOfLines={1}>{chatName}</Text>
-                  <Text style={styles.chatTime}>{timeDisplay}</Text>
-                </View>
-                <Text style={styles.lastMessage} numberOfLines={1}>{lastMessageText}</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        }}
       />
     </View>
   );
@@ -214,18 +108,23 @@ const ChatListScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  center: { justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', margin: 10, paddingHorizontal: 10, borderRadius: 10, height: 40 },
   searchInput: { flex: 1, marginLeft: 10 },
-  chatItem: { flexDirection: 'row', padding: 15, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
-  avatar: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
+  chatItem: { flexDirection: 'row', padding: 15, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  avatar: { width: 55, height: 55, borderRadius: 27.5, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   chatInfo: { flex: 1, marginLeft: 15 },
   chatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  chatName: { fontSize: 16, fontWeight: '600', color: COLORS.dark, flex: 1, marginRight: 10 },
+  chatName: { fontSize: 16, fontWeight: 'bold', flex: 1, marginRight: 5 },
   chatTime: { fontSize: 12, color: COLORS.gray },
-  lastMessage: { fontSize: 14, color: COLORS.gray, marginTop: 4 },
-  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
-  emptyText: { marginTop: 10, color: COLORS.gray, fontSize: 16, fontWeight: '500' }
+  lastMsgRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  lastMessage: { fontSize: 14, color: COLORS.gray, flex: 1 },
+  unreadText: { color: COLORS.dark, fontWeight: '600' },
+  unreadBadge: { backgroundColor: COLORS.primary, borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
+  unreadCountText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  emptyContainer: { flex: 1, alignItems: 'center', marginTop: 100, padding: 40 },
+  emptyText: { marginTop: 20, fontSize: 16, color: COLORS.gray, textAlign: 'center' }
 });
 
 export default ChatListScreen;

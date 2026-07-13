@@ -1,6 +1,7 @@
-import { Controller, Get, Patch, Post, Body, UseGuards, Req, Param } from '@nestjs/common';
+import { Controller, Get, Patch, Body, UseGuards, Req, Param, Post, Delete } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('users')
 export class UsersController {
@@ -19,19 +20,24 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('profile')
-  updateProfile(@Body() updateDto: any, @Req() req) {
+  updateProfile(@Body() updateDto: UpdateUserDto, @Req() req) {
     return this.usersService.update(req.user.id, updateDto);
   }
 
+  @Get(':id/portfolio')
+  getPortfolio(@Param('id') id: string) {
+    return this.usersService.getPortfolio(id);
+  }
+
   @UseGuards(JwtAuthGuard)
-  @Post(':id/reviews')
-  async createReview(@Param('id') id: string, @Body() body: { rating: number, text: string, orderId: string }, @Req() req) {
-    // V9: Simple review implementation - update user rating
-    const user = await this.usersService.findOne(id);
-    const newRating = (user.rating + body.rating) / 2; // Very simple average logic for MVP
-    return this.usersService.update(id, {
-        rating: newRating,
-        completedOrders: user.completedOrders + 1
-    });
+  @Post('profile/portfolio')
+  addPortfolioItem(@Req() req, @Body() dto: any) {
+    return this.usersService.addPortfolioItem(req.user.id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('profile/portfolio/:id')
+  deletePortfolioItem(@Req() req, @Param('id') id: string) {
+    return this.usersService.deletePortfolioItem(req.user.id, id);
   }
 }

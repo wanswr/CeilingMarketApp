@@ -1,18 +1,29 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import Navigation from './src/navigation';
+import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider } from './src/context/AuthContext';
+import Navigation from './src/navigation';
+import ErrorBoundary from './src/components/common/ErrorBoundary';
+import { startConnectionWatchdog } from './src/services/logger/ConnectionLogger';
+import { logger } from './src/services/logger/LoggerService';
 
 export default function App() {
-  console.log('[App] Rendering root component');
+  useEffect(() => {
+    logger.info('[App] Starting application sequence...');
+    startConnectionWatchdog();
+  }, []);
+
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <NavigationContainer>
-          <Navigation />
-        </NavigationContainer>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <NavigationContainer>
+            <Navigation />
+            <StatusBar style="auto" />
+          </NavigationContainer>
+        </AuthProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

@@ -5,6 +5,7 @@ import { entityStore } from './EntityStore'
 import { GeoClusterService } from './GeoClusterService'
 import { spatialManager } from '../map/SpatialManager'
 import { mapViewportStore } from './MapViewportStore'
+import { logger } from './logger/LoggerService'
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -16,239 +17,160 @@ class MapEngine {
   private requestCounter: number = 0;
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
   private searchRadius: number = 100;
+  private lastGeoJoinKey: string | null = null;
+
   setSearchRadius = (radius: number) => {
     this.searchRadius = radius;
   }
   public spatialManager = spatialManager;
+  public entityStore = entityStore;
+  public apiService = apiService;
+  public requestRouter = requestRouter;
+  public geoClusterService = GeoClusterService;
+
   private isHydrated = false;
   private lastClusteredOrders: any[] = [];
 
-  constructor(
-      public apiService: any,
-      public entityStore: any,
-      public requestRouter: any,
-      public geoClusterService: any
-  ) {
+  constructor() {
       this.initPersistence();
 
-      // V9: Reactive architecture - Engine listens to Camera
-      mapViewportStore.subscribe((region) => {
-          this.triggerMapUpdate(region);
-      }, 'MapEngine_Core');
+      // V11: Defer subscription to avoid require cycles during module definition
+      setTimeout(() => {
+          // V9: Reactive architecture - Engine listens to Camera
+          mapViewportStore.subscribe((region) => {
+              this.triggerMapUpdate(region);
+              this.updateSocketRoom(region);
+          }, 'MapEngine_Core');
+      }, 0);
+  }
+
+  updateSocketRoom(region: any, force: boolean = false) {
+      if (!region) return;
+
+      // Grid is 0.1 degree (approx 10km)
+      const lat = Math.floor(region.latitude * 10) / 10;
+      const lng = Math.floor(region.longitude * 10) / 10;
+      const key = `${lat}:${lng}`;
+
+      if (force || key !== this.lastGeoJoinKey) {
+          const { socketService } = require('./SocketService');
+          const socket = socketService.getSocket();
+          if (socket?.connected) {
+              // Join a 3x3 grid around current center
+              // The first join in the batch has 'clear: true' to wipe previous geo rooms
+              let first = true;
+              for (let i = -1; i <= 1; i++) {
+                  for (let j = -1; j <= 1; j++) {
+                      socket.emit('geo.join', {
+                          lat: lat + (i * 0.1),
+                          lng: lng + (j * 0.1),
+                          clear: first
+                      });
+                      first = false;
+                  }
+              }
+              this.lastGeoJoinKey = key;
+              logger.debug('MAP_GEO_ROOM_JOIN_GRID', { source: 'system', center: key, forced: force });
+          }
+      }
   }
 
   private initPersistence = () => {
     if (this.isHydrated) return;
-    // V11: Synchronous hydration via StorageService
-    this.entityStore.hydrate();
+    const hasData = this.entityStore.hydrate();
     this.spatialManager.hydrate();
     this.isHydrated = true;
 
     const count = this.entityStore.getAllOrders().length;
     if (count > 0) {
-        if (__DEV__) console.log('STORE_HYDRATE', { count, source: 'storage' });
+        logger.debug('STORE_HYDRATE', { count, source: 'store' });
         this.triggerNotify();
     }
   }
 
   subscribe = (callback: OrderCallback, source: string) => {
     if (!source) {
-        console.warn('[MapEngine] Subscribe called without source');
+        logger.warn('[MapEngine] Subscribe called without source');
         source = 'unknown_' + Math.random().toString(36).substr(2, 5);
     }
     this.subscribers.set(source, callback);
-    if (__DEV__) console.log('MAP_SUBSCRIBE', { source, total: this.subscribers.size });
+    logger.debug('MAP_SUBSCRIBE', { source, total: this.subscribers.size });
 
-    // V9: Immediate snapshot with source-aware clustering and fresh reference
     const isMap = source === 'MapScreen';
     const snapshot = this.getOrders(!isMap);
     callback([...snapshot]);
 
     return () => {
         this.subscribers.delete(source);
-        if (__DEV__) console.log('MAP_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
+        logger.debug('MAP_UNSUBSCRIBE', { source, remaining: this.subscribers.size });
     };
   }
 
-  private notifySubscribers = (clusteredOrders?: any[]) => {
-    const orders = this.getOrdersArray();
+  triggerNotify = () => {
+    const isMap = this.subscribers.has('MapScreen');
+    const orders = this.getOrdersArray(!isMap);
 
-    let mapOrders = clusteredOrders;
-    if (!mapOrders) {
-        const currentRegion = mapViewportStore.getRegion();
-        mapOrders = this.recalculateClusteredOrders(currentRegion);
-    }
-
-    if (__DEV__) {
-        console.log('MAP_NOTIFY', {
-            visible: mapOrders.length,
-            total: orders.length,
-            subscribers: this.subscribers.size
-        });
-    }
-
-    this.subscribers.forEach((cb, source) => {
+    this.subscribers.forEach((callback, source) => {
         if (source === 'MapScreen') {
-            cb([...mapOrders!]); // Always fresh reference
+            const region = mapViewportStore.getRegion();
+            const clustered = this.recalculateClusteredOrders(region);
+            callback([...clustered]);
         } else {
-            cb([...orders]);
+            callback([...orders]);
         }
     });
   }
 
-  triggerNotify = () => {
-      // Re-run clustering with current region
-      const region = mapViewportStore.getRegion();
-      const safeItems = this.recalculateClusteredOrders(region);
-      this.notifySubscribers(safeItems);
-  };
-
-  getOrdersArray = (myOnly: boolean = false): Order[] => {
-    if (!this.entityStore) return [];
-    const orders = myOnly ? this.entityStore.getMyOrders() : this.entityStore.getAllOrders();
-    return orders.sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  getOrdersArray = (all: boolean = true) => {
+      return all ? this.entityStore.getAllOrders() : this.lastClusteredOrders;
   }
 
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-      const R = 6371;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a =
-          Math.sin(dLat/2) * Math.sin(dLat/2) +
-          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-          Math.sin(dLon/2) * Math.sin(dLon/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
-  }
-
-  isSyncRequired = (viewRegion: any, force: boolean = false): boolean => {
-    if (!this.entityStore || !viewRegion) return false;
-
-    // 1. BOUNDS-BASED CACHE CHECK (V9)
-    const viewport = {
-        north: viewRegion.latitude + viewRegion.latitudeDelta / 2,
-        south: viewRegion.latitude - viewRegion.latitudeDelta / 2,
-        east: viewRegion.longitude + viewRegion.longitudeDelta / 2,
-        west: viewRegion.longitude - viewRegion.longitudeDelta / 2 };
-
-    const isInside = this.entityStore.loadedBounds &&
-        viewport.north <= this.entityStore.loadedBounds.north &&
-        viewport.south >= this.entityStore.loadedBounds.south &&
-        viewport.east <= this.entityStore.loadedBounds.east &&
-        viewport.west >= this.entityStore.loadedBounds.west;
-
-    const shouldFetch = force || !isInside || this.entityStore.getAllOrders().length === 0;
-
-    if (!shouldFetch) return false;
-    if (this.syncLock) return false;
-
-    // 1.5. MOVEMENT THRESHOLD CHECK
-    if (!force && this.lastSyncRegion) {
-        const dist = this.calculateDistance(viewRegion.latitude, viewRegion.longitude, this.lastSyncRegion.latitude, this.lastSyncRegion.longitude);
-        const scaleChange = Math.abs(viewRegion.latitudeDelta - this.lastSyncRegion.latitudeDelta) / this.lastSyncRegion.latitudeDelta;
-
-        if (dist < 10 && scaleChange < 0.2) return false;
-    }
-
-    return true;
-  }
-
-  syncMap = async (force: boolean = false, viewRegion?: { latitude: number, longitude: number, latitudeDelta: number, longitudeDelta: number }) => {
-    if (!this.entityStore || !viewRegion) return;
-
-    if (!this.isSyncRequired(viewRegion, force)) {
-        if (!this.syncLock) this.notifySubscribers();
-        return;
-    }
-
-    if (this.currentAbortController) this.currentAbortController.abort();
-    this.currentAbortController = new AbortController();
+  syncMap = async (force: boolean = false, region?: any) => {
+    if (this.syncLock && !force) return;
     this.syncLock = true;
-    const requestId = ++this.requestCounter;
 
     try {
-      if (__DEV__) console.log('MAP_FETCH_START', { lat: viewRegion.latitude, lng: viewRegion.longitude, requestId });
-      const startTime = Date.now();
+      const viewRegion = region || mapViewportStore.getRegion();
 
-      const response = await this.apiService.getSpatialOrders({
+      const res = await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial({
           lat: viewRegion.latitude,
           lng: viewRegion.longitude,
-          radius: this.searchRadius
-      }, { signal: this.currentAbortController?.signal });
+          radius: 100
+      }), force ? 0 : 30000);
 
-      if (requestId !== this.requestCounter) {
-          if (__DEV__) console.log('MAP_FETCH_IGNORED_STALE_RESPONSE', { requestId, latest: this.requestCounter });
-          return;
-      }
-
-      if (response.data) {
-        const returnedOrders = response.data.created || response.data.orders || [];
-        if (__DEV__) console.log('MAP_FETCH_END', { returnedOrders: returnedOrders.length, requestId, durationMs: Date.now() - startTime });
-
-        // V9: PRUNING STALE SPATIAL DATA
-        // Before applying the new patch, find orders that should be in this region but weren't returned
-        const radiusKm = 100;
-        const existingInRegion = this.getOrdersInBounds(
-            viewRegion.latitude - 1.0,
-            viewRegion.latitude + 1.0,
-            viewRegion.longitude - 1.5,
-            viewRegion.longitude + 1.5
-        );
-
-        const newOrderIds = new Set(returnedOrders.map((o: any) => o.id));
-        const myId = this.entityStore.currentUserId;
-
-        let prunedCount = 0;
-        existingInRegion.forEach((order: Order) => {
-            const isMine = order.employerId === myId || order.executorId === myId || order.applications?.some((a: any) => a.executorId === myId);
-            if (!isMine && !newOrderIds.has(order.id)) {
-                this.entityStore.removeOrder(order.id, 'stale_spatial');
-                prunedCount++;
-            }
-        });
-
-        if (prunedCount > 0 && __DEV__) {
-            console.log('STORE_STALE_REMOVED', { count: prunedCount });
+      if (res && res.data) {
+        const { created } = res.data;
+        if (created && created.length > 0) {
+            this.entityStore.setOrders(created, 'spatial');
         }
 
-        this.entityStore.applyPatch(response.data, 'spatial_fetch');
-
-        // V9: Expanded Bounds (approx 120km to ensure buffer)
-        this.entityStore.loadedBounds = {
-            north: viewRegion.latitude + 0.9,
-            south: viewRegion.latitude - 0.9,
-            east: viewRegion.longitude + 1.3,
-            west: viewRegion.longitude - 1.3 };
-        this.entityStore.isInitialLoaded = true;
         this.lastSyncRegion = {
             latitude: viewRegion.latitude,
             longitude: viewRegion.longitude,
             latitudeDelta: viewRegion.latitudeDelta
         };
-        console.log('MAP_DATA_SOURCE: API', { count: this.entityStore.getAllOrders().length });
         this.triggerNotify();
         this.entityStore.persist();
       }
     } catch (error: any) {
-        if (error.name !== 'AbortError') console.error('Map Sync Fail:', error.message);
+        if (error.name !== 'AbortError') logger.error('Map Sync Fail:', { error: error.message });
     } finally {
         this.syncLock = false;
-        this.currentAbortController = null;
     }
   }
 
   initialLoad = async (lat: number, lng: number) => {
-      // V5: Force a sync on initial load to ensure we are not looking at stale storage data
-      if (__DEV__) console.log('[MapEngine] Performing initial server sync...');
-      // Mark as NOT initial loaded to ensure the syncMap(true) actually runs and clears storage ghost orders
+      logger.info('[MapEngine] Performing initial server sync...');
       this.entityStore.isInitialLoaded = false;
-      return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.5, longitudeDelta: 0.5 });
+      return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.9, longitudeDelta: 0.9 });
   }
 
   private recalculateClusteredOrders = (region: any): any[] => {
-    if (__DEV__) console.log('MAP_VISIBLE_RECALC_START');
+    const totalOrders = this.entityStore.getAllOrders();
+    if (!region) return [];
+
     const startTime = Date.now();
-    const latPadding = region.latitudeDelta * 0.7; // Wider padding for smoother panning
+    const latPadding = region.latitudeDelta * 0.7;
     const lngPadding = region.longitudeDelta * 0.7;
 
     const rawCandidates = this.getOrdersInBounds(
@@ -258,27 +180,24 @@ class MapEngine {
         region.longitude + lngPadding
     );
 
-    // V9: Filter map candidates by status (Only show available orders)
-    const candidates = rawCandidates.filter((order: Order) =>
-        order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES'
-    );
+    const myId = this.entityStore.currentUserId;
+    const candidates = rawCandidates.filter((order: Order) => {
+        const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
+        const isMine = !!myId && (
+            order.employerId === myId ||
+            order.executorId === myId ||
+            order.applications?.some((a: any) => a.executorId === myId)
+        );
+        return isPublic || (isMine && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
+    });
 
-    // V9: Perform clustering but NEVER hide single orders unless they are actually in a cluster
     const result = this.clusterOrders(candidates, region.latitudeDelta);
-
     const safeItems = result.filter((item: any) => {
         const coords = this.getOrderCoords(item);
         return coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude);
     });
 
     this.lastClusteredOrders = safeItems;
-    if (__DEV__) {
-        console.log('MAP_VISIBLE_RECALC_END', {
-            candidates: candidates.length,
-            visible: safeItems.length,
-            duration: Date.now() - startTime
-        });
-    }
     return safeItems;
   }
 
@@ -286,36 +205,25 @@ class MapEngine {
     if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
     }
-    // V9: Faster update loop for snappier markers
     this.debounceTimer = setTimeout(() => {
-        const safeItems = this.recalculateClusteredOrders(region);
-        this.notifySubscribers(safeItems);
+        this.triggerNotify();
         this.syncMap(false, region);
-    }, 200);
+    }, 300);
   }
 
-  // --- Selectors ---
   getOrders = (myOnly: boolean = false) => {
       if (myOnly) return this.getOrdersArray(true);
       if (this.lastClusteredOrders.length > 0) return this.lastClusteredOrders;
-      // Fallback for first render before any region change
       return this.recalculateClusteredOrders(mapViewportStore.getRegion());
   };
   getOrder = (id: string) => this.entityStore?.getOrder(id);
   getUser = (id: string) => this.entityStore?.getUser(id);
-  getCurrentUser = () => {
-      const user = this.entityStore?.getCurrentUser();
-      if (!user) {
-          console.warn("[MapEngine] currentUser unavailable");
-      }
-      return user;
-  };
+  getCurrentUser = () => this.entityStore?.getCurrentUser();
   getOrdersInBounds = (minLat: number, maxLat: number, minLng: number, maxLng: number) => this.entityStore?.getOrdersInBounds(minLat, maxLat, minLng, maxLng) || [];
   clusterOrders = (orders: Order[], latDelta: number) => this.geoClusterService?.clusterOrders(orders, latDelta) || [];
   getOrderCoords = (order: Order) => this.geoClusterService?.getOrderCoords(order);
 
-  // --- Actions ---
-  syncUser = async (force: boolean = false) => {
+    syncUser = async (force: boolean = false) => {
     const res = await this.requestRouter.request('user:profile', () => this.apiService.getProfile(), force ? 0 : 30000);
     if (res && res.data) {
         this.entityStore.setUser({ ...res.data, isMe: true });
@@ -324,17 +232,17 @@ class MapEngine {
     return this.entityStore.getCurrentUser();
   }
 
-  getExternalUser = async (userId: string) => {
-    const res = await this.requestRouter.request(`user:${userId}`, () => this.apiService.getUserProfile(userId), 60000);
+  getExternalUser = async (id: string) => {
+    const res = await this.requestRouter.request(`user:${id}`, () => this.apiService.getUserProfile(id), 15000);
     if (res && res.data) {
         this.entityStore.setUser(res.data);
         return res.data;
     }
-    return this.entityStore.getUser(userId);
+    return this.entityStore.getUser(id);
   }
 
-  syncOrder = async (orderId: string) => {
-    const res = await this.requestRouter.request(`order:${orderId}`, () => this.apiService.getOrderDetails(orderId), 10000);
+  syncOrder = async (orderId: string, force: boolean = false) => {
+    const res = await this.requestRouter.request(`order:${orderId}`, () => this.apiService.getOrderDetails(orderId), force ? 0 : 10000);
     if (res && res.data) {
         this.entityStore.setOrder(res.data, 'api_sync');
         this.triggerNotify();
@@ -348,8 +256,8 @@ class MapEngine {
     try {
       const res = await this.requestRouter.request('orders:my', () => this.apiService.getMyOrders(), 10000);
       if (res && res.data) {
-          this.entityStore.setOrders(res.data);
-          this.notifySubscribers();
+          this.entityStore.setOrders(res.data, 'my');
+          this.triggerNotify();
           return res.data;
       }
       return this.entityStore.getMyOrders();
@@ -366,50 +274,93 @@ class MapEngine {
   createOrder = async (data: any) => {
     const res = await this.apiService.createOrder(data);
     this.requestRouter.invalidate('orders:my');
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.created', res.data.id, 'none', res.data.status);
+    } catch (e) {}
     this.entityStore?.setOrder(res.data, 'api_create');
-    this.notifySubscribers();
+    this.triggerNotify();
     return res.data;
   }
 
   updateOrder = async (id: string, data: any) => {
     const res = await this.apiService.updateOrder(id, data);
     this.requestRouter.invalidate(`order:${id}`);
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', res.data.status);
+    } catch (e) {}
     this.entityStore?.setOrder(res.data, 'api_update');
-    this.notifySubscribers();
+    this.triggerNotify();
     return res.data;
   }
 
   applyForOrder = async (id: string, price?: number) => {
     const res = await this.apiService.applyForOrder(id, price);
-    this.requestRouter.invalidate(`order:${id}`);
-    await this.syncOrder(id);
+    if (res.data?.order) {
+        this.requestRouter.invalidate(`order:${id}`);
+        try {
+            const { socketService } = require('./SocketService');
+            const app = res.data.app || res.data;
+            const appId = app?.id || 'any';
+            socketService.registerLocalMutation('application.new', id, appId, 'PENDING');
+            socketService.registerLocalMutation('order.status.changed', id, 'none', res.data.order.status);
+        } catch (e) {}
+        this.entityStore.setOrder(res.data.order, 'api_apply');
+        this.triggerNotify();
+    }
     return res.data;
   }
 
   cancelApplication = async (id: string) => {
     const res = await this.apiService.cancelApplication(id);
     this.requestRouter.invalidate(`order:${id}`);
-    this.syncOrder(id);
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', 'PUBLISHED');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', 'HAS_RESPONSES');
+    } catch (e) {}
+    await this.syncOrder(id, true);
+    this.triggerNotify();
     return res;
   };
   acceptApplication = async (applicationId: string) => {
     const res = await this.apiService.acceptApplication(applicationId);
-    if (res.data?.orderId) {
-        this.requestRouter.invalidate(`order:${res.data.orderId}`);
-        this.syncOrder(res.data.orderId);
+    const orderId = res.data?.orderId || res.data?.order?.id;
+    if (orderId) {
+        this.requestRouter.invalidate(`order:${orderId}`);
+        try {
+            const { socketService } = require('./SocketService');
+            const orderStatus = res.data?.order?.status || res.data?.status || 'CLAIMED';
+            socketService.registerLocalMutation('order.status.changed', orderId, 'none', orderStatus);
+        } catch (e) {}
+        await this.syncOrder(orderId, true);
+        this.triggerNotify();
     }
     return res;
   };
   startOrder = async (id: string) => {
     const res = await this.apiService.startOrder(id);
     this.requestRouter.invalidate(`order:${id}`);
-    this.syncOrder(id);
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', 'IN_PROGRESS');
+    } catch (e) {}
+    if (res.data) this.entityStore.setOrder(res.data, 'api_start');
+    await this.syncOrder(id, true);
+    this.triggerNotify();
     return res;
   };
   completeOrder = async (id: string) => {
     const res = await this.apiService.completeOrder(id);
     this.requestRouter.invalidate(`order:${id}`);
-    this.syncOrder(id);
+    try {
+        const { socketService } = require('./SocketService');
+        socketService.registerLocalMutation('order.status.changed', id, 'none', 'COMPLETED');
+    } catch (e) {}
+    if (res.data) this.entityStore.setOrder(res.data, 'api_complete');
+    await this.syncOrder(id, true);
+    this.triggerNotify();
     return res;
   };
   deleteOrder = async (id: string) => {
@@ -420,23 +371,13 @@ class MapEngine {
     this.triggerNotify();
     return res.data;
   };
-  activateSubscription = async (days: number) => {
-    const res = await this.apiService.activateSubscription(days);
-    this.requestRouter.invalidate('user:profile');
-    const profile = await this.syncUser(true);
-    return { ...res.data, user: profile };
-  }
   login = async (phone: string) => {
     const res = await this.apiService.login(phone);
     if (res.data.user) this.entityStore?.setUser({ ...res.data.user, isMe: true });
     return res.data;
   }
   parseOrderText = async (text: string) => (await this.apiService.parseOrderText(text)).data;
-  forceRefresh = async () => {
-    this.entityStore?.clear();
-    return this.syncMap(true, mapViewportStore.getRegion());
-  }
 }
 
-export const mapEngine = new MapEngine(apiService, entityStore, requestRouter, GeoClusterService);
+export const mapEngine = new MapEngine();
 export const orderOrchestrator = mapEngine;
