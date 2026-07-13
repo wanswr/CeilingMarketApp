@@ -110,6 +110,8 @@ class MapEngine {
     const isMap = this.subscribers.has('MapScreen');
     const orders = this.getOrdersArray(!isMap);
 
+    logger.info('MAP_ENGINE_ORDER_UPDATED', { totalOrders: orders.length, isMapActive: isMap });
+
     this.subscribers.forEach((callback, source) => {
         if (source === 'MapScreen') {
             const region = mapViewportStore.getRegion();

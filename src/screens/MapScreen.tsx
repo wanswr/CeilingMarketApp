@@ -26,6 +26,66 @@ import { formatDate } from '../utils/date'
 import { Order } from '../types'
 import ErrorBoundary from '../components/common/ErrorBoundary';
 
+// Dedicated performance-optimized custom marker component with self-disabling tracksViewChanges
+const OrderMarker = ({
+  item,
+  coords,
+  myId,
+  selectedOrder,
+  setSelectedOrder,
+  setPendingLocation
+}: {
+  item: any;
+  coords: { latitude: number; longitude: number };
+  myId: string | undefined;
+  selectedOrder: any;
+  setSelectedOrder: (item: any) => void;
+  setPendingLocation: (loc: any) => void;
+}) => {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [item.id, item.status]);
+
+  const hasMyApplication = item.applications?.some((a: any) => a.executorId === myId);
+
+  return (
+    <Marker
+      key={`${item.id}_${item.status}`}
+      coordinate={coords}
+      onPress={(e) => {
+        e.stopPropagation();
+        setSelectedOrder(item);
+        setPendingLocation(null);
+      }}
+      tracksViewChanges={tracksViewChanges}
+    >
+      <View style={[
+        styles.customMarker,
+        selectedOrder?.id === item.id && styles.customMarkerActive,
+        item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { borderColor: '#F59E0B' },
+        hasMyApplication && { backgroundColor: COLORS.primary + '20', borderColor: COLORS.primary }
+      ]}>
+        <Text style={[
+          styles.markerPrice,
+          selectedOrder?.id === item.id && styles.markerPriceActive,
+          item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { color: '#F59E0B' }
+        ]}>
+          {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
+        </Text>
+        {hasMyApplication && (
+            <View style={styles.appliedDot} />
+        )}
+      </View>
+    </Marker>
+  );
+};
+
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
   const isFocusedRef = useRef(true);
@@ -189,37 +249,16 @@ const MapScreen = ({ navigation }: any) => {
               );
             }
 
-            const hasMyApplication = item.applications?.some((a: any) => a.executorId === myId);
-
             return (
-              <Marker
+              <OrderMarker
                 key={`${item.id}_${item.status}`}
-                coordinate={coords}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  setSelectedOrder(item);
-                  setPendingLocation(null);
-                }}
-                tracksViewChanges={false}
-              >
-                <View style={[
-                  styles.customMarker,
-                  selectedOrder?.id === item.id && styles.customMarkerActive,
-                  item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { borderColor: '#F59E0B' },
-                  hasMyApplication && { backgroundColor: COLORS.primary + '20', borderColor: COLORS.primary }
-                ]}>
-                  <Text style={[
-                    styles.markerPrice,
-                    selectedOrder?.id === item.id && styles.markerPriceActive,
-                    item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { color: '#F59E0B' }
-                  ]}>
-                    {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
-                  </Text>
-                  {hasMyApplication && (
-                      <View style={styles.appliedDot} />
-                  )}
-                </View>
-              </Marker>
+                item={item}
+                coords={coords}
+                myId={myId}
+                selectedOrder={selectedOrder}
+                setSelectedOrder={setSelectedOrder}
+                setPendingLocation={setPendingLocation}
+              />
             );
           })}
 

@@ -50,7 +50,7 @@ class SocketService {
     });
 
     this.on('order.created', (order: any) => {
-      logger.info('WS_ORDER_CREATED', { orderId: order.id });
+      logger.info('ORDER_CREATED_RECEIVED', { orderId: order?.id, status: order?.status, lat: order?.latitude ?? order?.lat, lng: order?.longitude ?? order?.lng });
       requestRouter.metrics.websocketUpdates++;
       entityStore.setOrder(order, 'websocket');
       require('./MapEngine').mapEngine.triggerNotify();
