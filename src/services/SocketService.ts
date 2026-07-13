@@ -25,7 +25,7 @@ class SocketService {
     // Register standard core listeners
     this.on('connect', () => {
       const currentUser = entityStore.getCurrentUser();
-      const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
+      const userId = currentUser?.id || currentUser?.uid || 'anonymous';
       const activeRole = currentUser?.role || 'none';
       const socketId = this.socket?.id || 'none';
 
@@ -78,7 +78,7 @@ class SocketService {
   connect(url: string, source: string = 'unknown') {
     const socketUrl = url.replace('/api/', '');
     const currentUser = entityStore.getCurrentUser();
-    const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
+    const userId = currentUser?.id || currentUser?.uid || 'anonymous';
     const activeRole = currentUser?.role || 'none';
     const socketId = this.socket?.id || 'none';
 
@@ -164,7 +164,7 @@ class SocketService {
 
   private joinPrivateRoom() {
       const currentUser = entityStore.getCurrentUser();
-      const myId = (currentUser as any)?.id || currentUser?.uid;
+      const myId = currentUser?.id || currentUser?.uid;
       const activeRole = currentUser?.role || 'none';
       const socketId = this.socket?.id || 'none';
 

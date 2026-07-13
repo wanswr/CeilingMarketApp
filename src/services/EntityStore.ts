@@ -182,9 +182,9 @@ class EntityStore {
   }
 
   setUser = (user: UserProfile) => {
-    const id = (user as any).id || user.uid;
+    const id = user.id || user.uid;
     if (!id) return;
-    const normalizedUser = { ...user, id, uid: id };
+    const normalizedUser: UserProfile = { ...user, id, uid: id };
     if ((user as any).isMe) this.setCurrentUserId(id);
     this.usersById.set(id, normalizedUser);
   }
