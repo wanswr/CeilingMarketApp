@@ -197,6 +197,7 @@ export default function CreateOrderScreen({ navigation }: any) {
   };
 
   const handlePublish = async () => {
+    if (loading) return;
     try {
       orderSchema.parse(form);
       if (!coordinates) {

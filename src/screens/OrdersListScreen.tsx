@@ -162,6 +162,7 @@ const OrdersListScreen = ({ navigation }: any) => {
           text: 'В корзину',
           style: 'destructive',
           onPress: async () => {
+            if (submitting) return;
             setSubmitting(orderId);
             try {
               await mapEngine.updateOrder(orderId, { status: 'CANCELLED', deletedAt: new Date().toISOString() });

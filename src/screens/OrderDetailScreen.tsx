@@ -81,6 +81,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         {
           text: 'Да, отозвать',
           onPress: async () => {
+            if (submitting) return;
             const aid = logger.startAction('CANCEL_APPLICATION', { orderId });
             setSubmitting(true);
             try {
@@ -153,6 +154,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         {
           text: 'Подтвердить',
           onPress: async () => {
+            if (submitting) return;
             const currentOrder = mapEngine.getOrder(orderId);
             const stillExists = currentOrder?.applications?.some(a => a.id === applicationId);
             if (!stillExists) {
