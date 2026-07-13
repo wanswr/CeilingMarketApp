@@ -166,8 +166,23 @@ export class OrdersService {
   async remove(id: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
+
+    // Fetch chat IDs before deleting
+    const chats = await this.prisma.chat.findMany({
+        where: { orderId: id },
+        select: { id: true }
+    });
+    const chatIds = chats.map(c => c.id);
+
     await this.prisma.order.delete({ where: { id } });
-    await this.broadcast('order.deleted', { id }, userId);
+
+    await this.broadcast('order.deleted', {
+        id,
+        employerId: order.employerId,
+        executorId: order.executorId,
+        chatIds
+    }, userId);
+
     return { id };
   }
 

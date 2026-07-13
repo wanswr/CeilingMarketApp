@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { LoggerService } from '../logger/logger.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @WebSocketGateway({
   cors: {
@@ -18,7 +19,10 @@ import { LoggerService } from '../logger/logger.service';
 export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private geoJoinCounters = new Map<string, { count: number, timer: NodeJS.Timeout }>();
 
-  constructor(private logger: LoggerService) {
+  constructor(
+    private logger: LoggerService,
+    private prisma: PrismaService,
+  ) {
     this.logger.setService('WebSocket');
   }
   @WebSocketServer()
@@ -90,37 +94,78 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.leave(`chat:${chatId}`);
   }
 
-  broadcast(event: string, payload: any) {
-    const data = payload?.data || payload;
-    let emitted = false;
+  async broadcast(event: string, payload: any) {
+    try {
+      const data = payload?.data || payload;
 
-    // 1. Identify and emit to geographic room if coordinates exist (for orders)
-    const lat = data?.latitude ?? data?.lat;
-    const lng = data?.longitude ?? data?.lng;
+      // 1. Order creation event: STRICTLY to geo room only
+      if (event === 'order.created') {
+        const lat = data?.latitude ?? data?.lat;
+        const lng = data?.longitude ?? data?.lng;
 
-    if (lat !== undefined && lng !== undefined) {
-        const room = `geo:${Math.floor(lat * 10)}:${Math.floor(lng * 10)}`;
-        this.server.to(room).emit(event, payload);
-        this.logger.debug('WS_BROADCAST_GEO', `Emitted event to geo room: ${room}`, { event });
-        emitted = true;
-    }
+        if (lat !== undefined && lng !== undefined) {
+            const room = `geo:${Math.floor(lat * 10)}:${Math.floor(lng * 10)}`;
+            this.server.to(room).emit(event, payload);
+            this.logger.info('WS_BROADCAST_CREATED_GEO', `Emitted order.created to geo room: ${room}`, { orderId: data?.id });
+        } else {
+            this.logger.warn('WS_BROADCAST_CREATED_NO_COORDS', `order.created lacks coordinates`, { payload });
+        }
+        return;
+      }
 
-    // 2. Identify and emit directly to private participant rooms (employer & executor)
-    const participants = new Set<string>();
-    if (data?.employerId) participants.add(data.employerId);
-    if (data?.executorId) participants.add(data.executorId);
+      // 2. Order updates/modifications: STRICTLY to Employer room, Worker room, Chat participants room
+      const orderEvents = ['order.status.changed', 'order.deleted', 'application.new', 'application.accepted'];
+      if (orderEvents.includes(event)) {
+        const orderId = data?.id || data?.orderId;
+        let employerId = data?.employerId || null;
+        let executorId = data?.executorId || null;
+        let chatIds: string[] = data?.chatIds || [];
 
-    participants.forEach(userId => {
-        const room = `user:${userId}`;
-        this.server.to(room).emit(event, payload);
-        this.logger.debug('WS_BROADCAST_PRIVATE', `Emitted event to private user room: ${room}`, { event });
-        emitted = true;
-    });
+        // Fetch order details from database if necessary to resolve employer/executor
+        if (orderId && (!employerId || !executorId)) {
+            const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+            if (order) {
+                if (!employerId) employerId = order.employerId;
+                if (!executorId) executorId = order.executorId;
+            }
+        }
 
-    // 3. Fallback: If no participants and no coordinates, emit globally
-    if (!emitted) {
-        this.server.emit(event, payload);
-        this.logger.debug('WS_BROADCAST_GLOBAL', 'Fallback global broadcast', { event });
+        // Fetch chats associated with this order to target chat participant rooms (if not already passed on delete)
+        if (orderId && chatIds.length === 0) {
+            const chats = await this.prisma.chat.findMany({
+                where: { orderId: orderId },
+                select: { id: true }
+            });
+            chatIds = chats.map(c => c.id);
+        }
+
+        const rooms: string[] = [];
+        if (employerId) rooms.push(`user:${employerId}`);
+        if (executorId) rooms.push(`user:${executorId}`);
+        for (const chatId of chatIds) {
+            rooms.push(`chat:${chatId}`);
+        }
+
+        // De-duplicate rooms list
+        const uniqueRooms = Array.from(new Set(rooms));
+
+        if (uniqueRooms.length > 0) {
+            this.server.to(uniqueRooms).emit(event, payload);
+            this.logger.info('WS_BROADCAST_MODIFIED', `Emitted update event to rooms: ${uniqueRooms.join(', ')}`, {
+                event,
+                orderId
+            });
+        } else {
+            this.logger.warn('WS_BROADCAST_MODIFIED_NO_TARGET', `No target rooms found for update event`, { event, orderId });
+        }
+        return;
+      }
+
+      // 3. Fallback for any other (non-order) events
+      this.server.emit(event, payload);
+      this.logger.info('WS_BROADCAST_GLOBAL_FALLBACK', `Fallback global emit for event: ${event}`);
+    } catch (err) {
+      this.logger.error('WS_BROADCAST_ERROR', `Failed to broadcast event: ${event}`, { error: (err as any).message });
     }
   }
 }
