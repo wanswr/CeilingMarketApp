@@ -162,7 +162,7 @@ class MapEngine {
   initialLoad = async (lat: number, lng: number) => {
       logger.info('[MapEngine] Performing initial server sync...');
       this.entityStore.isInitialLoaded = false;
-      return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.5, longitudeDelta: 0.5 });
+      return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.9, longitudeDelta: 0.9 });
   }
 
   private recalculateClusteredOrders = (region: any): any[] => {
