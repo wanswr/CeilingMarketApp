@@ -43,6 +43,7 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('auth.join')
   handleJoinPrivate(@MessageBody() userId: string, @ConnectedSocket() client: Socket) {
+    (client as any).userId = userId;
     client.join(`user:${userId}`);
     this.logger.debug('WS_JOIN_PRIVATE', `Client joined private room`, { userId });
   }
@@ -68,9 +69,14 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
     session.timer = setTimeout(() => {
         const finalSession = this.geoJoinCounters.get(client.id);
         if (finalSession) {
+            const actualUserId = (client as any).userId || null;
             this.logger.info('WS_GEO_ROOMS_JOINED', `Client joined multiple geo rooms`, {
-                userId: (client as any).userId || client.id,
-                metadata: { roomsCount: finalSession.count, currentRooms: Array.from(client.rooms).filter(r => r.startsWith('geo:')) }
+                userId: actualUserId,
+                socketId: client.id,
+                metadata: {
+                    roomsCount: finalSession.count,
+                    currentRooms: Array.from(client.rooms).filter(r => r.startsWith('geo:'))
+                }
             });
             this.geoJoinCounters.delete(client.id);
         }

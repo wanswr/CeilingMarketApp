@@ -19,6 +19,7 @@ class SocketService {
 
   // Active listeners registry
   private readonly listeners = new Map<string, Set<Function>>();
+  private lastJoinedSocketId: string | null = null;
 
   constructor() {
     // Register standard core listeners
@@ -94,7 +95,9 @@ class SocketService {
 
     if (this.socket) {
       if (this.currentUrl === socketUrl) {
-          if (this.socket.connected) {
+          const isForegroundRefresh = source === 'auth_sync' || source === 'auth_offline_fallback';
+
+          if (this.socket.connected && !isForegroundRefresh) {
               logger.info('[WebSocket] already connected', {
                   source: 'websocket',
                   metadata: {
@@ -105,19 +108,27 @@ class SocketService {
                       url: socketUrl
                   }
               });
-          } else {
-              logger.info('[WebSocket] socket exists, ensuring connection...', {
-                  source: 'websocket',
-                  metadata: {
-                      userId,
-                      activeRole,
-                      socketId,
-                      connectSource: source,
-                      url: socketUrl
-                  }
-              });
-              this.socket.connect();
+              return;
           }
+
+          logger.info('[WebSocket] socket exists, ensuring connection...', {
+              source: 'websocket',
+              metadata: {
+                  userId,
+                  activeRole,
+                  socketId,
+                  connectSource: source,
+                  url: socketUrl,
+                  isForegroundRefresh,
+                  currentlyConnected: this.socket.connected
+              }
+          });
+
+          if (isForegroundRefresh) {
+              // Force disconnect to clear out any half-open TCP zombie states on app wake
+              this.socket.disconnect();
+          }
+          this.socket.connect();
           return;
       }
 
@@ -140,6 +151,7 @@ class SocketService {
 
     this.socket.on('disconnect', (reason) => {
       logger.warn('WEBSOCKET_DISCONNECTED', { reason, url: socketUrl });
+      this.lastJoinedSocketId = null;
     });
 
     this.socket.on('connect_error', (err) => {
@@ -157,6 +169,10 @@ class SocketService {
       const socketId = this.socket?.id || 'none';
 
       if (myId && this.socket?.connected) {
+          if (this.lastJoinedSocketId === socketId) {
+              logger.info('[WebSocket] Already joined private room for this socket ID', { socketId });
+              return;
+          }
           logger.info('[WebSocket] joinPrivateRoom() emitting auth.join', {
               source: 'websocket',
               metadata: {
@@ -166,6 +182,7 @@ class SocketService {
               }
           });
           this.socket.emit('auth.join', myId);
+          this.lastJoinedSocketId = socketId;
       }
   }
 
@@ -177,6 +194,7 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.lastJoinedSocketId = null;
   }
 
   getSocket() {
