@@ -17,6 +17,7 @@ import { BlurView } from 'expo-blur'
 import { mapEngine } from '../services/MapEngine'
 import { useAuth } from '../context/AuthContext'
 import { storageService } from '../services/StorageService'
+import { apiService } from '../services/ApiService'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { Button } from '../components/Button'
 
@@ -67,6 +68,35 @@ const ProfileScreen = ({ route, navigation }: any) => {
     navigation.reset({
       index: 0,
       routes: [{ name: 'Login' }] });
+  };
+
+  const handleDeleteAccount = () => {
+    if (userId) return; // Cannot delete external user profiles
+    Alert.alert(
+      'Удаление аккаунта',
+      'Вы уверены, что хотите безвозвратно удалить свой аккаунт и все связанные с ним данные? Это действие невозможно отменить.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await apiService.deleteProfile();
+              storageService.clearAll();
+              await signOut();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }]
+              });
+            } catch (error) {
+              console.error('[ProfileScreen] Delete profile failed:', error);
+              Alert.alert('Ошибка', 'Не удалось удалить аккаунт. Попробуйте позже.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (loading) {
@@ -187,6 +217,13 @@ const ProfileScreen = ({ route, navigation }: any) => {
              <Text style={styles.logoutText}>Выйти из аккаунта</Text>
           </TouchableOpacity>
 
+          {!userId && (
+            <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAccount}>
+               <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+               <Text style={styles.deleteText}>Удалить аккаунт</Text>
+            </TouchableOpacity>
+          )}
+
           <Text style={styles.version}>Версия 2.4.0 (2026.1)</Text>
         </View>
       </ScrollView>
@@ -242,6 +279,8 @@ const styles = StyleSheet.create({
   menuSubtext: { fontSize: 13, fontWeight: '600', marginTop: 2 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 30, padding: 20, borderRadius: 20, backgroundColor: 'rgba(255, 71, 87, 0.05)' },
   logoutText: { marginLeft: 10, fontSize: 16, fontWeight: '700', color: COLORS.danger },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 15, padding: 20, borderRadius: 20, backgroundColor: 'rgba(255, 59, 48, 0.05)' },
+  deleteText: { marginLeft: 10, fontSize: 16, fontWeight: '700', color: '#FF3B30' },
   version: { textAlign: 'center', marginTop: 30, color: COLORS.placeholder, fontSize: 12, fontWeight: '500' }
 });
 
