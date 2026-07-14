@@ -24,6 +24,12 @@ export class UsersController {
     return this.usersService.update(req.user.id, updateDto);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Delete('profile')
+  deleteProfile(@Req() req) {
+    return this.usersService.deleteProfile(req.user.id);
+  }
+
   @Get(':id/portfolio')
   getPortfolio(@Param('id') id: string) {
     return this.usersService.getPortfolio(id);
