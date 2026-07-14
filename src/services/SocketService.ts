@@ -20,6 +20,7 @@ class SocketService {
   // Active listeners registry
   private readonly listeners = new Map<string, Set<Function>>();
   private lastJoinedSocketId: string | null = null;
+  private isConnectingFlag = false;
 
   constructor() {
     // Register standard core listeners
@@ -89,28 +90,26 @@ class SocketService {
             activeRole,
             socketId,
             connectSource: source,
-            url: socketUrl
+            url: socketUrl,
+            isConnecting: this.isConnectingFlag,
+            connected: this.socket?.connected || false
         }
     });
 
+    if (this.socket?.connected) {
+        logger.info('[WebSocket] already connected, ignoring connect() call', { source });
+        return;
+    }
+
+    if (this.isConnectingFlag) {
+        logger.info('[WebSocket] already connecting, ignoring parallel connect() call', { source });
+        return;
+    }
+
+    this.isConnectingFlag = true;
+
     if (this.socket) {
       if (this.currentUrl === socketUrl) {
-          const isForegroundRefresh = source === 'auth_sync' || source === 'auth_offline_fallback';
-
-          if (this.socket.connected && !isForegroundRefresh) {
-              logger.info('[WebSocket] already connected', {
-                  source: 'websocket',
-                  metadata: {
-                      userId,
-                      activeRole,
-                      socketId,
-                      connectSource: source,
-                      url: socketUrl
-                  }
-              });
-              return;
-          }
-
           logger.info('[WebSocket] socket exists, ensuring connection...', {
               source: 'websocket',
               metadata: {
@@ -119,15 +118,10 @@ class SocketService {
                   socketId,
                   connectSource: source,
                   url: socketUrl,
-                  isForegroundRefresh,
                   currentlyConnected: this.socket.connected
               }
           });
 
-          if (isForegroundRefresh) {
-              // Force disconnect to clear out any half-open TCP zombie states on app wake
-              this.socket.disconnect();
-          }
           this.socket.connect();
           return;
       }
@@ -149,13 +143,20 @@ class SocketService {
         transports: ['websocket'],
     });
 
+    this.socket.on('connect', () => {
+      logger.info('WEBSOCKET_CONNECTED_EVENT', { socketId: this.socket?.id, url: socketUrl });
+      this.isConnectingFlag = false;
+    });
+
     this.socket.on('disconnect', (reason) => {
       logger.warn('WEBSOCKET_DISCONNECTED', { reason, url: socketUrl });
       this.lastJoinedSocketId = null;
+      this.isConnectingFlag = false;
     });
 
     this.socket.on('connect_error', (err) => {
       logger.error('WEBSOCKET_CONNECT_ERROR', { error: err.message, url: socketUrl });
+      this.isConnectingFlag = false;
     });
 
     // Rebind all registered event listeners to the new socket instance
@@ -195,6 +196,7 @@ class SocketService {
       this.socket = null;
     }
     this.lastJoinedSocketId = null;
+    this.isConnectingFlag = false;
   }
 
   getSocket() {
