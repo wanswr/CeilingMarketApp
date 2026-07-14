@@ -297,8 +297,6 @@ class MapEngine {
   // --- Selectors ---
   getOrders = (myOnly: boolean = false) => {
       if (myOnly) return this.getOrdersArray(true);
-      if (this.lastClusteredOrders.length > 0) return this.lastClusteredOrders;
-      // Fallback for first render before any region change
       return this.recalculateClusteredOrders(mapViewportStore.getRegion());
   };
   getOrder = (id: string) => this.entityStore?.getOrder(id);

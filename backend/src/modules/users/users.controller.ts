@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Post, Body, UseGuards, Req, Param } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Delete, Body, UseGuards, Req, Param } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -33,5 +33,11 @@ export class UsersController {
         rating: newRating,
         completedOrders: user.completedOrders + 1
     });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('profile')
+  async deleteProfile(@Req() req) {
+    return this.usersService.deleteProfile(req.user.id);
   }
 }

@@ -226,7 +226,7 @@ const MapScreen = ({ navigation }: any) => {
             if (item.isCluster) {
               return (
                 <Marker
-                  key={item.id}
+                  key={`cluster_${item.id}_${item.count}`}
                   coordinate={coords}
                   onPress={() => {
                       mapRef.current?.animateToRegion({
@@ -245,7 +245,7 @@ const MapScreen = ({ navigation }: any) => {
 
             return (
               <Marker
-                key={item.id}
+                key={`${item.id}_${item.status}`}
                 coordinate={coords}
                 onPress={(e) => {
                   e.stopPropagation();

@@ -67,6 +67,7 @@ class ApiService {
   getProfile = () => this.api.get('users/profile');
   getUserProfile = (id: string) => this.api.get(`users/${id}`);
   updateProfile = (data: any) => this.api.patch('users/profile', data);
+  deleteProfile = () => this.api.delete('users/profile');
 
   // Auth
   login = (phone: string) => this.api.post('auth/login', { phone });
