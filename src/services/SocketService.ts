@@ -10,9 +10,9 @@ class SocketService {
   private socket: Socket | null = null;
   private currentUrl: string | null = null;
 
-  // Deduplication Map (eventId -> timestamp)
-  private readonly receivedEventsMap = new Map<string, number>();
-  private readonly EVENT_TTL = 10000; // 10 seconds TTL
+  // Deduplication Set
+  private readonly receivedEvents = new Set<string>();
+  private readonly MAX_RECEIVED_EVENTS = 1000;
 
   // Local mutations register to block self-echo events
   private readonly localMutations = new Map<string, number>();
@@ -20,13 +20,12 @@ class SocketService {
   // Active listeners registry
   private readonly listeners = new Map<string, Set<Function>>();
   private lastJoinedSocketId: string | null = null;
-  private isConnectingFlag = false;
 
   constructor() {
     // Register standard core listeners
     this.on('connect', () => {
       const currentUser = entityStore.getCurrentUser();
-      const userId = currentUser?.id || currentUser?.uid || 'anonymous';
+      const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
       const activeRole = currentUser?.role || 'none';
       const socketId = this.socket?.id || 'none';
 
@@ -51,7 +50,7 @@ class SocketService {
     });
 
     this.on('order.created', (order: any) => {
-      logger.info('ORDER_CREATED_RECEIVED', { orderId: order?.id, status: order?.status, lat: order?.latitude ?? order?.lat, lng: order?.longitude ?? order?.lng });
+      logger.info('WS_ORDER_CREATED', { orderId: order.id });
       requestRouter.metrics.websocketUpdates++;
       entityStore.setOrder(order, 'websocket');
       require('./MapEngine').mapEngine.triggerNotify();
@@ -79,7 +78,7 @@ class SocketService {
   connect(url: string, source: string = 'unknown') {
     const socketUrl = url.replace('/api/', '');
     const currentUser = entityStore.getCurrentUser();
-    const userId = currentUser?.id || currentUser?.uid || 'anonymous';
+    const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
     const activeRole = currentUser?.role || 'none';
     const socketId = this.socket?.id || 'none';
 
@@ -90,26 +89,28 @@ class SocketService {
             activeRole,
             socketId,
             connectSource: source,
-            url: socketUrl,
-            isConnecting: this.isConnectingFlag,
-            connected: this.socket?.connected || false
+            url: socketUrl
         }
     });
 
-    if (this.socket?.connected) {
-        logger.info('[WebSocket] already connected, ignoring connect() call', { source });
-        return;
-    }
-
-    if (this.isConnectingFlag) {
-        logger.info('[WebSocket] already connecting, ignoring parallel connect() call', { source });
-        return;
-    }
-
-    this.isConnectingFlag = true;
-
     if (this.socket) {
       if (this.currentUrl === socketUrl) {
+          const isForegroundRefresh = source === 'auth_sync' || source === 'auth_offline_fallback';
+
+          if (this.socket.connected && !isForegroundRefresh) {
+              logger.info('[WebSocket] already connected', {
+                  source: 'websocket',
+                  metadata: {
+                      userId,
+                      activeRole,
+                      socketId,
+                      connectSource: source,
+                      url: socketUrl
+                  }
+              });
+              return;
+          }
+
           logger.info('[WebSocket] socket exists, ensuring connection...', {
               source: 'websocket',
               metadata: {
@@ -118,10 +119,15 @@ class SocketService {
                   socketId,
                   connectSource: source,
                   url: socketUrl,
+                  isForegroundRefresh,
                   currentlyConnected: this.socket.connected
               }
           });
 
+          if (isForegroundRefresh) {
+              // Force disconnect to clear out any half-open TCP zombie states on app wake
+              this.socket.disconnect();
+          }
           this.socket.connect();
           return;
       }
@@ -143,20 +149,13 @@ class SocketService {
         transports: ['websocket'],
     });
 
-    this.socket.on('connect', () => {
-      logger.info('WEBSOCKET_CONNECTED_EVENT', { socketId: this.socket?.id, url: socketUrl });
-      this.isConnectingFlag = false;
-    });
-
     this.socket.on('disconnect', (reason) => {
       logger.warn('WEBSOCKET_DISCONNECTED', { reason, url: socketUrl });
       this.lastJoinedSocketId = null;
-      this.isConnectingFlag = false;
     });
 
     this.socket.on('connect_error', (err) => {
       logger.error('WEBSOCKET_CONNECT_ERROR', { error: err.message, url: socketUrl });
-      this.isConnectingFlag = false;
     });
 
     // Rebind all registered event listeners to the new socket instance
@@ -165,7 +164,7 @@ class SocketService {
 
   private joinPrivateRoom() {
       const currentUser = entityStore.getCurrentUser();
-      const myId = currentUser?.id || currentUser?.uid;
+      const myId = (currentUser as any)?.id || currentUser?.uid;
       const activeRole = currentUser?.role || 'none';
       const socketId = this.socket?.id || 'none';
 
@@ -196,7 +195,6 @@ class SocketService {
       this.socket = null;
     }
     this.lastJoinedSocketId = null;
-    this.isConnectingFlag = false;
   }
 
   getSocket() {
@@ -278,6 +276,19 @@ class SocketService {
       // Ensure we only have one physical socket.on event listener for this event type
       this.socket.off(event);
       this.socket.on(event, (payload: any) => {
+          // 1. Check event ID for deduplication
+          if (payload?.eventId) {
+              if (this.receivedEvents.has(payload.eventId)) {
+                  logger.debug('WS_EVENT_DEDUPLICATED', { eventId: payload.eventId, event });
+                  return;
+              }
+              this.receivedEvents.add(payload.eventId);
+              if (this.receivedEvents.size > this.MAX_RECEIVED_EVENTS) {
+                  const oldest = this.receivedEvents.values().next().value;
+                  if (oldest) this.receivedEvents.delete(oldest);
+              }
+          }
+
           // 2. Extract unwrapped business data if it conforms to our { event, eventId, data } standard envelope
           const data = (payload && payload.data !== undefined) ? payload.data : payload;
 
@@ -294,26 +305,6 @@ class SocketService {
               applicationId = data?.id || 'none';
               status = data?.status || 'none';
           }
-
-          // 1. Check event ID or fallback to deterministic composite key for TTL-based deduplication
-          const eventId = payload?.eventId || (event + '_' + orderId + '_' + status);
-
-          const now = Date.now();
-          this.receivedEventsMap.forEach((timestamp, id) => {
-              if (now - timestamp > this.EVENT_TTL) {
-                  this.receivedEventsMap.delete(id);
-              }
-          });
-
-          if (this.receivedEventsMap.has(eventId)) {
-              logger.info('EVENT_DUPLICATE_IGNORED', {
-                  eventId,
-                  orderId,
-                  eventType: event
-              });
-              return;
-          }
-          this.receivedEventsMap.set(eventId, now);
 
           if (this.isLocalMutationDuplicate(event, orderId, applicationId, status)) {
               logger.debug('WS_EVENT_SELF_ECHO_BLOCKED', {

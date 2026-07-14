@@ -306,31 +306,23 @@ export class OrdersService {
   }
 
   async completeWork(id: string, userId: string) {
-      return this.prisma.$transaction(async (tx) => {
-          const order = await tx.order.findUnique({ where: { id } });
-          if (!order) throw new NotFoundException();
-          if (order.executorId !== userId) throw new ForbiddenException();
+      const order = await this.prisma.order.findUnique({ where: { id } });
+      if (!order) throw new NotFoundException();
+      if (order.executorId !== userId) throw new ForbiddenException();
 
-          // Production Guard: must be IN_PROGRESS
-          if (order.status !== OrderStatus.IN_PROGRESS) {
-              throw new ConflictException(`Cannot complete work. Expected status IN_PROGRESS, found ${order.status}`);
-          }
+      // Production Guard: must be IN_PROGRESS
+      if (order.status !== OrderStatus.IN_PROGRESS) {
+          throw new ConflictException(`Cannot complete work. Expected status IN_PROGRESS, found ${order.status}`);
+      }
 
-          const result = await tx.order.update({
-              where: { id },
-              data: { status: OrderStatus.COMPLETED }
-          });
-
-          // Safely atomic increment completedOrders field for the executor
-          await tx.user.update({
-              where: { id: order.executorId },
-              data: { completedOrders: { increment: 1 } }
-          });
-
-          this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result.id, userId });
-          await this.broadcast('order.status.changed', result, userId);
-          return result;
+      const result = await this.prisma.order.update({
+          where: { id },
+          data: { status: OrderStatus.COMPLETED }
       });
+
+      this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result.id, userId });
+      await this.broadcast('order.status.changed', result, userId);
+      return result;
   }
 
   async transitionStatus(id: string, status: OrderStatus, userId: string) {

@@ -110,8 +110,6 @@ class MapEngine {
     const isMap = this.subscribers.has('MapScreen');
     const orders = this.getOrdersArray(!isMap);
 
-    logger.info('MAP_ENGINE_ORDER_UPDATED', { totalOrders: orders.length, isMapActive: isMap });
-
     this.subscribers.forEach((callback, source) => {
         if (source === 'MapScreen') {
             const region = mapViewportStore.getRegion();
@@ -225,22 +223,13 @@ class MapEngine {
   clusterOrders = (orders: Order[], latDelta: number) => this.geoClusterService?.clusterOrders(orders, latDelta) || [];
   getOrderCoords = (order: Order) => this.geoClusterService?.getOrderCoords(order);
 
-    syncUser = async (force: boolean = false) => {
+  syncUser = async (force: boolean = false) => {
     const res = await this.requestRouter.request('user:profile', () => this.apiService.getProfile(), force ? 0 : 30000);
     if (res && res.data) {
         this.entityStore.setUser({ ...res.data, isMe: true });
         return res.data;
     }
     return this.entityStore.getCurrentUser();
-  }
-
-  getExternalUser = async (id: string) => {
-    const res = await this.requestRouter.request(`user:${id}`, () => this.apiService.getUserProfile(id), 15000);
-    if (res && res.data) {
-        this.entityStore.setUser(res.data);
-        return res.data;
-    }
-    return this.entityStore.getUser(id);
   }
 
   syncOrder = async (orderId: string, force: boolean = false) => {

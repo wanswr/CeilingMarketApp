@@ -28,7 +28,6 @@ export interface Review {
 }
 
 export interface UserProfile {
-  id: string;
   uid: string;
   name: string;
   phone: string;

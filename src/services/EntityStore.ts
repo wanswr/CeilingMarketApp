@@ -126,10 +126,6 @@ class EntityStore {
     this.ordersById.set(order.id, mergedOrder);
     this.updateOrderInGrid(mergedOrder);
 
-    if (source === 'websocket') {
-        logger.info('ENTITY_STORE_ORDER_ADDED', { orderId: order.id, status: order.status });
-    }
-
     const myId = this.currentUserId;
     const isMine = !!(myId && (mergedOrder.employerId === myId || mergedOrder.executorId === myId || mergedOrder.applications?.some((a: any) => a.executorId === myId)));
 
@@ -186,9 +182,9 @@ class EntityStore {
   }
 
   setUser = (user: UserProfile) => {
-    const id = user.id || user.uid;
+    const id = (user as any).id || user.uid;
     if (!id) return;
-    const normalizedUser: UserProfile = { ...user, id, uid: id };
+    const normalizedUser = { ...user, id, uid: id };
     if ((user as any).isMe) this.setCurrentUserId(id);
     this.usersById.set(id, normalizedUser);
   }

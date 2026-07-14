@@ -101,8 +101,8 @@ model Order {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  employer          User           @relation("EmployerOrders", fields: [employerId], references: [id], onDelete: Cascade)
-  executor          User?          @relation("ExecutorOrders", fields: [executorId], references: [id], onDelete: SetNull)
+  employer          User           @relation("EmployerOrders", fields: [employerId], references: [id])
+  executor          User?          @relation("ExecutorOrders", fields: [executorId], references: [id])
   applications      Application[]
   chats             Chat[]
   reviews           Review[]
@@ -145,8 +145,8 @@ model Chat {
   updatedAt         DateTime       @updatedAt
 
   order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  employer          User           @relation("EmployerChats", fields: [employerId], references: [id], onDelete: Cascade)
-  executor          User           @relation("ExecutorChats", fields: [executorId], references: [id], onDelete: Cascade)
+  employer          User           @relation("EmployerChats", fields: [employerId], references: [id])
+  executor          User           @relation("ExecutorChats", fields: [executorId], references: [id])
   messages          Message[]
 
   @@unique([orderId, executorId])
@@ -161,7 +161,7 @@ model Message {
   createdAt         DateTime       @default(now())
 
   chat              Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  sender            User           @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  sender            User           @relation(fields: [senderId], references: [id])
 }
 
 model Application {
@@ -200,8 +200,8 @@ model Review {
   createdAt         DateTime       @default(now())
 
   order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  author            User           @relation("AuthoredReviews", fields: [authorId], references: [id], onDelete: Cascade)
-  target            User           @relation("TargetedReviews", fields: [targetId], references: [id], onDelete: Cascade)
+  author            User           @relation("AuthoredReviews", fields: [authorId], references: [id])
+  target            User           @relation("TargetedReviews", fields: [targetId], references: [id])
 
   @@unique([orderId, authorId])
 }
