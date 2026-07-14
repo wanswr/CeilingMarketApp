@@ -116,6 +116,15 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     };
   }, [chatId, activeChatId]);
 
+  useEffect(() => {
+    if (messages.length > 0) {
+        const timer = setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+        return () => clearTimeout(timer);
+    }
+  }, [messages.length]);
+
   const sendMessage = async () => {
     if (inputText.trim() === '' || !activeChatId) return;
 
@@ -130,7 +139,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isMe = item.senderId === myId;
+    const isMe = item.senderId === myId || (currentUser && (item.senderId === currentUser.id || item.senderId === currentUser.uid));
     const time = new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     return (
