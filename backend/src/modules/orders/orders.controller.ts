@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req, UsePipes, ValidationPipe } from '@nestjs/common';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { GetOrdersSpatialDto } from './dto/get-orders-spatial.dto';
@@ -54,7 +55,8 @@ export class OrdersController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDto: any, @Req() req: any) {
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  update(@Param('id') id: string, @Body() updateDto: UpdateOrderDto, @Req() req: any) {
     return this.ordersService.update(id, updateDto, req.user.id);
   }
 

@@ -165,7 +165,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             if (submitting) return;
             setSubmitting(orderId);
             try {
-              await mapEngine.updateOrder(orderId, { status: 'CANCELLED', deletedAt: new Date().toISOString() });
+              await mapEngine.updateOrder(orderId, { status: 'CANCELLED' });
             } catch (e) {
               Alert.alert('Ошибка', 'Не удалось удалить заказ');
             } finally {

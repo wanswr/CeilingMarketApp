@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrderStatus, Prisma, Role } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
@@ -143,7 +144,7 @@ export class OrdersService {
     });
   }
 
-  async update(id: string, dto: any, userId: string) {
+  async update(id: string, dto: UpdateOrderDto, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException();
     if (order.employerId !== userId) throw new ForbiddenException();
