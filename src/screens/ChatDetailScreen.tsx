@@ -130,7 +130,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isMe = item.senderId === myId;
+    const isMe = item.senderId === myId || item.senderId === currentUser?.id || item.senderId === currentUser?.uid;
     const time = new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     return (

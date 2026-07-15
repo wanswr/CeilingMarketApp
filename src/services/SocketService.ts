@@ -10,9 +10,7 @@ class SocketService {
   private socket: Socket | null = null;
   private currentUrl: string | null = null;
 
-  // Deduplication Set
-  private readonly receivedEvents = new Set<string>();
-  private readonly MAX_RECEIVED_EVENTS = 1000;
+
 
   // Local mutations register to block self-echo events
   private readonly localMutations = new Map<string, number>();
@@ -20,6 +18,10 @@ class SocketService {
   // Active listeners registry
   private readonly listeners = new Map<string, Set<Function>>();
   private lastJoinedSocketId: string | null = null;
+  private isConnectingFlag = false;
+  // Deduplication Map (eventId -> timestamp)
+  private readonly receivedEventsMap = new Map<string, number>();
+  private readonly EVENT_TTL = 10000; // 10 seconds TTL
 
   constructor() {
     // Register standard core listeners
@@ -50,7 +52,7 @@ class SocketService {
     });
 
     this.on('order.created', (order: any) => {
-      logger.info('WS_ORDER_CREATED', { orderId: order.id });
+      logger.info('ORDER_CREATED_RECEIVED', { orderId: order?.id, status: order?.status, lat: order?.latitude ?? order?.lat, lng: order?.longitude ?? order?.lng });
       requestRouter.metrics.websocketUpdates++;
       entityStore.setOrder(order, 'websocket');
       require('./MapEngine').mapEngine.triggerNotify();
@@ -195,6 +197,7 @@ class SocketService {
       this.socket = null;
     }
     this.lastJoinedSocketId = null;
+    this.isConnectingFlag = false;
   }
 
   getSocket() {
@@ -276,19 +279,6 @@ class SocketService {
       // Ensure we only have one physical socket.on event listener for this event type
       this.socket.off(event);
       this.socket.on(event, (payload: any) => {
-          // 1. Check event ID for deduplication
-          if (payload?.eventId) {
-              if (this.receivedEvents.has(payload.eventId)) {
-                  logger.debug('WS_EVENT_DEDUPLICATED', { eventId: payload.eventId, event });
-                  return;
-              }
-              this.receivedEvents.add(payload.eventId);
-              if (this.receivedEvents.size > this.MAX_RECEIVED_EVENTS) {
-                  const oldest = this.receivedEvents.values().next().value;
-                  if (oldest) this.receivedEvents.delete(oldest);
-              }
-          }
-
           // 2. Extract unwrapped business data if it conforms to our { event, eventId, data } standard envelope
           const data = (payload && payload.data !== undefined) ? payload.data : payload;
 
@@ -305,6 +295,26 @@ class SocketService {
               applicationId = data?.id || 'none';
               status = data?.status || 'none';
           }
+
+          // 1. Check event ID or fallback to deterministic composite key for TTL-based deduplication
+          const eventId = payload?.eventId || (event + '_' + orderId + '_' + status);
+
+          const now = Date.now();
+          this.receivedEventsMap.forEach((timestamp, id) => {
+              if (now - timestamp > this.EVENT_TTL) {
+                  this.receivedEventsMap.delete(id);
+              }
+          });
+
+          if (this.receivedEventsMap.has(eventId)) {
+              logger.info('EVENT_DUPLICATE_IGNORED', {
+                  eventId,
+                  orderId,
+                  eventType: event
+              });
+              return;
+          }
+          this.receivedEventsMap.set(eventId, now);
 
           if (this.isLocalMutationDuplicate(event, orderId, applicationId, status)) {
               logger.debug('WS_EVENT_SELF_ECHO_BLOCKED', {
