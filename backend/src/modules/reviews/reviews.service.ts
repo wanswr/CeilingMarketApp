@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 
@@ -52,31 +52,39 @@ export class ReviewsService {
 
     const targetId = isEmployer ? order.executorId! : order.employerId;
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const review = await tx.review.create({
-        data: {
-          orderId: dto.orderId,
-          authorId: userId,
-          targetId: targetId,
-          rating: dto.rating,
-          comment: dto.comment,
+    let result;
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        const review = await tx.review.create({
+          data: {
+            orderId: dto.orderId,
+            authorId: userId,
+            targetId: targetId,
+            rating: dto.rating,
+            comment: dto.comment,
+          }
+        });
+
+        const aggregate = await tx.review.aggregate({
+          where: { targetId: targetId },
+          _avg: { rating: true }
+        });
+
+        await tx.user.update({
+          where: { id: targetId },
+          data: {
+            rating: aggregate._avg.rating || 5.0,
+          }
+        });
+
+        return { review, order };
+      });
+    } catch (error: any) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            throw new ConflictException('You have already left a review for this order');
         }
-      });
-
-      const aggregate = await tx.review.aggregate({
-        where: { targetId: targetId },
-        _avg: { rating: true }
-      });
-
-      await tx.user.update({
-        where: { id: targetId },
-        data: {
-          rating: aggregate._avg.rating || 5.0,
-        }
-      });
-
-      return { review, order };
-    });
+        throw error;
+    }
 
     this.logger.info('REVIEW_CREATED', `Review created successfully`, {
         userId,

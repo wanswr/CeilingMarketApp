@@ -17,6 +17,28 @@ export class UsersService {
     return user;
   }
 
+  async findPublicProfile(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        avatar: true,
+        rating: true,
+        experience: true,
+        completedOrders: true,
+        ordersCount: true,
+        instagram: true,
+        telegram: true,
+        isVerified: true,
+        portfolioItems: true,
+        subscription: true,
+      }
+    });
+    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
+    return user;
+  }
+
   async update(id: string, dto: any) {
     // Whitelist only safe, user-configurable profile fields to prevent Mass Assignment vulnerability (P0)
     const allowedFields = ['name', 'avatar', 'experience', 'telegram', 'instagram', 'portfolio', 'description'];

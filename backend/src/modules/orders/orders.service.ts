@@ -107,8 +107,8 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
-        employer: true,
-        executor: true,
+        employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+        executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
         applications: {
           include: {
             executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
