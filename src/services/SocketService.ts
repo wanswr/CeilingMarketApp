@@ -99,6 +99,20 @@ class SocketService {
       if (this.currentUrl === socketUrl) {
           const isForegroundRefresh = source === 'auth_sync' || source === 'auth_offline_fallback';
 
+          if (this.socket.connected && isForegroundRefresh) {
+              logger.info('[WebSocket] already connected on foreground refresh, skipping reconnect', {
+                  source: 'websocket',
+                  metadata: {
+                      userId,
+                      activeRole,
+                      socketId,
+                      connectSource: source,
+                      url: socketUrl
+                  }
+              });
+              return;
+          }
+
           if (this.socket.connected && !isForegroundRefresh) {
               logger.info('[WebSocket] already connected', {
                   source: 'websocket',

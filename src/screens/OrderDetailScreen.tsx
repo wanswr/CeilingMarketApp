@@ -11,6 +11,9 @@ import { formatDate } from '../utils/date'
 import { apiService } from '../services/ApiService'
 import { logger } from '../services/logger/LoggerService'
 
+const activeApplications = new Set();
+const activeReviews = new Set();
+
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
@@ -109,6 +112,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const submitOffer = async () => {
     if (submitting) return;
+    if (activeApplications.has(orderId)) return;
     const numericPrice = offerPrice ? parseFloat(offerPrice.replace(/\s/g, '')) : undefined;
     if (offerPrice !== '' && isNaN(numericPrice as number)) {
         Alert.alert('Ошибка', 'Введите корректное число');
@@ -116,6 +120,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     }
 
     setShowPriceModal(false);
+    if (activeApplications.has(orderId)) return;
+    activeApplications.add(orderId);
     const aid = logger.startAction('SUBMIT_APPLICATION', { orderId, price: numericPrice });
     setSubmitting(true);
     try {
@@ -129,6 +135,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
     } finally {
         setSubmitting(false);
+        activeApplications.delete(orderId);
     }
   };
 
@@ -252,6 +259,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const submitReview = async () => {
       if (rating === 0 || submitting) return;
+      if (activeReviews.has(orderId)) return;
       const myReview = order?.reviews?.find(r => normalizeId(r.authorId) === nid);
       if (myReview) {
           Alert.alert('Инфо', 'Вы уже оставили отзыв');
@@ -259,6 +267,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           return;
       }
 
+      if (activeReviews.has(orderId)) return;
+      activeReviews.add(orderId);
       logger.action('SUBMIT_REVIEW', 'UI', { orderId, rating });
       const aid = logger.startAction('SUBMIT_REVIEW', { orderId, rating });
       const statusBefore = order?.status;
@@ -307,6 +317,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           }
       } finally {
           setSubmitting(false);
+          activeReviews.delete(orderId);
       }
   }
 
