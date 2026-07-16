@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Req, Patch } from '@nestjs/common';
 import { ChatsService } from './chats.service';
+import { GetOrCreateChatDto } from './dto/get-or-create-chat.dto';
+import { SendMessageDto } from './dto/send-message.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('chats')
@@ -13,7 +15,7 @@ export class ChatsController {
   }
 
   @Post()
-  async getOrCreateChat(@Body() body: { orderId: string; executorId: string }, @Req() req: any) {
+  async getOrCreateChat(@Body() body: GetOrCreateChatDto, @Req() req: any) {
     return this.chatsService.getOrCreateChat(body.orderId, body.executorId, req.user.id);
   }
 
@@ -23,7 +25,7 @@ export class ChatsController {
   }
 
   @Post(':id/messages')
-  async sendMessage(@Param('id') id: string, @Body() body: { text: string }, @Req() req: any) {
+  async sendMessage(@Param('id') id: string, @Body() body: SendMessageDto, @Req() req: any) {
     return this.chatsService.sendMessage(id, req.user.id, body.text);
   }
 

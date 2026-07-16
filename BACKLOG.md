@@ -17,6 +17,9 @@ This backlog consolidates all architectural and engineering items across fronten
 | **Geo / Scale** | **Uber H3 Spatial Indexing & PostGIS Integration**<br>Migrate to PostGIS and H3 hierarchical spatial indexing for unlimited scale. | P2 | **PLANNED** | Phase 3 (High Scale) | `app.gateway.ts`, `MapEngine.ts` |
 | **Render** | **Render Optimization (Memoization)**<br>Shallow comparison on MapScreen markers to prevent redundant re-renders. | P2 | **IMPLEMENTED** | Phase 1 (Launch) | `MapScreen.tsx`, `OrderCard.tsx` |
 | **Refactor** | **Feature-Sliced Design (FSD) Refactoring**<br>Restructure source folder into features, entities, and shared boundaries. | P3 | **PLANNED** | Phase 2 (Growth) | Global structures |
+| **Billing** | **Subscription Payment Gate**<br>Implement payment provider webhook verification gate before activating sub. | P1 | **PLANNED** | Phase 2 (Growth) | `SubscriptionController.ts` |
+| **Auth / Realtime** | **WebSocket JWT Handshake Auth**<br>Extract and decode user identity from WebSocket handshake metadata instead of trusting raw messages. | P1 | **PLANNED** | Phase 2 (Growth) | `app.gateway.ts` |
+| **Diagnostics** | **MapEngine triggerNotify Debouncing Analysis**<br>Analyze and trace double-trigger events on map updates to prevent redundant rendering. | P2 | **PLANNED** | Phase 1 (Launch) | `MapEngine.ts` |
 
 ---
 

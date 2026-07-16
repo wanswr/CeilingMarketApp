@@ -1,6 +1,9 @@
-import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req, UsePipes, ValidationPipe } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
+import { ApplyOrderDto } from './dto/apply-order.dto';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { GetOrdersSpatialDto } from './dto/get-orders-spatial.dto';
 import { FindAllOrdersDto } from './dto/find-all-orders.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -19,7 +22,6 @@ export class OrdersController {
   findAll(@Query() query: FindAllOrdersDto) {
     return this.ordersService.findAll(query as any);
   }
-
 
   @Get('spatial')
   getSpatialOrders(@Query() query: GetOrdersSpatialDto) {
@@ -54,7 +56,8 @@ export class OrdersController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDto: any, @Req() req: any) {
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  update(@Param('id') id: string, @Body() updateDto: UpdateOrderDto, @Req() req: any) {
     return this.ordersService.update(id, updateDto, req.user.id);
   }
 
@@ -68,10 +71,10 @@ export class OrdersController {
   @Post(':id/apply')
   apply(
     @Param('id') id: string,
-    @Body('price') price: number,
+    @Body() dto: ApplyOrderDto,
     @Req() req: any
   ) {
-    return this.ordersService.apply(id, req.user.id, price);
+    return this.ordersService.apply(id, req.user.id, dto.price);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -102,9 +105,9 @@ export class OrdersController {
   @Patch(':id/status')
   updateStatus(
     @Param('id') id: string,
-    @Body('status') status: string,
+    @Body() dto: UpdateOrderStatusDto,
     @Req() req: any
   ) {
-    return this.ordersService.transitionStatus(id, status as any, req.user.id);
+    return this.ordersService.transitionStatus(id, dto.status, req.user.id);
   }
 }

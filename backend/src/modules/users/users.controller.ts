@@ -2,6 +2,7 @@ import { Controller, Get, Patch, Body, UseGuards, Req, Param, Post, Delete } fro
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AddPortfolioItemDto } from './dto/add-portfolio-item.dto';
 
 @Controller('users')
 export class UsersController {
@@ -37,7 +38,7 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Post('profile/portfolio')
-  addPortfolioItem(@Req() req, @Body() dto: any) {
+  addPortfolioItem(@Req() req, @Body() dto: AddPortfolioItemDto) {
     return this.usersService.addPortfolioItem(req.user.id, dto);
   }
 
