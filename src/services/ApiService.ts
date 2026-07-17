@@ -5,7 +5,10 @@ import { logger } from './logger/LoggerService';
 /**
  * ApiService V11: Hardened connection logic with explicit host logging.
  */
-const DEFAULT_API_URL = 'http://192.168.1.124:3000/api/';
+// @ts-ignore
+import { API_URL } from '@env';
+
+const DEFAULT_API_URL = API_URL || 'https://api.ceilingsapp.com/api/';
 
 class ApiService {
   public api: AxiosInstance;

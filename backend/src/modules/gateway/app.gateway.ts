@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { LoggerService } from '../logger/logger.service';
+import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @WebSocketGateway({
@@ -28,8 +29,40 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  handleConnection(client: Socket) {
-    this.logger.info('WS_CONNECTED', `Client connected: ${client.id}`);
+  private extractToken(client: Socket): string | null {
+    if (client.handshake.auth?.token) {
+        const token = client.handshake.auth.token;
+        return token.startsWith('Bearer ') ? token.slice(7) : token;
+    }
+    if (client.handshake.headers?.authorization) {
+        const token = client.handshake.headers.authorization;
+        return token.startsWith('Bearer ') ? token.slice(7) : token;
+    }
+    if (client.handshake.query?.token) {
+        return client.handshake.query.token as string;
+    }
+    return null;
+  }
+
+  async handleConnection(client: Socket) {
+    try {
+      const token = this.extractToken(client);
+      if (!token) {
+        this.logger.warn('WS_AUTH_FAILED', `No token provided for connection: ${client.id}`);
+        client.disconnect();
+        return;
+      }
+
+      const secret = process.env.JWT_SECRET || 'fallback-secret-for-dev';
+      const decoded = jwt.verify(token, secret);
+      (client as any).user = decoded;
+      (client as any).userId = (decoded as any).id;
+
+      this.logger.info('WS_CONNECTED', `Client authenticated: ${client.id}, userId: ${(decoded as any).id}`);
+    } catch (err) {
+      this.logger.warn('WS_AUTH_FAILED', `Token verification failed for connection ${client.id}: ${(err as any).message}`);
+      client.disconnect();
+    }
   }
 
   handleDisconnect(client: Socket) {
@@ -43,9 +76,13 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('auth.join')
   handleJoinPrivate(@MessageBody() userId: string, @ConnectedSocket() client: Socket) {
-    (client as any).userId = userId;
-    client.join(`user:${userId}`);
-    this.logger.debug('WS_JOIN_PRIVATE', `Client joined private room`, { userId });
+    const authUserId = (client as any).userId;
+    if (!authUserId) {
+        this.logger.warn('WS_JOIN_PRIVATE_DENIED', `Unauthorized private room join attempt`, { socketId: client.id });
+        return;
+    }
+    client.join(`user:${authUserId}`);
+    this.logger.debug('WS_JOIN_PRIVATE', `Client joined private room`, { userId: authUserId });
   }
 
   @SubscribeMessage('geo.join')
@@ -91,8 +128,29 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('chat.join')
-  handleJoinChat(@MessageBody() chatId: string, @ConnectedSocket() client: Socket) {
+  async handleJoinChat(@MessageBody() chatId: string, @ConnectedSocket() client: Socket) {
+    const userId = (client as any).userId;
+    if (!userId) {
+        this.logger.warn('WS_JOIN_CHAT_DENIED', `Unauthorized chat join attempt`, { socketId: client.id });
+        return;
+    }
+
+    const chat = await this.prisma.chat.findUnique({
+        where: { id: chatId }
+    });
+
+    if (!chat) {
+        this.logger.warn('WS_JOIN_CHAT_NOT_FOUND', `Chat not found`, { chatId, userId });
+        return;
+    }
+
+    if (chat.employerId !== userId && chat.executorId !== userId) {
+        this.logger.warn('WS_JOIN_CHAT_FORBIDDEN', `User ${userId} is not part of chat ${chatId}`, { chatId, userId });
+        return;
+    }
+
     client.join(`chat:${chatId}`);
+    this.logger.debug('WS_JOIN_CHAT', `Client joined chat room`, { chatId, userId });
   }
 
   @SubscribeMessage('chat.leave')

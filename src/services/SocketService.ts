@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client'
+import * as SecureStore from 'expo-secure-store';
 import { entityStore } from './EntityStore'
 import { requestRouter } from './RequestRouter'
 import { logger } from './logger/LoggerService'
@@ -77,7 +78,7 @@ class SocketService {
     });
   }
 
-  connect(url: string, source: string = 'unknown') {
+  async connect(url: string, source: string = 'unknown') {
     const socketUrl = url.replace('/api/', '');
     const currentUser = entityStore.getCurrentUser();
     const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
@@ -156,6 +157,8 @@ class SocketService {
 
     logger.info('[WebSocket] Initializing new connection...', { url: socketUrl });
 
+    const token = await SecureStore.getItemAsync('userToken');
+
     this.socket = io(socketUrl, {
         reconnection: true,
         reconnectionAttempts: Infinity,
@@ -163,6 +166,9 @@ class SocketService {
         reconnectionDelayMax: 10000,
         timeout: 20000,
         transports: ['websocket'],
+        auth: {
+            token: token
+        }
     });
 
     this.socket.on('disconnect', (reason) => {

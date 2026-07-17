@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
@@ -15,6 +15,24 @@ export class ChatsService {
   }
 
   async getOrCreateChat(orderId: string, executorId: string, employerId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { applications: true }
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.employerId !== employerId) {
+      throw new ForbiddenException('You are not the owner of this order');
+    }
+
+    const hasApplied = order.applications.some(app => app.executorId === executorId);
+    if (!hasApplied) {
+      throw new ConflictException('Executor has not applied to this order');
+    }
+
     const chat = await this.prisma.chat.upsert({
       where: {
         orderId_executorId: { orderId, executorId }
@@ -32,6 +50,11 @@ export class ChatsService {
         executor: { select: { id: true, name: true, avatar: true } },
       }
     });
+
+    if (chat.employerId !== employerId && chat.executorId !== employerId) {
+      chat.messages = [];
+    }
+
     this.logger.info('CHAT_CREATED', `Chat initialized for order ${orderId}`, { orderId, userId: employerId });
     return chat;
   }

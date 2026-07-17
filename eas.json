@@ -8,17 +8,20 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
+        "API_URL": "http://192.168.1.124:3000/api/"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
+        "API_URL": "https://preview-api.ceilingsapp.com/api/"
       }
     },
     "production": {
       "autoIncrement": true,
       "distribution": "store",
       "env": {
+        "API_URL": "https://api.ceilingsapp.com/api/"
       }
     }
   }
