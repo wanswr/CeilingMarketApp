@@ -53,7 +53,12 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const secret = process.env.JWT_SECRET || 'fallback-secret-for-dev';
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        this.logger.warn('WS_AUTH_FAILED', `JWT_SECRET not configured, rejecting connection: ${client.id}`);
+        client.disconnect();
+        return;
+      }
       const decoded = jwt.verify(token, secret);
       (client as any).user = decoded;
       (client as any).userId = (decoded as any).id;

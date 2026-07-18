@@ -5,9 +5,16 @@ import { LoggingInterceptor } from './modules/logger/logging.interceptor';
 import { LoggerService } from './modules/logger/logger.service';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  (app as any).useBodyParser('json', { limit: '2mb' });
+
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not set. Refusing to start.');
+  }
 
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
@@ -35,6 +42,7 @@ async function bootstrap() {
   });
   const logger = await app.resolve(LoggerService);
   app.useGlobalInterceptors(new LoggingInterceptor(logger));
+  app.useGlobalFilters(new AllExceptionsFilter(logger));
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
