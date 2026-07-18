@@ -8,7 +8,7 @@ import { logger } from './logger/LoggerService';
 // @ts-ignore
 import { API_URL } from '@env';
 
-const DEFAULT_API_URL = API_URL || 'https://api.ceilingsapp.com/api/';
+const DEFAULT_API_URL = API_URL || (__DEV__ ? 'http://192.168.1.124:3000/api/' : 'https://api.ceilingsapp.com/api/');
 
 class ApiService {
   public api: AxiosInstance;
