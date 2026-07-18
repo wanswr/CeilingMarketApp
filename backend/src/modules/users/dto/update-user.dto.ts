@@ -1,6 +1,9 @@
-import { IsString, IsOptional, IsInt, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsInt, IsArray, IsEnum } from 'class-validator';
 
 export class UpdateUserDto {
+  @IsOptional()
+  @IsEnum(['WORKER', 'EMPLOYER'])
+  role?: 'WORKER' | 'EMPLOYER';
   @IsString()
   @IsOptional()
   name?: string;

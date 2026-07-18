@@ -50,6 +50,15 @@ export class UsersService {
         }
     }
 
+    if (dto.role !== undefined) {
+      const currentUser = await this.prisma.user.findUnique({ where: { id } });
+      if (!currentUser) throw new NotFoundException(`User with ID ${id} not found`);
+      if (currentUser.role) {
+        throw new ForbiddenException('Role is already set and cannot be changed');
+      }
+      filteredDto.role = dto.role;
+    }
+
     try {
         return await this.prisma.user.update({
           where: { id },

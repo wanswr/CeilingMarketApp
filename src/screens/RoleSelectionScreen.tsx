@@ -15,8 +15,18 @@ const RoleSelectionScreen = ({ navigation }: any) => {
       const data = await mapEngine.updateProfile({ role });
       updateUser(data);
       // navigation.replace('MainTabs') is not needed, useAuth re-renders Navigation
-    } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось сохранить выбор роли');
+    } catch (error: any) {
+      if (error.response?.status === 403) {
+        Alert.alert('Инфо', 'Роль уже была установлена ранее');
+        try {
+          const freshProfile = await mapEngine.syncUser(true);
+          updateUser(freshProfile);
+        } catch (e) {
+          // fallback ignore
+        }
+      } else {
+        Alert.alert('Ошибка', 'Не удалось сохранить выбор роли');
+      }
     } finally {
       setLoading(false);
     }
