@@ -81,4 +81,119 @@ describe('UsersService', () => {
       expect(mockPrismaService.user.update).not.toHaveBeenCalled();
     });
   });
+
+  describe('deleteProfile', () => {
+    it('should anonymize user fields and set deletedAt instead of physically deleting', async () => {
+      const userId = 'user-123';
+      const user = { id: userId, deletedAt: null };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+      mockPrismaService.user.update.mockResolvedValue({ id: userId });
+
+      const result = await service.deleteProfile(userId);
+
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({ where: { id: userId } });
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: userId },
+        data: {
+          name: 'Удалённый пользователь',
+          avatar: null,
+          phone: `deleted_${userId}`,
+          instagram: null,
+          telegram: null,
+          pushToken: null,
+          isVerified: false,
+          phoneVerified: false,
+          deletedAt: expect.any(Date),
+        },
+      });
+      expect(result).toEqual({ success: true });
+    });
+
+    it('should throw NotFoundException if user does not exist', async () => {
+      const userId = 'non-existent-user';
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.deleteProfile(userId)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException if user is already deleted', async () => {
+      const userId = 'deleted-user';
+      const user = { id: userId, deletedAt: new Date() };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+
+      await expect(service.deleteProfile(userId)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findPublicProfile', () => {
+    it('should return profile if user is not deleted', async () => {
+      const userId = 'user-456';
+      const user = {
+        id: userId,
+        name: 'John Doe',
+        avatar: 'avatar.png',
+        rating: 5,
+        experience: 2,
+        completedOrders: 10,
+        ordersCount: 15,
+        instagram: null,
+        telegram: null,
+        isVerified: true,
+        portfolioItems: [],
+        subscription: null,
+        deletedAt: null,
+      };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+
+      const result = await service.findPublicProfile(userId);
+
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          avatar: true,
+          rating: true,
+          experience: true,
+          completedOrders: true,
+          ordersCount: true,
+          instagram: true,
+          telegram: true,
+          isVerified: true,
+          portfolioItems: true,
+          subscription: true,
+          deletedAt: true,
+        },
+      });
+      expect(result).toEqual({
+        id: userId,
+        name: 'John Doe',
+        avatar: 'avatar.png',
+        rating: 5,
+        experience: 2,
+        completedOrders: 10,
+        ordersCount: 15,
+        instagram: null,
+        telegram: null,
+        isVerified: true,
+        portfolioItems: [],
+        subscription: null,
+      });
+    });
+
+    it('should throw NotFoundException if user has deletedAt set', async () => {
+      const userId = 'deleted-user-789';
+      const user = {
+        id: userId,
+        deletedAt: new Date(),
+      };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+
+      await expect(service.findPublicProfile(userId)).rejects.toThrow(NotFoundException);
+    });
+  });
 });

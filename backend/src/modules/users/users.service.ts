@@ -33,10 +33,12 @@ export class UsersService {
         isVerified: true,
         portfolioItems: true,
         subscription: true,
+        deletedAt: true,
       }
     });
-    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
-    return user;
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
+    const { deletedAt, ...publicProfile } = user;
+    return publicProfile;
   }
 
   async update(id: string, dto: any) {
@@ -106,16 +108,23 @@ export class UsersService {
   }
 
   async deleteProfile(id: string) {
-    try {
-        await this.prisma.user.delete({
-          where: { id },
-        });
-        return { success: true };
-    } catch (error: any) {
-        if (error.code === 'P2025') {
-            throw new NotFoundException(`User with ID ${id} not found`);
-        }
-        throw error;
-    }
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        name: 'Удалённый пользователь',
+        avatar: null,
+        phone: `deleted_${id}`,
+        instagram: null,
+        telegram: null,
+        pushToken: null,
+        isVerified: false,
+        phoneVerified: false,
+        deletedAt: new Date(),
+      },
+    });
+    return { success: true };
   }
 }
