@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import { LoggingInterceptor } from './modules/logger/logging.interceptor';
 import { LoggerService } from './modules/logger/logger.service';
@@ -9,6 +10,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(helmet());
 
   (app as any).useBodyParser('json', { limit: '2mb' });
 

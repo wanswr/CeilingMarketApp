@@ -96,6 +96,7 @@ export class OrdersService {
 
     return this.prisma.order.findMany({
       where,
+      take: 200,
       include: {
         employer: { select: { id: true, name: true, rating: true, avatar: true } }
       },
@@ -103,21 +104,26 @@ export class OrdersService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, requesterId?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
         employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
         executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
-        applications: {
-          include: {
-            executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
-          }
-        },
         reviews: true
       }
     });
     if (!order) throw new NotFoundException();
+
+    if (requesterId && requesterId === order.employerId) {
+      const applications = await this.prisma.application.findMany({
+        where: { orderId: id },
+        include: {
+          executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+        }
+      });
+      return { ...order, applications };
+    }
     return order;
   }
 

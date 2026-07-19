@@ -12,9 +12,26 @@ import { LoggerService } from '../logger/logger.service';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../../prisma/prisma.service';
 
+const getAllowedOrigins = (): string[] => {
+  const allowedOriginsStr = process.env.ALLOWED_ORIGINS;
+  const defaults = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:8081',
+    'http://127.0.0.1:8081',
+    'http://localhost:19000',
+    'http://127.0.0.1:19000',
+  ];
+  if (allowedOriginsStr) {
+    return allowedOriginsStr.split(',').map(o => o.trim());
+  }
+  return defaults;
+};
+
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: getAllowedOrigins(),
+    credentials: true,
   },
 })
 export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -95,6 +112,12 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // V11: Clear old geo rooms if requested to prevent room accumulation
     if (data.clear) {
         this.leaveAllGeoRooms(client);
+    }
+
+    const existingSession = this.geoJoinCounters.get(client.id);
+    if (existingSession && existingSession.count > 50) {
+      this.logger.warn('WS_GEO_FLOOD_BLOCKED', `Too many geo.join calls`, { socketId: client.id });
+      return;
     }
 
     const room = `geo:${Math.floor(data.lat * 10)}:${Math.floor(data.lng * 10)}`;

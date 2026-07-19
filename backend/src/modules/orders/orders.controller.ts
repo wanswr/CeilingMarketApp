@@ -7,6 +7,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { GetOrdersSpatialDto } from './dto/get-orders-spatial.dto';
 import { FindAllOrdersDto } from './dto/find-all-orders.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('orders')
 export class OrdersController {
@@ -18,11 +19,13 @@ export class OrdersController {
     return this.ordersService.findMyOrders(req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
   findAll(@Query() query: FindAllOrdersDto) {
     return this.ordersService.findAll(query as any);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('spatial')
   getSpatialOrders(@Query() query: GetOrdersSpatialDto) {
     return this.ordersService.findSpatial({
@@ -44,14 +47,16 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post()
   create(@Body() createOrderDto: CreateOrderDto, @Req() req: any) {
     return this.ordersService.create(createOrderDto, req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.ordersService.findOne(id);
+  findOne(@Param('id') id: string, @Req() req: any) {
+    return this.ordersService.findOne(id, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -68,6 +73,7 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post(':id/apply')
   apply(
     @Param('id') id: string,
