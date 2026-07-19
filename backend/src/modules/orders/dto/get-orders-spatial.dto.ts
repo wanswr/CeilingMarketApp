@@ -53,4 +53,8 @@ export class GetOrdersSpatialDto {
   @IsOptional()
   @IsString()
   updatedAfter?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
 }

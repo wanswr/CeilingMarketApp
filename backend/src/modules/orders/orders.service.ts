@@ -70,9 +70,20 @@ export class OrdersService {
   }
 
   async create(dto: any, userId: string) {
+    let categoryId = dto.categoryId;
+    if (!categoryId) {
+      const ceilingCategory = await this.prisma.category.findUnique({
+        where: { slug: 'ceiling' }
+      });
+      if (ceilingCategory) {
+        categoryId = ceilingCategory.id;
+      }
+    }
+
     const order = await this.prisma.order.create({
       data: {
         ...dto,
+        categoryId,
         employerId: userId,
         status: OrderStatus.PUBLISHED,
       },
@@ -82,10 +93,11 @@ export class OrdersService {
     return order;
   }
 
-  async findAll(params: { lat?: number; lng?: number; radius?: number; status?: OrderStatus }) {
-    const { lat, lng, radius, status } = params;
+  async findAll(params: { lat?: number; lng?: number; radius?: number; status?: OrderStatus; categoryId?: string }) {
+    const { lat, lng, radius, status, categoryId } = params;
     const where: Prisma.OrderWhereInput = {};
     if (status) where.status = status;
+    if (categoryId) where.categoryId = categoryId;
 
     if (lat && lng && radius) {
       const dLat = radius / 111.32;
@@ -414,9 +426,10 @@ export class OrdersService {
     lat?: number; lng?: number; radius?: number;
     minLat?: number; maxLat?: number; minLng?: number; maxLng?: number;
     updatedAfter?: Date;
+    categoryId?: string;
   }) {
     const startTime = Date.now();
-    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter } = params;
+    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId } = params;
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
 
@@ -444,6 +457,7 @@ export class OrdersService {
           latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
           longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
           updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
+          categoryId: categoryId || undefined,
         },
         take: 1000,
         // V12 Lightweight Map DTO optimization:

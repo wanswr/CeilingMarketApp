@@ -27,4 +27,8 @@ export class FindAllOrdersDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
 }

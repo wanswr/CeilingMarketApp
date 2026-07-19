@@ -12,6 +12,7 @@ import { ChatsModule } from './modules/chats/chats.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { LoggerModule } from './modules/logger/logger.module';
+import { CategoriesModule } from './modules/categories/categories.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { LoggerModule } from './modules/logger/logger.module';
     ChatsModule,
     ReviewsModule,
     NotificationsModule,
+    CategoriesModule,
   ],
   providers: [
     {
