@@ -107,6 +107,8 @@ model Order {
   applications      Application[]
   chats             Chat[]
   reviews           Review[]
+  categoryId        String?
+  category          Category?      @relation(fields: [categoryId], references: [id])
 }
 
 model PortfolioItem {
@@ -205,4 +207,15 @@ model Review {
   target            User           @relation("TargetedReviews", fields: [targetId], references: [id], onDelete: Cascade)
 
   @@unique([orderId, authorId])
+}
+
+
+model Category {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  orders    Order[]
 }
