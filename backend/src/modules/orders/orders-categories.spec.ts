@@ -177,5 +177,21 @@ describe('OrdersService - Categories & Filters', () => {
         }),
       }));
     });
+
+    it('should select applications count via _count and never select raw applications details', async () => {
+      const params = { lat: 55.7, lng: 37.6, radius: 10 };
+      mockPrismaService.order.findMany.mockResolvedValue([]);
+
+      await service.findSpatial(params);
+
+      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        select: expect.objectContaining({
+          _count: { select: { applications: true } }
+        }),
+      }));
+      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith(expect.not.objectContaining({
+        applications: expect.any(Object),
+      }));
+    });
   });
 });

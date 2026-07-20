@@ -27,10 +27,11 @@ export class OrdersController {
 
   @UseGuards(JwtAuthGuard)
   @Get('spatial')
-  getSpatialOrders(@Query() query: GetOrdersSpatialDto) {
+  getSpatialOrders(@Query() query: GetOrdersSpatialDto, @Req() req: any) {
     return this.ordersService.findSpatial({
       ...query,
-      updatedAfter: (query.updatedAfter && !isNaN(Number(query.updatedAfter))) ? new Date(Number(query.updatedAfter)) : undefined
+      updatedAfter: (query.updatedAfter && !isNaN(Number(query.updatedAfter))) ? new Date(Number(query.updatedAfter)) : undefined,
+      requesterId: req.user.id,
     });
   }
 

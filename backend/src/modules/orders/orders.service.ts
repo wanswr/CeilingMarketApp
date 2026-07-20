@@ -427,9 +427,10 @@ export class OrdersService {
     minLat?: number; maxLat?: number; minLng?: number; maxLng?: number;
     updatedAfter?: Date;
     categoryId?: string;
+    requesterId?: string;
   }) {
     const startTime = Date.now();
-    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId } = params;
+    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId } = params;
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
 
@@ -471,7 +472,7 @@ export class OrdersService {
             workType: true,
             updatedAt: true,
             employer: { select: { id: true, name: true, rating: true, avatar: true } },
-            applications: { select: { id: true, executorId: true, status: true, price: true } }
+            _count: { select: { applications: true } }
         }
       });
 
