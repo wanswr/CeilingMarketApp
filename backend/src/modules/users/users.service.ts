@@ -11,6 +11,7 @@ export class UsersService {
       include: {
         subscription: true,
         portfolioItems: true,
+        activeCategory: { select: { id: true, slug: true, name: true } },
       }
     });
     if (!user) throw new NotFoundException(`User with ID ${id} not found`);
@@ -34,6 +35,7 @@ export class UsersService {
         portfolioItems: true,
         subscription: true,
         deletedAt: true,
+        activeCategory: { select: { id: true, slug: true, name: true } },
       }
     });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
@@ -105,6 +107,28 @@ export class UsersService {
     });
 
     return { success: true };
+  }
+
+  async setActiveCategory(userId: string, categoryId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
+    if (user.role !== 'WORKER') {
+      throw new ForbiddenException('Only workers can select a direction');
+    }
+
+    const category = await this.prisma.category.findUnique({ where: { id: categoryId } });
+    if (!category || !category.isActive) {
+      throw new NotFoundException('Category not found');
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { activeCategoryId: categoryId },
+      select: {
+        id: true, name: true, role: true, activeCategoryId: true,
+        activeCategory: { select: { id: true, slug: true, name: true } },
+      },
+    });
   }
 
   async deleteProfile(id: string) {

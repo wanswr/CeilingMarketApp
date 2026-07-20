@@ -12,6 +12,9 @@ describe('UsersService', () => {
       findUnique: jest.fn(),
       update: jest.fn(),
     },
+    category: {
+      findUnique: jest.fn(),
+    },
   };
 
   beforeEach(async () => {
@@ -166,6 +169,7 @@ describe('UsersService', () => {
           portfolioItems: true,
           subscription: true,
           deletedAt: true,
+          activeCategory: { select: { id: true, slug: true, name: true } },
         },
       });
       expect(result).toEqual({
@@ -194,6 +198,86 @@ describe('UsersService', () => {
       mockPrismaService.user.findUnique.mockResolvedValue(user);
 
       await expect(service.findPublicProfile(userId)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('setActiveCategory', () => {
+    it('should throw ForbiddenException if user role is not WORKER', async () => {
+      const userId = 'user-emp';
+      const categoryId = 'cat-123';
+      const user = { id: userId, role: 'EMPLOYER' };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+
+      await expect(service.setActiveCategory(userId, categoryId)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException if category does not exist or is inactive', async () => {
+      const userId = 'user-wrk';
+      const categoryId = 'non-existent-cat';
+      const user = { id: userId, role: 'WORKER' };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+      mockPrismaService.category.findUnique.mockResolvedValue(null);
+
+      await expect(service.setActiveCategory(userId, categoryId)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should successfully update activeCategoryId for worker with valid active category', async () => {
+      const userId = 'user-wrk';
+      const categoryId = 'cat-123';
+      const user = { id: userId, role: 'WORKER' };
+      const category = { id: categoryId, slug: 'ceiling', isActive: true };
+      const updatedUser = {
+        id: userId,
+        name: 'Worker Bob',
+        role: 'WORKER',
+        activeCategoryId: categoryId,
+        activeCategory: { id: categoryId, slug: 'ceiling', name: 'Натяжные потолки' },
+      };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+      mockPrismaService.category.findUnique.mockResolvedValue(category);
+      mockPrismaService.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.setActiveCategory(userId, categoryId);
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: userId },
+        data: { activeCategoryId: categoryId },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          activeCategoryId: true,
+          activeCategory: { select: { id: true, slug: true, name: true } },
+        },
+      });
+      expect(result).toEqual(updatedUser);
+    });
+
+    it('should allow setting different categories successively (no limit/cooldown yet)', async () => {
+      const userId = 'user-wrk';
+      const categoryId1 = 'cat-123';
+      const categoryId2 = 'cat-456';
+      const user = { id: userId, role: 'WORKER' };
+      const category1 = { id: categoryId1, slug: 'ceiling', isActive: true };
+      const category2 = { id: categoryId2, slug: 'plumbing', isActive: true };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+      mockPrismaService.category.findUnique
+        .mockResolvedValueOnce(category1)
+        .mockResolvedValueOnce(category2);
+
+      mockPrismaService.user.update
+        .mockResolvedValueOnce({ id: userId, activeCategoryId: categoryId1 })
+        .mockResolvedValueOnce({ id: userId, activeCategoryId: categoryId2 });
+
+      const result1 = await service.setActiveCategory(userId, categoryId1);
+      const result2 = await service.setActiveCategory(userId, categoryId2);
+
+      expect(result1.activeCategoryId).toBe(categoryId1);
+      expect(result2.activeCategoryId).toBe(categoryId2);
     });
   });
 });
