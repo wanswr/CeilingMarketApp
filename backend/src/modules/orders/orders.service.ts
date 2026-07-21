@@ -80,6 +80,44 @@ export class OrdersService {
       }
     }
 
+    const { idempotencyKey, ...orderData } = dto;
+
+    if (idempotencyKey) {
+      const existing = await this.prisma.order.findUnique({
+        where: { idempotencyKey }
+      });
+      if (existing) {
+        this.logger.info('ORDER_CREATE_IDEMPOTENT_HIT', 'Order already created, returning existing', { orderId: existing.id, idempotencyKey });
+        return existing;
+      }
+
+      try {
+        const order = await this.prisma.order.create({
+          data: {
+            ...orderData,
+            idempotencyKey,
+            categoryId,
+            employerId: userId,
+            status: OrderStatus.PUBLISHED,
+          },
+        });
+        this.logger.info('ORDER_CREATED', `Order created successfully with idempotencyKey`, { userId, orderId: order.id, idempotencyKey });
+        await this.broadcast('order.created', order, userId);
+        return order;
+      } catch (error: any) {
+        if (error.code === 'P2002') {
+          const duplicate = await this.prisma.order.findUnique({
+            where: { idempotencyKey }
+          });
+          if (duplicate) {
+            this.logger.info('ORDER_CREATE_IDEMPOTENT_RACE_HIT', 'Order already created by parallel request, returning existing', { orderId: duplicate.id, idempotencyKey });
+            return duplicate;
+          }
+        }
+        throw error;
+      }
+    }
+
     const order = await this.prisma.order.create({
       data: {
         ...dto,
@@ -204,7 +242,7 @@ export class OrdersService {
     return { id };
   }
 
-  async apply(orderId: string, executorId: string, price?: number) {
+  async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
 
@@ -219,28 +257,53 @@ export class OrdersService {
         throw new ConflictException('Order is no longer open for applications');
     }
 
+    if (idempotencyKey) {
+      const existingApp = await this.prisma.application.findUnique({
+        where: { idempotencyKey }
+      });
+      if (existingApp) {
+        this.logger.info('ORDER_APPLY_IDEMPOTENT_HIT', 'Application already exists with this idempotencyKey', { idempotencyKey });
+        const currentOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+        return { app: existingApp, order: currentOrder };
+      }
+    }
+
     const existing = await this.prisma.application.findUnique({
       where: { orderId_executorId: { orderId, executorId } }
     });
     if (existing) throw new ConflictException('Already applied');
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const app = await tx.application.create({
-        data: { orderId, executorId, price, status: 'PENDING' }
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        const app = await tx.application.create({
+          data: { orderId, executorId, price, status: 'PENDING', idempotencyKey }
+        });
+
+        const updatedOrder = await tx.order.update({
+          where: { id: orderId },
+          data: { status: OrderStatus.HAS_RESPONSES }
+        });
+
+        return { app, order: updatedOrder };
       });
 
-      const updatedOrder = await tx.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.HAS_RESPONSES }
-      });
-
-      return { app, order: updatedOrder };
-    });
-
-    this.logger.info('ORDER_APPLIED', `New application for order ${result.order.id}`, { orderId: result.order.id, userId: executorId });
-    await this.broadcast('application.new', result.app, executorId);
-    await this.broadcast('order.status.changed', result.order, executorId);
-    return result.app;
+      this.logger.info('ORDER_APPLIED', `New application for order ${result.order.id}`, { orderId: result.order.id, userId: executorId });
+      await this.broadcast('application.new', result.app, executorId);
+      await this.broadcast('order.status.changed', result.order, executorId);
+      return result.app;
+    } catch (error: any) {
+      if (idempotencyKey && error.code === 'P2002') {
+        const duplicateApp = await this.prisma.application.findUnique({
+          where: { idempotencyKey }
+        });
+        if (duplicateApp) {
+          this.logger.info('ORDER_APPLY_IDEMPOTENT_RACE_HIT', 'Application created by parallel request, returning existing', { idempotencyKey });
+          const currentOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+          return { app: duplicateApp, order: currentOrder };
+        }
+      }
+      throw error;
+    }
   }
 
   async markApplicationViewed(applicationId: string, userId: string) {
@@ -268,14 +331,29 @@ export class OrdersService {
      }
 
      const result = await this.prisma.$transaction(async (tx) => {
-         const updatedOrder = await tx.order.update({
-             where: { id: app.orderId },
+         const updatedCount = await tx.order.updateMany({
+             where: {
+                 id: app.orderId,
+                 status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] }
+             },
              data: {
                  status: OrderStatus.CLAIMED,
                  executorId: app.executorId,
                  claimedAt: new Date()
              }
          });
+
+         if (updatedCount.count === 0) {
+             throw new ConflictException('Cannot accept application. Order has already been claimed or status has changed.');
+         }
+
+         const updatedOrder = await tx.order.findUnique({
+             where: { id: app.orderId }
+         });
+
+         if (!updatedOrder) {
+             throw new NotFoundException('Order not found');
+         }
 
          await tx.application.update({
              where: { id: applicationId },
@@ -374,15 +452,20 @@ export class OrdersService {
       throw new ForbiddenException('Cannot cancel application less than 24 hours before order date');
     }
 
-    await this.prisma.application.delete({
-      where: { id: app.id }
-    });
-
-    const remainingApps = await this.prisma.application.count({
-      where: { orderId }
-    });
-
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.application.delete({
+          where: { id: app.id }
+        });
+      } catch (err: any) {
+        // Already deleted by a parallel process
+        return null;
+      }
+
+      const remainingApps = await tx.application.count({
+        where: { orderId }
+      });
+
       if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
         return tx.order.update({
           where: { id: orderId },
@@ -428,9 +511,11 @@ export class OrdersService {
     updatedAfter?: Date;
     categoryId?: string;
     requesterId?: string;
+    cursorId?: string;
+    limit?: number;
   }) {
     const startTime = Date.now();
-    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId } = params;
+    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit } = params;
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
 
@@ -460,7 +545,10 @@ export class OrdersService {
           updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
           categoryId: categoryId || undefined,
         },
-        take: 1000,
+        take: limit !== undefined ? Number(limit) : 250,
+        skip: cursorId ? 1 : undefined,
+        cursor: cursorId ? { id: cursorId } : undefined,
+        orderBy: { id: 'asc' },
         // V12 Lightweight Map DTO optimization:
         select: {
             id: true,

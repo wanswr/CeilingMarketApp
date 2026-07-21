@@ -81,7 +81,7 @@ export class OrdersController {
     @Body() dto: ApplyOrderDto,
     @Req() req: any
   ) {
-    return this.ordersService.apply(id, req.user.id, dto.price);
+    return this.ordersService.apply(id, req.user.id, dto.price, dto.idempotencyKey);
   }
 
   @UseGuards(JwtAuthGuard)

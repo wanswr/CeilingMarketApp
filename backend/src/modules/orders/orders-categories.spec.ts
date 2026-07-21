@@ -5,22 +5,30 @@ import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
 import { OrderStatus } from '@prisma/client';
+import { ConflictException } from '@nestjs/common';
 
 describe('OrdersService - Categories & Filters', () => {
   let service: OrdersService;
   let prisma: PrismaService;
 
-  const mockPrismaService = {
+  const mockPrismaService: any = {
     category: {
       findUnique: jest.fn(),
     },
     order: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    application: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
     },
+    $transaction: jest.fn(async (cb) => cb(mockPrismaService)),
   };
 
   const mockAppGateway = {
@@ -192,6 +200,96 @@ describe('OrdersService - Categories & Filters', () => {
       expect(mockPrismaService.order.findMany).toHaveBeenCalledWith(expect.not.objectContaining({
         applications: expect.any(Object),
       }));
+    });
+  });
+
+  describe('Idempotency & Parallel Race Elimination', () => {
+    describe('acceptApplication race condition', () => {
+      it('should throw ConflictException if the order has already been updated to CLAIMED status', async () => {
+        const userId = 'employer-1';
+        const applicationId = 'app-123';
+        const app = {
+          id: applicationId,
+          orderId: 'order-123',
+          executorId: 'executor-1',
+          order: { id: 'order-123', employerId: userId, status: OrderStatus.PUBLISHED }
+        };
+
+        mockPrismaService.application.findUnique.mockResolvedValue(app);
+        mockPrismaService.order.updateMany.mockResolvedValue({ count: 0 }); // Represents order already claimed by someone else
+
+        await expect(service.acceptApplication(applicationId, userId)).rejects.toThrow(ConflictException);
+        expect(mockPrismaService.order.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: 'order-123',
+            status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] }
+          },
+          data: {
+            status: OrderStatus.CLAIMED,
+            executorId: 'executor-1',
+            claimedAt: expect.any(Date)
+          }
+        });
+      });
+    });
+
+    describe('create() idempotency key', () => {
+      it('should return existing order on idempotencyKey hit', async () => {
+        const dto = { title: 'New Order', categoryId: 'cat-123', idempotencyKey: 'idem-order-1' };
+        const userId = 'user-1';
+        const existingOrder = { id: 'order-123', title: 'New Order', categoryId: 'cat-123', idempotencyKey: 'idem-order-1' };
+
+        mockPrismaService.order.findUnique.mockResolvedValue(existingOrder);
+
+        const result = await service.create(dto, userId);
+
+        expect(mockPrismaService.order.findUnique).toHaveBeenCalledWith({
+          where: { idempotencyKey: 'idem-order-1' }
+        });
+        expect(result).toEqual(existingOrder);
+        expect(mockPrismaService.order.create).not.toHaveBeenCalled();
+      });
+
+      it('should return existing order if P2002 conflict occurs during race condition', async () => {
+        const dto = { title: 'New Order', categoryId: 'cat-123', idempotencyKey: 'idem-order-2' };
+        const userId = 'user-1';
+        const existingOrder = { id: 'order-123', title: 'New Order', categoryId: 'cat-123', idempotencyKey: 'idem-order-2' };
+
+        mockPrismaService.order.findUnique
+          .mockResolvedValueOnce(null) // First check: no existing order
+          .mockResolvedValueOnce(existingOrder); // After catch: returns duplicate
+
+        const dbError = new Error('Unique constraint failed') as any;
+        dbError.code = 'P2002';
+        mockPrismaService.order.create.mockRejectedValue(dbError);
+
+        const result = await service.create(dto, userId);
+
+        expect(result).toEqual(existingOrder);
+      });
+    });
+
+    describe('apply() idempotency key', () => {
+      it('should return existing application on idempotencyKey hit', async () => {
+        const orderId = 'order-123';
+        const executorId = 'executor-1';
+        const idempotencyKey = 'idem-app-1';
+        const existingApp = { id: 'app-999', orderId, executorId, idempotencyKey };
+        const order = { id: orderId, status: OrderStatus.PUBLISHED };
+        const user = { id: executorId, role: 'WORKER' };
+
+        mockPrismaService.order.findUnique.mockResolvedValue(order);
+        mockPrismaService.user.findUnique.mockResolvedValue(user);
+        mockPrismaService.application.findUnique.mockResolvedValue(existingApp);
+
+        const result = await service.apply(orderId, executorId, 500, idempotencyKey);
+
+        expect(mockPrismaService.application.findUnique).toHaveBeenCalledWith({
+          where: { idempotencyKey }
+        });
+        expect(result).toEqual({ app: existingApp, order });
+        expect(mockPrismaService.application.create).not.toHaveBeenCalled();
+      });
     });
   });
 });
