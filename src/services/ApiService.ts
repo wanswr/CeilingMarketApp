@@ -100,6 +100,8 @@ class ApiService {
   getProfile = () => this.api.get('users/profile');
   getUserProfile = (id: string) => this.api.get(`users/${id}`);
   updateProfile = (data: any) => this.api.patch('users/profile', data);
+  getCategories = () => this.api.get('categories');
+  setActiveCategory = (categoryId: string) => this.api.patch('users/profile/category', { categoryId });
 
   // Auth
   requestOtp = (phone: string) => this.api.post('auth/request-otp', { phone });

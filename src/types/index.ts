@@ -1,3 +1,5 @@
+export interface Category { id: string; slug: string; name: string; }
+
 export type OrderStatus = 'PENDING' | 'PUBLISHED' | 'HAS_RESPONSES' | 'CLAIMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DISPUTE' | 'REVIEWED';
 
 export type WorkType = 'FROZE' | 'INSTALLATION' | 'SERVICE' | 'REPAIR' | 'OTHER';
@@ -49,6 +51,8 @@ export interface UserProfile {
   isTrialUsed: boolean;
   pushToken?: string;
   portfolio?: string[];
+  activeCategoryId?: string;
+  activeCategory?: Category;
   createdAt: number;
   updatedAt: number;
 }

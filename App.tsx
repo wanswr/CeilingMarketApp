@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider } from './src/context/AuthContext';
 import Navigation from './src/navigation';
+import { PendingActionProvider } from './src/context/PendingActionContext';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import { startConnectionWatchdog } from './src/services/logger/ConnectionLogger';
 import { logger } from './src/services/logger/LoggerService';
@@ -19,8 +20,10 @@ export default function App() {
       <SafeAreaProvider>
         <AuthProvider>
           <NavigationContainer>
-            <Navigation />
-            <StatusBar style="auto" />
+            <PendingActionProvider>
+              <Navigation />
+              <StatusBar style="auto" />
+            </PendingActionProvider>
           </NavigationContainer>
         </AuthProvider>
       </SafeAreaProvider>

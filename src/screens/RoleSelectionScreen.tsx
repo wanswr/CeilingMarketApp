@@ -4,17 +4,29 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { COLORS } from '../constants/theme'
 import { mapEngine } from '../services/MapEngine'
 import { useAuth } from '../context/AuthContext'
+import { usePendingAction } from '../context/PendingActionContext'
 
-const RoleSelectionScreen = ({ navigation }: any) => {
+const RoleSelectionScreen = ({ navigation, route }: any) => {
   const [loading, setLoading] = useState(false);
   const { updateUser } = useAuth();
+  const { resumePendingAction } = usePendingAction();
 
   const selectRole = async (role: 'WORKER' | 'EMPLOYER') => {
     setLoading(true);
     try {
       const data = await mapEngine.updateProfile({ role });
       updateUser(data);
-      // navigation.replace('MainTabs') is not needed, useAuth re-renders Navigation
+
+      if (role === 'EMPLOYER') {
+        if (route.params?.pendingAction) {
+          resumePendingAction();
+          navigation.goBack();
+        } else {
+          navigation.navigate('MainTabs');
+        }
+      } else {
+        navigation.navigate('CategorySelection', { pendingAction: route.params?.pendingAction });
+      }
     } catch (error: any) {
       if (error.response?.status === 403) {
         Alert.alert('Инфо', 'Роль уже была установлена ранее');
