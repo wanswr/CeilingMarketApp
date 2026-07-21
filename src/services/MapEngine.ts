@@ -132,18 +132,11 @@ class MapEngine {
     try {
       const viewRegion = region || mapViewportStore.getRegion();
 
-      const currentUser = this.entityStore.getCurrentUser();
-      const payload: any = {
+      const res = await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial({
           lat: viewRegion.latitude,
           lng: viewRegion.longitude,
           radius: 100
-      };
-
-      if (currentUser?.role === 'WORKER' && currentUser?.activeCategoryId) {
-          payload.categoryId = currentUser.activeCategoryId;
-      }
-
-      const res = await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial(payload), force ? 0 : 30000);
+      }), force ? 0 : 30000);
 
       if (res && res.data) {
         const { created } = res.data;

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 
 describe('UsersService', () => {
@@ -17,6 +18,10 @@ describe('UsersService', () => {
     },
   };
 
+  const mockSubscriptionService = {
+    checkActiveSubscription: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -24,6 +29,10 @@ describe('UsersService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: SubscriptionService,
+          useValue: mockSubscriptionService,
         },
       ],
     }).compile();
@@ -201,6 +210,46 @@ describe('UsersService', () => {
     });
   });
 
+  describe('findOne', () => {
+    it('should return categoryLocked: false if user does not have activeCategoryId', async () => {
+      const userId = 'user-123';
+      const user = { id: userId, activeCategoryId: null };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+
+      const result = await service.findOne(userId);
+
+      expect(result.categoryLocked).toBe(false);
+      expect(mockSubscriptionService.checkActiveSubscription).not.toHaveBeenCalled();
+    });
+
+    it('should return categoryLocked: true if user has activeCategoryId AND active subscription', async () => {
+      const userId = 'user-123';
+      const user = { id: userId, activeCategoryId: 'cat-777' };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(true);
+
+      const result = await service.findOne(userId);
+
+      expect(result.categoryLocked).toBe(true);
+      expect(mockSubscriptionService.checkActiveSubscription).toHaveBeenCalledWith(userId);
+    });
+
+    it('should return categoryLocked: false if user has activeCategoryId but NO active subscription', async () => {
+      const userId = 'user-123';
+      const user = { id: userId, activeCategoryId: 'cat-777' };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(false);
+
+      const result = await service.findOne(userId);
+
+      expect(result.categoryLocked).toBe(false);
+      expect(mockSubscriptionService.checkActiveSubscription).toHaveBeenCalledWith(userId);
+    });
+  });
+
   describe('setActiveCategory', () => {
     it('should throw ForbiddenException if user role is not WORKER', async () => {
       const userId = 'user-emp';
@@ -215,7 +264,7 @@ describe('UsersService', () => {
     it('should throw NotFoundException if category does not exist or is inactive', async () => {
       const userId = 'user-wrk';
       const categoryId = 'non-existent-cat';
-      const user = { id: userId, role: 'WORKER' };
+      const user = { id: userId, role: 'WORKER', activeCategoryId: null };
 
       mockPrismaService.user.findUnique.mockResolvedValue(user);
       mockPrismaService.category.findUnique.mockResolvedValue(null);
@@ -223,10 +272,10 @@ describe('UsersService', () => {
       await expect(service.setActiveCategory(userId, categoryId)).rejects.toThrow(NotFoundException);
     });
 
-    it('should successfully update activeCategoryId for worker with valid active category', async () => {
+    it('should allow first category selection even if user has active subscription', async () => {
       const userId = 'user-wrk';
       const categoryId = 'cat-123';
-      const user = { id: userId, role: 'WORKER' };
+      const user = { id: userId, role: 'WORKER', activeCategoryId: null };
       const category = { id: categoryId, slug: 'ceiling', isActive: true };
       const updatedUser = {
         id: userId,
@@ -239,45 +288,59 @@ describe('UsersService', () => {
       mockPrismaService.user.findUnique.mockResolvedValue(user);
       mockPrismaService.category.findUnique.mockResolvedValue(category);
       mockPrismaService.user.update.mockResolvedValue(updatedUser);
+      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(true); // Active sub
 
       const result = await service.setActiveCategory(userId, categoryId);
 
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
-        where: { id: userId },
-        data: { activeCategoryId: categoryId },
-        select: {
-          id: true,
-          name: true,
-          role: true,
-          activeCategoryId: true,
-          activeCategory: { select: { id: true, slug: true, name: true } },
-        },
-      });
       expect(result).toEqual(updatedUser);
+      expect(mockSubscriptionService.checkActiveSubscription).not.toHaveBeenCalled(); // No sub check on first selection
     });
 
-    it('should allow setting different categories successively (no limit/cooldown yet)', async () => {
+    it('should block category change if user has a different active category AND active subscription', async () => {
       const userId = 'user-wrk';
-      const categoryId1 = 'cat-123';
-      const categoryId2 = 'cat-456';
-      const user = { id: userId, role: 'WORKER' };
-      const category1 = { id: categoryId1, slug: 'ceiling', isActive: true };
-      const category2 = { id: categoryId2, slug: 'plumbing', isActive: true };
+      const categoryId = 'cat-456';
+      const user = { id: userId, role: 'WORKER', activeCategoryId: 'cat-123' };
 
       mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockPrismaService.category.findUnique
-        .mockResolvedValueOnce(category1)
-        .mockResolvedValueOnce(category2);
+      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(true); // Active sub
 
-      mockPrismaService.user.update
-        .mockResolvedValueOnce({ id: userId, activeCategoryId: categoryId1 })
-        .mockResolvedValueOnce({ id: userId, activeCategoryId: categoryId2 });
+      await expect(service.setActiveCategory(userId, categoryId)).rejects.toThrow(ForbiddenException);
+      expect(mockSubscriptionService.checkActiveSubscription).toHaveBeenCalledWith(userId);
+    });
 
-      const result1 = await service.setActiveCategory(userId, categoryId1);
-      const result2 = await service.setActiveCategory(userId, categoryId2);
+    it('should allow category update if category is different but subscription is NOT active', async () => {
+      const userId = 'user-wrk';
+      const categoryId = 'cat-456';
+      const user = { id: userId, role: 'WORKER', activeCategoryId: 'cat-123' };
+      const category = { id: categoryId, slug: 'plumbing', isActive: true };
+      const updatedUser = { id: userId, activeCategoryId: categoryId };
 
-      expect(result1.activeCategoryId).toBe(categoryId1);
-      expect(result2.activeCategoryId).toBe(categoryId2);
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(false); // Inactive sub
+      mockPrismaService.category.findUnique.mockResolvedValue(category);
+      mockPrismaService.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.setActiveCategory(userId, categoryId);
+
+      expect(result.activeCategoryId).toBe(categoryId);
+      expect(mockSubscriptionService.checkActiveSubscription).toHaveBeenCalledWith(userId);
+    });
+
+    it('should allow selecting the exact same category even if subscription is active', async () => {
+      const userId = 'user-wrk';
+      const categoryId = 'cat-123';
+      const user = { id: userId, role: 'WORKER', activeCategoryId: 'cat-123' };
+      const category = { id: categoryId, slug: 'ceiling', isActive: true };
+      const updatedUser = { id: userId, activeCategoryId: categoryId };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+      mockPrismaService.category.findUnique.mockResolvedValue(category);
+      mockPrismaService.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.setActiveCategory(userId, categoryId);
+
+      expect(result.activeCategoryId).toBe(categoryId);
+      expect(mockSubscriptionService.checkActiveSubscription).not.toHaveBeenCalled(); // No sub check because category is identical
     });
   });
 });

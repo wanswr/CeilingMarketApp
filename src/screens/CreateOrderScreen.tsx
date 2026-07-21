@@ -34,8 +34,6 @@ import { mapEngine } from '../services/MapEngine'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import i18n from '../constants/i18n';
-import { usePendingAction } from '../context/PendingActionContext';
-import { apiService } from '../services/ApiService';
 
 const orderSchema = z.object({
   title: z.string().min(5, "Заголовок слишком короткий"),
@@ -65,19 +63,6 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [normalizedAddress, setNormalizedAddress] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [errors, setErrors] = useState<any>({});
-  const { requireRoleAndCategory } = usePendingAction();
-  const [categories, setCategories] = useState<any[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchCats = async () => {
-      try {
-        const res = await apiService.getCategories();
-        setCategories(res.data || []);
-      } catch (err) {}
-    };
-    fetchCats();
-  }, []);
 
   useEffect(() => {
     if (route.params?.latitude && route.params?.longitude) {
@@ -212,43 +197,40 @@ export default function CreateOrderScreen({ navigation }: any) {
   };
 
   const handlePublish = async () => {
-    requireRoleAndCategory(async () => {
-      if (loading) return;
-      try {
-        orderSchema.parse(form);
-        if (!coordinates) {
-          Alert.alert('Адрес не найден', 'Пожалуйста, укажите корректный адрес, чтобы мы могли найти его на карте.');
-          return;
-        }
-
-        setLoading(true);
-        await mapEngine.createOrder({
-          ...form,
-          latitude: coordinates.latitude,
-          longitude: coordinates.longitude,
-          price: Number(form.price),
-          images: [],
-          categoryId: selectedCategoryId || undefined,
-        });
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Успех', 'Заказ успешно опубликован!', [
-          { text: 'OK', onPress: () => navigation.navigate('MainTabs', { screen: 'Map' }) }
-        ]);
-      } catch (err: any) {
-        if (err instanceof z.ZodError) {
-          const newErrors: any = {};
-          err.errors.forEach(e => {
-            newErrors[e.path[0]] = e.message;
-          });
-          setErrors(newErrors);
-        } else {
-          Alert.alert('Ошибка', 'Не удалось опубликовать заказ. Попробуйте позже.');
-        }
-      } finally {
-        setLoading(false);
+    if (loading) return;
+    try {
+      orderSchema.parse(form);
+      if (!coordinates) {
+        Alert.alert('Адрес не найден', 'Пожалуйста, укажите корректный адрес, чтобы мы могли найти его на карте.');
+        return;
       }
-    });
+
+      setLoading(true);
+      await mapEngine.createOrder({
+        ...form,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        price: Number(form.price),
+        images: []
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Успех', 'Заказ успешно опубликован!', [
+        { text: 'OK', onPress: () => navigation.navigate('MainTabs', { screen: 'Map' }) }
+      ]);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        const newErrors: any = {};
+        err.errors.forEach(e => {
+          newErrors[e.path[0]] = e.message;
+        });
+        setErrors(newErrors);
+      } else {
+        Alert.alert('Ошибка', 'Не удалось опубликовать заказ. Попробуйте позже.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleImport = async () => {
@@ -406,25 +388,6 @@ export default function CreateOrderScreen({ navigation }: any) {
                     </TouchableOpacity>
                 ))}
             </View>
-
-            {categories.length > 0 && (
-              <>
-                <Text style={styles.label}>Направление (опционально)</Text>
-                <View style={styles.workTypeGrid}>
-                    {categories.map((cat) => (
-                        <TouchableOpacity
-                            key={cat.id}
-                            style={[styles.workTypeBtn, selectedCategoryId === cat.id && styles.workTypeBtnActive]}
-                            onPress={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
-                        >
-                            <Text style={[styles.workTypeBtnText, selectedCategoryId === cat.id && styles.workTypeBtnTextActive]}>
-                                {cat.name}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-              </>
-            )}
 
             <View style={styles.row}>
               <View style={{ flex: 1, marginRight: 15 }}>

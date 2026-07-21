@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly subscriptionService: SubscriptionService,
+  ) {}
 
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
@@ -15,7 +19,16 @@ export class UsersService {
       }
     });
     if (!user) throw new NotFoundException(`User with ID ${id} not found`);
-    return user;
+
+    let categoryLocked = false;
+    if (user.activeCategoryId) {
+      categoryLocked = await this.subscriptionService.checkActiveSubscription(id);
+    }
+
+    return {
+      ...user,
+      categoryLocked,
+    };
   }
 
   async findPublicProfile(id: string) {
@@ -114,6 +127,15 @@ export class UsersService {
     if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
     if (user.role !== 'WORKER') {
       throw new ForbiddenException('Only workers can select a direction');
+    }
+
+    if (user.activeCategoryId && user.activeCategoryId !== categoryId) {
+      const hasActiveSub = await this.subscriptionService.checkActiveSubscription(userId);
+      if (hasActiveSub) {
+        throw new ForbiddenException(
+          'Cannot change direction while subscription is active'
+        );
+      }
     }
 
     const category = await this.prisma.category.findUnique({ where: { id: categoryId } });

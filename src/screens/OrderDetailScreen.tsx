@@ -10,7 +10,6 @@ import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import { apiService } from '../services/ApiService'
 import { logger } from '../services/logger/LoggerService'
-import { usePendingAction } from '../context/PendingActionContext';
 
 const activeApplications = new Set();
 const activeReviews = new Set();
@@ -18,7 +17,6 @@ const activeReviews = new Set();
 const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
-  const { requireRoleAndCategory } = usePendingAction();
   const [loading, setLoading] = useState(!order);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -106,12 +104,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleApply = async () => {
-    requireRoleAndCategory(() => {
-      logger.logClick('ApplyButton', 'OrderDetail', { orderId });
-      if (submitting || hasApplied) return;
-      setOfferPrice(order?.price.toString() || '');
-      setShowPriceModal(true);
-    });
+    logger.logClick('ApplyButton', 'OrderDetail', { orderId });
+    if (submitting || hasApplied) return;
+    setOfferPrice(order?.price.toString() || '');
+    setShowPriceModal(true);
   };
 
   const submitOffer = async () => {
