@@ -45,7 +45,7 @@ model User {
   name              String?
   role              Role?
   avatar            String?
-  rating            Float          @default(5.0)
+  rating            Float?
   experience        Int?           @default(0)
   ordersCount       Int            @default(0)
   completedOrders   Int            @default(0)
@@ -94,6 +94,8 @@ model Order {
   @@index([status])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([employerId])
+  @@index([executorId])
   price             Float
   details           String?
   status            OrderStatus    @default(PUBLISHED)
@@ -184,6 +186,7 @@ model Application {
   executor          User           @relation(fields: [executorId], references: [id], onDelete: Cascade)
 
   @@unique([orderId, executorId])
+  @@index([executorId])
 }
 
 model Subscription {

@@ -197,6 +197,31 @@ describe('UsersService', () => {
       });
     });
 
+    it('should return rating as null if user has no reviews', async () => {
+      const userId = 'new-user-abc';
+      const user = {
+        id: userId,
+        name: 'New Master',
+        avatar: null,
+        rating: null,
+        experience: 0,
+        completedOrders: 0,
+        ordersCount: 0,
+        instagram: null,
+        telegram: null,
+        isVerified: false,
+        portfolioItems: [],
+        subscription: null,
+        deletedAt: null,
+      };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+
+      const result = await service.findPublicProfile(userId);
+
+      expect(result.rating).toBeNull();
+    });
+
     it('should throw NotFoundException if user has deletedAt set', async () => {
       const userId = 'deleted-user-789';
       const user = {
