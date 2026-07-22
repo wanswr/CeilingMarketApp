@@ -55,9 +55,7 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const token = client.handshake.headers.authorization;
         return token.startsWith('Bearer ') ? token.slice(7) : token;
     }
-    if (client.handshake.query?.token) {
-        return client.handshake.query.token as string;
-    }
+    // Handshake query string token fallback removed for security reasons (to prevent token leakage in URL/access logs)
     return null;
   }
 
@@ -77,10 +75,19 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
       const decoded = jwt.verify(token, secret);
-      (client as any).user = decoded;
-      (client as any).userId = (decoded as any).id;
+      const userId = (decoded as any).id;
 
-      this.logger.info('WS_CONNECTED', `Client authenticated: ${client.id}, userId: ${(decoded as any).id}`);
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user || user.deletedAt) {
+        this.logger.warn('WS_AUTH_FAILED', `User does not exist or is soft-deleted: ${userId}`);
+        client.disconnect();
+        return;
+      }
+
+      (client as any).user = decoded;
+      (client as any).userId = userId;
+
+      this.logger.info('WS_CONNECTED', `Client authenticated: ${client.id}, userId: ${userId}`);
     } catch (err) {
       this.logger.warn('WS_AUTH_FAILED', `Token verification failed for connection ${client.id}: ${(err as any).message}`);
       client.disconnect();
@@ -253,9 +260,8 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      // 3. Fallback for any other (non-order) events
-      this.server.emit(event, payload);
-      this.logger.info('WS_BROADCAST_GLOBAL_FALLBACK', `Fallback global emit for event: ${event}`);
+      // 3. Unknown / unhandled events
+      this.logger.warn('WS_BROADCAST_UNKNOWN_EVENT', `Attempted to broadcast an unknown or unhandled event: ${event}`, { event });
     } catch (err) {
       this.logger.error('WS_BROADCAST_ERROR', `Failed to broadcast event: ${event}`, { error: (err as any).message });
     }
