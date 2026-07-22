@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Req, Patch, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ChatsService } from './chats.service';
 import { GetOrCreateChatDto } from './dto/get-or-create-chat.dto';
@@ -21,8 +21,19 @@ export class ChatsController {
   }
 
   @Get(':id/messages')
-  async getMessages(@Param('id') id: string, @Req() req: any) {
-    return this.chatsService.getMessages(id, req.user.id);
+  async getMessages(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const messagesData = await this.chatsService.getMessages(id, req.user.id, cursor, limit ? Number(limit) : undefined);
+
+    if (cursor === undefined && limit === undefined) {
+      return messagesData.messages;
+    }
+
+    return messagesData;
   }
 
   @Throttle({ default: { limit: 30, ttl: 60000 } })

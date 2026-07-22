@@ -167,6 +167,8 @@ model Message {
 
   chat              Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender            User           @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
 }
 
 model Application {

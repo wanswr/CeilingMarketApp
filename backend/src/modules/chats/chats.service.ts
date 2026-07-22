@@ -69,16 +69,22 @@ export class ChatsService {
       throw new ForbiddenException('Not a member of this chat');
     }
 
-    const message = await this.prisma.message.create({
-      data: {
-        chatId,
-        senderId,
-        text,
-      },
-      include: {
-        sender: { select: { id: true, name: true, avatar: true } }
-      }
-    });
+    const [message] = await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          chatId,
+          senderId,
+          text,
+        },
+        include: {
+          sender: { select: { id: true, name: true, avatar: true } }
+        }
+      }),
+      this.prisma.chat.update({
+        where: { id: chatId },
+        data: { updatedAt: new Date() }
+      })
+    ]);
 
     this.gateway.server.to(`chat:${chatId}`).emit('message.new', {
         event: 'message.new',
@@ -113,30 +119,59 @@ export class ChatsService {
       orderBy: { updatedAt: 'desc' }
     });
 
-    const chatsWithUnread = await Promise.all(chats.map(async (chat) => {
-        const unreadCount = await this.prisma.message.count({
-            where: {
-                chatId: chat.id,
-                senderId: { not: userId },
-                isRead: false
-            }
-        });
-        return { ...chat, unreadCount };
-    }));
+    const unreadCounts = await this.prisma.message.groupBy({
+      by: ['chatId'],
+      where: {
+        chatId: { in: chats.map(c => c.id) },
+        senderId: { not: userId },
+        isRead: false
+      },
+      _count: {
+        _all: true
+      }
+    });
 
-    return chatsWithUnread;
+    const unreadMap = new Map<string, number>();
+    unreadCounts.forEach(item => {
+      unreadMap.set(item.chatId, item._count._all);
+    });
+
+    return chats.map(chat => ({
+      ...chat,
+      unreadCount: unreadMap.get(chat.id) || 0
+    }));
   }
 
-  async getMessages(chatId: string, userId: string) {
+  async getMessages(chatId: string, userId: string, cursor?: string, limit?: number) {
     const chat = await this.prisma.chat.findUnique({ where: { id: chatId } });
-    if (!chat) throw new NotFoundException();
+    if (!chat) throw new NotFoundException('Chat not found');
     if (chat.employerId !== userId && chat.executorId !== userId) throw new ForbiddenException();
 
-    return this.prisma.message.findMany({
+    const takeLimit = limit !== undefined ? limit : 50;
+
+    const messages = await this.prisma.message.findMany({
       where: { chatId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
+      take: takeLimit + 1,
+      cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : undefined,
       include: { sender: { select: { id: true, name: true, avatar: true } } }
     });
+
+    let nextCursor: string | null = null;
+    let slicedMessages = messages;
+
+    if (messages.length > takeLimit) {
+      nextCursor = messages[takeLimit].id;
+      slicedMessages = messages.slice(0, takeLimit);
+    }
+
+    const reversedMessages = [...slicedMessages].reverse();
+
+    return {
+      messages: reversedMessages,
+      nextCursor,
+    };
   }
 
   async markAsRead(chatId: string, userId: string) {
