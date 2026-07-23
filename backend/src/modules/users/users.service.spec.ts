@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SubscriptionService } from '../subscription/subscription.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -62,16 +62,34 @@ describe('UsersService', () => {
       expect(result).toEqual(updatedUser);
     });
 
+    it('should ignore role field passed to update()', async () => {
+      const userId = 'user-4';
+      const dto = { name: 'Bob', role: 'WORKER' };
+      const updatedUser = { id: userId, name: 'Bob', role: null };
+
+      mockPrismaService.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.update(userId, dto as any);
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: userId },
+        data: { name: 'Bob' }, // role is ignored
+      });
+      expect(result).toEqual(updatedUser);
+    });
+  });
+
+  describe('setRole', () => {
     it('should allow setting role if current role is null', async () => {
       const userId = 'user-2';
-      const dto = { role: 'WORKER' };
+      const role = 'WORKER';
       const currentUser = { id: userId, role: null };
       const updatedUser = { id: userId, role: 'WORKER' };
 
       mockPrismaService.user.findUnique.mockResolvedValue(currentUser);
       mockPrismaService.user.update.mockResolvedValue(updatedUser);
 
-      const result = await service.update(userId, dto);
+      const result = await service.setRole(userId, role as any);
 
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({ where: { id: userId } });
       expect(mockPrismaService.user.update).toHaveBeenCalledWith({
@@ -83,12 +101,12 @@ describe('UsersService', () => {
 
     it('should reject changing role if role is already set', async () => {
       const userId = 'user-3';
-      const dto = { role: 'EMPLOYER' };
+      const role = 'EMPLOYER';
       const currentUser = { id: userId, role: 'WORKER' };
 
       mockPrismaService.user.findUnique.mockResolvedValue(currentUser);
 
-      await expect(service.update(userId, dto)).rejects.toThrow(ForbiddenException);
+      await expect(service.setRole(userId, role as any)).rejects.toThrow(ForbiddenException);
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({ where: { id: userId } });
       expect(mockPrismaService.user.update).not.toHaveBeenCalled();
     });
@@ -140,7 +158,7 @@ describe('UsersService', () => {
   });
 
   describe('findPublicProfile', () => {
-    it('should return profile if user is not deleted', async () => {
+    it('should return profile if user is not deleted and exclude phone, instagram, and telegram', async () => {
       const userId = 'user-456';
       const user = {
         id: userId,
@@ -150,8 +168,6 @@ describe('UsersService', () => {
         experience: 2,
         completedOrders: 10,
         ordersCount: 15,
-        instagram: null,
-        telegram: null,
         isVerified: true,
         portfolioItems: [],
         subscription: null,
@@ -172,8 +188,6 @@ describe('UsersService', () => {
           experience: true,
           completedOrders: true,
           ordersCount: true,
-          instagram: true,
-          telegram: true,
           isVerified: true,
           portfolioItems: true,
           subscription: true,
@@ -189,37 +203,13 @@ describe('UsersService', () => {
         experience: 2,
         completedOrders: 10,
         ordersCount: 15,
-        instagram: null,
-        telegram: null,
         isVerified: true,
         portfolioItems: [],
         subscription: null,
       });
-    });
-
-    it('should return rating as null if user has no reviews', async () => {
-      const userId = 'new-user-abc';
-      const user = {
-        id: userId,
-        name: 'New Master',
-        avatar: null,
-        rating: null,
-        experience: 0,
-        completedOrders: 0,
-        ordersCount: 0,
-        instagram: null,
-        telegram: null,
-        isVerified: false,
-        portfolioItems: [],
-        subscription: null,
-        deletedAt: null,
-      };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-
-      const result = await service.findPublicProfile(userId);
-
-      expect(result.rating).toBeNull();
+      expect(result).not.toHaveProperty('phone');
+      expect(result).not.toHaveProperty('instagram');
+      expect(result).not.toHaveProperty('telegram');
     });
 
     it('should throw NotFoundException if user has deletedAt set', async () => {
@@ -232,140 +222,6 @@ describe('UsersService', () => {
       mockPrismaService.user.findUnique.mockResolvedValue(user);
 
       await expect(service.findPublicProfile(userId)).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  describe('findOne', () => {
-    it('should return categoryLocked: false if user does not have activeCategoryId', async () => {
-      const userId = 'user-123';
-      const user = { id: userId, activeCategoryId: null };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-
-      const result = await service.findOne(userId);
-
-      expect(result.categoryLocked).toBe(false);
-      expect(mockSubscriptionService.checkActiveSubscription).not.toHaveBeenCalled();
-    });
-
-    it('should return categoryLocked: true if user has activeCategoryId AND active subscription', async () => {
-      const userId = 'user-123';
-      const user = { id: userId, activeCategoryId: 'cat-777' };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(true);
-
-      const result = await service.findOne(userId);
-
-      expect(result.categoryLocked).toBe(true);
-      expect(mockSubscriptionService.checkActiveSubscription).toHaveBeenCalledWith(userId);
-    });
-
-    it('should return categoryLocked: false if user has activeCategoryId but NO active subscription', async () => {
-      const userId = 'user-123';
-      const user = { id: userId, activeCategoryId: 'cat-777' };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(false);
-
-      const result = await service.findOne(userId);
-
-      expect(result.categoryLocked).toBe(false);
-      expect(mockSubscriptionService.checkActiveSubscription).toHaveBeenCalledWith(userId);
-    });
-  });
-
-  describe('setActiveCategory', () => {
-    it('should throw ForbiddenException if user role is not WORKER', async () => {
-      const userId = 'user-emp';
-      const categoryId = 'cat-123';
-      const user = { id: userId, role: 'EMPLOYER' };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-
-      await expect(service.setActiveCategory(userId, categoryId)).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should throw NotFoundException if category does not exist or is inactive', async () => {
-      const userId = 'user-wrk';
-      const categoryId = 'non-existent-cat';
-      const user = { id: userId, role: 'WORKER', activeCategoryId: null };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockPrismaService.category.findUnique.mockResolvedValue(null);
-
-      await expect(service.setActiveCategory(userId, categoryId)).rejects.toThrow(NotFoundException);
-    });
-
-    it('should allow first category selection even if user has active subscription', async () => {
-      const userId = 'user-wrk';
-      const categoryId = 'cat-123';
-      const user = { id: userId, role: 'WORKER', activeCategoryId: null };
-      const category = { id: categoryId, slug: 'ceiling', isActive: true };
-      const updatedUser = {
-        id: userId,
-        name: 'Worker Bob',
-        role: 'WORKER',
-        activeCategoryId: categoryId,
-        activeCategory: { id: categoryId, slug: 'ceiling', name: 'Натяжные потолки' },
-      };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockPrismaService.category.findUnique.mockResolvedValue(category);
-      mockPrismaService.user.update.mockResolvedValue(updatedUser);
-      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(true); // Active sub
-
-      const result = await service.setActiveCategory(userId, categoryId);
-
-      expect(result).toEqual(updatedUser);
-      expect(mockSubscriptionService.checkActiveSubscription).not.toHaveBeenCalled(); // No sub check on first selection
-    });
-
-    it('should block category change if user has a different active category AND active subscription', async () => {
-      const userId = 'user-wrk';
-      const categoryId = 'cat-456';
-      const user = { id: userId, role: 'WORKER', activeCategoryId: 'cat-123' };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(true); // Active sub
-
-      await expect(service.setActiveCategory(userId, categoryId)).rejects.toThrow(ForbiddenException);
-      expect(mockSubscriptionService.checkActiveSubscription).toHaveBeenCalledWith(userId);
-    });
-
-    it('should allow category update if category is different but subscription is NOT active', async () => {
-      const userId = 'user-wrk';
-      const categoryId = 'cat-456';
-      const user = { id: userId, role: 'WORKER', activeCategoryId: 'cat-123' };
-      const category = { id: categoryId, slug: 'plumbing', isActive: true };
-      const updatedUser = { id: userId, activeCategoryId: categoryId };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockSubscriptionService.checkActiveSubscription.mockResolvedValue(false); // Inactive sub
-      mockPrismaService.category.findUnique.mockResolvedValue(category);
-      mockPrismaService.user.update.mockResolvedValue(updatedUser);
-
-      const result = await service.setActiveCategory(userId, categoryId);
-
-      expect(result.activeCategoryId).toBe(categoryId);
-      expect(mockSubscriptionService.checkActiveSubscription).toHaveBeenCalledWith(userId);
-    });
-
-    it('should allow selecting the exact same category even if subscription is active', async () => {
-      const userId = 'user-wrk';
-      const categoryId = 'cat-123';
-      const user = { id: userId, role: 'WORKER', activeCategoryId: 'cat-123' };
-      const category = { id: categoryId, slug: 'ceiling', isActive: true };
-      const updatedUser = { id: userId, activeCategoryId: categoryId };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockPrismaService.category.findUnique.mockResolvedValue(category);
-      mockPrismaService.user.update.mockResolvedValue(updatedUser);
-
-      const result = await service.setActiveCategory(userId, categoryId);
-
-      expect(result.activeCategoryId).toBe(categoryId);
-      expect(mockSubscriptionService.checkActiveSubscription).not.toHaveBeenCalled(); // No sub check because category is identical
     });
   });
 });

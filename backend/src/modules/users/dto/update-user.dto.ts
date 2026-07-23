@@ -1,9 +1,6 @@
-import { IsString, IsOptional, IsInt, IsArray, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsInt } from 'class-validator';
 
 export class UpdateUserDto {
-  @IsOptional()
-  @IsEnum(['WORKER', 'EMPLOYER'])
-  role?: 'WORKER' | 'EMPLOYER';
   @IsString()
   @IsOptional()
   name?: string;
@@ -23,12 +20,4 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   instagram?: string;
-
-  @IsString()
-  @IsOptional()
-  description?: string;
-
-  @IsArray()
-  @IsOptional()
-  portfolio?: string[];
 }

@@ -262,6 +262,13 @@ class MapEngine {
     return res.data;
   }
 
+  setRole = async (role: 'WORKER' | 'EMPLOYER') => {
+    const res = await this.apiService.setRole(role);
+    this.requestRouter.invalidate('user:profile');
+    this.entityStore?.setUser({ ...res.data, isMe: true });
+    return res.data;
+  }
+
   createOrder = async (data: any) => {
     const res = await this.apiService.createOrder(data);
     this.requestRouter.invalidate('orders:my');

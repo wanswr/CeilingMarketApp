@@ -12,7 +12,7 @@ const RoleSelectionScreen = ({ navigation }: any) => {
   const selectRole = async (role: 'WORKER' | 'EMPLOYER') => {
     setLoading(true);
     try {
-      const data = await mapEngine.updateProfile({ role });
+      const data = await mapEngine.setRole(role);
       updateUser(data);
       // navigation.replace('MainTabs') is not needed, useAuth re-renders Navigation
     } catch (error: any) {

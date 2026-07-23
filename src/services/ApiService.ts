@@ -102,6 +102,7 @@ class ApiService {
   updateProfile = (data: any) => this.api.patch('users/profile', data);
   getCategories = () => this.api.get('categories');
   setActiveCategory = (categoryId: string) => this.api.patch('users/profile/category', { categoryId });
+  setRole = (role: 'WORKER' | 'EMPLOYER') => this.api.patch('users/profile/role', { role });
 
   // Auth
   requestOtp = (phone: string) => this.api.post('auth/request-otp', { phone });

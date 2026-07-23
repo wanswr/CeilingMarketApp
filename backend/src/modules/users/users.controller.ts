@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AddPortfolioItemDto } from './dto/add-portfolio-item.dto';
 import { SetActiveCategoryDto } from './dto/set-active-category.dto';
+import { SetRoleDto } from './dto/set-role.dto';
 
 @Controller('users')
 export class UsersController {
@@ -30,6 +31,12 @@ export class UsersController {
   @Patch('profile/category')
   setActiveCategory(@Req() req, @Body() dto: SetActiveCategoryDto) {
     return this.usersService.setActiveCategory(req.user.id, dto.categoryId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('profile/role')
+  setRole(@Req() req, @Body() dto: SetRoleDto) {
+    return this.usersService.setRole(req.user.id, dto.role);
   }
 
   @UseGuards(JwtAuthGuard)

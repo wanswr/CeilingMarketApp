@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { SubscriptionService } from '../subscription/subscription.service';
 
 @Injectable()
@@ -12,9 +13,26 @@ export class UsersService {
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        phone: true,
+        name: true,
+        role: true,
+        avatar: true,
+        rating: true,
+        experience: true,
+        ordersCount: true,
+        completedOrders: true,
+        instagram: true,
+        telegram: true,
+        isVerified: true,
+        phoneVerified: true,
+        isTrialUsed: true,
+        createdAt: true,
+        updatedAt: true,
         subscription: true,
         portfolioItems: true,
+        activeCategoryId: true,
         activeCategory: { select: { id: true, slug: true, name: true } },
       }
     });
@@ -42,8 +60,6 @@ export class UsersService {
         experience: true,
         completedOrders: true,
         ordersCount: true,
-        instagram: true,
-        telegram: true,
         isVerified: true,
         portfolioItems: true,
         subscription: true,
@@ -56,9 +72,8 @@ export class UsersService {
     return publicProfile;
   }
 
-  async update(id: string, dto: any) {
-    // Whitelist only safe, user-configurable profile fields to prevent Mass Assignment vulnerability (P0)
-    const allowedFields = ['name', 'avatar', 'experience', 'telegram', 'instagram', 'portfolio', 'description'];
+  async update(id: string, dto: UpdateUserDto) {
+    const allowedFields: Array<keyof UpdateUserDto> = ['name', 'avatar', 'experience', 'telegram', 'instagram'];
     const filteredDto: any = {};
 
     for (const key of allowedFields) {
@@ -67,14 +82,8 @@ export class UsersService {
         }
     }
 
-    if (dto.role !== undefined) {
-      const currentUser = await this.prisma.user.findUnique({ where: { id } });
-      if (!currentUser) throw new NotFoundException(`User with ID ${id} not found`);
-      if (currentUser.role) {
-        throw new ForbiddenException('Role is already set and cannot be changed');
-      }
-      filteredDto.role = dto.role;
-    }
+    // Role cannot be updated via general update. If a client attempts to pass role, it is strictly ignored or rejected.
+    // For general profile PATCH requests, we silently ignore other fields to maintain backward compatibility with permissive clients.
 
     try {
         return await this.prisma.user.update({
@@ -87,6 +96,19 @@ export class UsersService {
         }
         throw error;
     }
+  }
+
+  async setRole(userId: string, role: 'WORKER' | 'EMPLOYER') {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
+    if (user.role) {
+      throw new ForbiddenException('Role is already set and cannot be changed');
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { role },
+    });
   }
 
   async getPortfolio(userId: string) {
