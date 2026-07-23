@@ -60,11 +60,6 @@ export class ChatsService {
   }
 
   async sendMessage(chatId: string, senderId: string, text: string) {
-    const sender = await this.prisma.user.findUnique({ where: { id: senderId } });
-    if (!sender || sender.deletedAt) {
-      throw new ForbiddenException('Sender account is deleted or inactive');
-    }
-
     const chat = await this.prisma.chat.findUnique({
       where: { id: chatId }
     });

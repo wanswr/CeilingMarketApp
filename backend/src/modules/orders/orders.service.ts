@@ -70,11 +70,6 @@ export class OrdersService {
   }
 
   async create(dto: any, userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.deletedAt) {
-      throw new ForbiddenException('User is inactive or deleted');
-    }
-
     let categoryId = dto.categoryId;
     if (!categoryId) {
       const ceilingCategory = await this.prisma.category.findUnique({
@@ -253,7 +248,7 @@ export class OrdersService {
 
     // Validate executor role (must be WORKER to apply)
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
-    if (!executor || executor.role !== Role.WORKER || executor.deletedAt) {
+    if (!executor || executor.role !== Role.WORKER) {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
     }
 
@@ -326,12 +321,9 @@ export class OrdersService {
   async acceptApplication(applicationId: string, userId: string) {
      const app = await this.prisma.application.findUnique({
          where: { id: applicationId },
-         include: { order: true, executor: true }
+         include: { order: true }
      });
      if (!app || app.order.employerId !== userId) throw new ForbiddenException();
-     if (app.executor.deletedAt) {
-         throw new ForbiddenException('Executor account is deleted or inactive');
-     }
 
      // Conflict Check: Is order already claimed or in progress?
      if (app.order.status !== OrderStatus.HAS_RESPONSES && app.order.status !== OrderStatus.PUBLISHED) {
