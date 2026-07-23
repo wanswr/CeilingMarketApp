@@ -10,6 +10,9 @@ describe('ChatsService', () => {
   let prisma: PrismaService;
 
   const mockPrismaService = {
+    user: {
+      findUnique: jest.fn(),
+    },
     chat: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -154,12 +157,23 @@ describe('ChatsService', () => {
   });
 
   describe('sendMessage', () => {
+    it('should throw ForbiddenException if sender is soft-deleted', async () => {
+      const chatId = 'chat-1';
+      const userId = 'user-deleted';
+      const sender = { id: userId, deletedAt: new Date() };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(sender);
+
+      await expect(service.sendMessage(chatId, userId, 'Hello')).rejects.toThrow(ForbiddenException);
+    });
+
     it('should touch update Chat.updatedAt and atomically create Message inside a transaction', async () => {
       const chatId = 'chat-1';
       const userId = 'user-1';
       const chat = { id: chatId, employerId: userId, executorId: 'user-2' };
       const message = { id: 'msg-1', chatId, senderId: userId, text: 'Hello' };
 
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: userId, deletedAt: null });
       mockPrismaService.chat.findUnique.mockResolvedValue(chat);
       mockPrismaService.message.create.mockReturnValue({ query: 'createMessage' });
       mockPrismaService.chat.update.mockReturnValue({ query: 'updateChat' });

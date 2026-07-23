@@ -73,6 +73,9 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
+
     const allowedFields: Array<keyof UpdateUserDto> = ['name', 'avatar', 'experience', 'telegram', 'instagram'];
     const filteredDto: any = {};
 
@@ -100,7 +103,7 @@ export class UsersService {
 
   async setRole(userId: string, role: 'WORKER' | 'EMPLOYER') {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
     if (user.role) {
       throw new ForbiddenException('Role is already set and cannot be changed');
     }
@@ -146,7 +149,7 @@ export class UsersService {
 
   async setActiveCategory(userId: string, categoryId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
     if (user.role !== 'WORKER') {
       throw new ForbiddenException('Only workers can select a direction');
     }

@@ -5,7 +5,7 @@ import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
 import { OrderStatus } from '@prisma/client';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 describe('OrdersService - Categories & Filters', () => {
   let service: OrdersService;
@@ -96,6 +96,14 @@ describe('OrdersService - Categories & Filters', () => {
         },
       });
       expect(result).toEqual(mockCreatedOrder);
+    });
+
+    it('should throw ForbiddenException if user is soft-deleted during create', async () => {
+      const dto = { title: 'New Order' };
+      const userId = 'user-deleted';
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: userId, deletedAt: new Date() });
+
+      await expect(service.create(dto, userId)).rejects.toThrow(ForbiddenException);
     });
 
     it('should fall back to "ceiling" category if no categoryId is provided', async () => {
@@ -205,6 +213,22 @@ describe('OrdersService - Categories & Filters', () => {
 
   describe('Idempotency & Parallel Race Elimination', () => {
     describe('acceptApplication race condition', () => {
+      it('should throw ForbiddenException if executor is soft-deleted', async () => {
+        const userId = 'employer-1';
+        const applicationId = 'app-123';
+        const app = {
+          id: applicationId,
+          orderId: 'order-123',
+          executorId: 'executor-deleted',
+          order: { id: 'order-123', employerId: userId, status: OrderStatus.PUBLISHED },
+          executor: { id: 'executor-deleted', deletedAt: new Date() }
+        };
+
+        mockPrismaService.application.findUnique.mockResolvedValue(app);
+
+        await expect(service.acceptApplication(applicationId, userId)).rejects.toThrow(ForbiddenException);
+      });
+
       it('should throw ConflictException if the order has already been updated to CLAIMED status', async () => {
         const userId = 'employer-1';
         const applicationId = 'app-123';
@@ -212,7 +236,8 @@ describe('OrdersService - Categories & Filters', () => {
           id: applicationId,
           orderId: 'order-123',
           executorId: 'executor-1',
-          order: { id: 'order-123', employerId: userId, status: OrderStatus.PUBLISHED }
+          order: { id: 'order-123', employerId: userId, status: OrderStatus.PUBLISHED },
+          executor: { id: 'executor-1', deletedAt: null }
         };
 
         mockPrismaService.application.findUnique.mockResolvedValue(app);
@@ -270,6 +295,15 @@ describe('OrdersService - Categories & Filters', () => {
     });
 
     describe('apply() idempotency key', () => {
+      it('should throw ForbiddenException if executor is soft-deleted during apply', async () => {
+        const orderId = 'order-123';
+        const executorId = 'executor-deleted';
+        mockPrismaService.order.findUnique.mockResolvedValue({ id: orderId, status: OrderStatus.PUBLISHED });
+        mockPrismaService.user.findUnique.mockResolvedValue({ id: executorId, role: 'WORKER', deletedAt: new Date() });
+
+        await expect(service.apply(orderId, executorId, 500)).rejects.toThrow(ForbiddenException);
+      });
+
       it('should return existing application on idempotencyKey hit', async () => {
         const orderId = 'order-123';
         const executorId = 'executor-1';
