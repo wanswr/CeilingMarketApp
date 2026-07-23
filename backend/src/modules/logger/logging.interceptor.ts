@@ -17,11 +17,7 @@ export class LoggingInterceptor implements NestInterceptor {
 
     const startTime = Date.now();
 
-    const safeBody = { ...body };
-    const sensitiveKeys = ['password', 'token', 'code', 'otp'];
-    sensitiveKeys.forEach(key => {
-        if (safeBody[key]) safeBody[key] = '********';
-    });
+    const safeBody = this.logger.sanitizeForLog(body);
 
     // We no longer log every request at the start to reduce noise
     // this.logger.debug('API_REQUEST', `${method} ${url}`, { requestId });
