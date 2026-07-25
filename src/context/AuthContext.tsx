@@ -65,8 +65,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (syncError: any) {
           logger.warn('[AuthContext] Profile sync failed', { error: syncError.message });
 
-          if (syncError.response?.status === 404) {
-              logger.error('[AuthContext] User record not found, clearing session');
+          if (syncError.response?.status === 404 || syncError.response?.status === 401) {
+              logger.error(`[AuthContext] Session invalid (status: ${syncError.response.status}), clearing session`);
               await logout();
           } else {
               const cachedUser = mapEngine.getCurrentUser();

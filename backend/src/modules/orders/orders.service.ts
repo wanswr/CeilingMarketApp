@@ -203,7 +203,10 @@ export class OrdersService {
     return order;
   }
 
-  async findMyOrders(userId: string) {
+  async findMyOrders(userId: string, params?: { skip?: number; take?: number }) {
+    const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
+    const take = params?.take !== undefined ? Number(params.take) : 50;
+
     return this.prisma.order.findMany({
       where: {
         OR: [
@@ -221,7 +224,9 @@ export class OrdersService {
         },
         reviews: true
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take
     });
   }
 

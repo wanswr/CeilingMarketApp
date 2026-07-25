@@ -15,8 +15,15 @@ export class OrdersController {
 
   @UseGuards(JwtAuthGuard)
   @Get('my')
-  findMyOrders(@Req() req: any) {
-    return this.ordersService.findMyOrders(req.user.id);
+  findMyOrders(
+    @Req() req: any,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string
+  ) {
+    return this.ordersService.findMyOrders(req.user.id, {
+      skip: skip !== undefined ? Number(skip) : undefined,
+      take: take !== undefined ? Number(take) : undefined
+    });
   }
 
   @UseGuards(JwtAuthGuard)
