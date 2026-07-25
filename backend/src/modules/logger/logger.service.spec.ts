@@ -89,4 +89,58 @@ describe('LoggerService', () => {
       logSpy.mockRestore();
     });
   });
+
+  describe('LoggerMiddleware & LoggingInterceptor Integration', () => {
+    it('should keep the requestId consistent and sanitize body in interceptor error output', (done) => {
+      const { LoggerMiddleware } = require('./logger.middleware');
+      const { LoggingInterceptor } = require('./logging.interceptor');
+      const { throwError } = require('rxjs');
+
+      const middleware = new LoggerMiddleware();
+      const interceptor = new LoggingInterceptor(service);
+
+      const req: any = {
+        headers: { 'x-request-id': 'custom-interceptor-trace-id' },
+        method: 'POST',
+        url: '/orders',
+        body: { password: 'secret123', item: 'test' }
+      };
+      const res: any = {};
+
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      middleware.use(req, res, () => {
+        expect(req.requestId).toBe('custom-interceptor-trace-id');
+
+        const mockContext: any = {
+          switchToHttp: () => ({
+            getRequest: () => req
+          })
+        };
+
+        const mockHandler: any = {
+          handle: () => throwError(() => new Error('Db error'))
+        };
+
+        interceptor.intercept(mockContext, mockHandler).subscribe({
+          error: () => {
+            try {
+              expect(errorSpy).toHaveBeenCalled();
+              const loggedObj = JSON.parse(errorSpy.mock.calls[0][0]);
+
+              expect(loggedObj.requestId).toBe('custom-interceptor-trace-id');
+              expect(loggedObj.metadata?.body?.password).toBeUndefined();
+              expect(loggedObj.metadata?.body?.item).toBe('test');
+
+              errorSpy.mockRestore();
+              done();
+            } catch (err) {
+              errorSpy.mockRestore();
+              done(err);
+            }
+          }
+        });
+      });
+    });
+  });
 });
