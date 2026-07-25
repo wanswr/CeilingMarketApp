@@ -5,11 +5,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class NotificationsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(userId: string) {
+  async findAll(userId: string, params?: { skip?: number; take?: number }) {
+    const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
+    const take = params?.take !== undefined ? Number(params.take) : 50;
     return this.prisma.notification.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      take: 100
+      skip,
+      take
     });
   }
 

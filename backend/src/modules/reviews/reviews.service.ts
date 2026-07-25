@@ -123,14 +123,19 @@ export class ReviewsService {
       return orders;
   }
 
-  async getMyReviews(userId: string) {
+  async getMyReviews(userId: string, params?: { skip?: number; take?: number }) {
+      const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
+      const take = params?.take !== undefined ? Number(params.take) : 50;
+
       const authored = await this.prisma.review.findMany({
           where: { authorId: userId },
           include: {
               target: { select: { id: true, name: true, avatar: true } },
               order: { select: { id: true, title: true } }
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take
       });
 
       const received = await this.prisma.review.findMany({
@@ -139,20 +144,27 @@ export class ReviewsService {
               author: { select: { id: true, name: true, avatar: true } },
               order: { select: { id: true, title: true } }
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take
       });
 
       return { authored, received };
   }
 
-  async getMasterReviews(masterId: string) {
+  async getMasterReviews(masterId: string, params?: { skip?: number; take?: number }) {
+      const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
+      const take = params?.take !== undefined ? Number(params.take) : 50;
+
       return this.prisma.review.findMany({
           where: { targetId: masterId },
           include: {
               author: { select: { id: true, name: true, avatar: true } },
               order: { select: { title: true } }
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take
       });
   }
 }

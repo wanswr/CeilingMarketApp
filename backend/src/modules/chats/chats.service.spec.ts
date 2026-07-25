@@ -15,6 +15,9 @@ describe('ChatsService', () => {
       findMany: jest.fn(),
       update: jest.fn(),
     },
+    user: {
+      findUnique: jest.fn(),
+    },
     message: {
       findMany: jest.fn(),
       create: jest.fn(),
@@ -160,6 +163,7 @@ describe('ChatsService', () => {
       const chat = { id: chatId, employerId: userId, executorId: 'user-2' };
       const message = { id: 'msg-1', chatId, senderId: userId, text: 'Hello' };
 
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: userId, deletedAt: null });
       mockPrismaService.chat.findUnique.mockResolvedValue(chat);
       mockPrismaService.message.create.mockReturnValue({ query: 'createMessage' });
       mockPrismaService.chat.update.mockReturnValue({ query: 'updateChat' });
@@ -172,6 +176,16 @@ describe('ChatsService', () => {
         { query: 'updateChat' }
       ]);
       expect(result).toEqual(message);
+    });
+
+    it('should block sendMessage if sender is soft-deleted and throw ForbiddenException', async () => {
+      const chatId = 'chat-1';
+      const userId = 'user-1';
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: userId, deletedAt: new Date() });
+
+      await expect(service.sendMessage(chatId, userId, 'Hello')).rejects.toThrow(
+        new ForbiddenException('User account is deleted')
+      );
     });
   });
 });

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Req, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req, Get, Param, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ReviewsService } from './reviews.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -23,12 +23,22 @@ export class ReviewsController {
 
   @UseGuards(JwtAuthGuard)
   @Get('my')
-  async getMy(@Req() req: any) {
-    return this.reviewsService.getMyReviews(req.user.id);
+  async getMy(@Req() req: any, @Query('skip') skip?: string, @Query('take') take?: string) {
+    return this.reviewsService.getMyReviews(req.user.id, {
+      skip: skip !== undefined ? Number(skip) : undefined,
+      take: take !== undefined ? Number(take) : undefined
+    });
   }
 
   @Get('master/:id')
-  async getMasterReviews(@Param('id') id: string) {
-    return this.reviewsService.getMasterReviews(id);
+  async getMasterReviews(
+    @Param('id') id: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string
+  ) {
+    return this.reviewsService.getMasterReviews(id, {
+      skip: skip !== undefined ? Number(skip) : undefined,
+      take: take !== undefined ? Number(take) : undefined
+    });
   }
 }

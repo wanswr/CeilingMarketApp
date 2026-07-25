@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Body, UseGuards, Req, Param, Post, Delete } from '@nestjs/common';
+import { Controller, Get, Patch, Body, UseGuards, Req, Param, Post, Delete, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -46,8 +46,15 @@ export class UsersController {
   }
 
   @Get(':id/portfolio')
-  getPortfolio(@Param('id') id: string) {
-    return this.usersService.getPortfolio(id);
+  getPortfolio(
+    @Param('id') id: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string
+  ) {
+    return this.usersService.getPortfolio(id, {
+      skip: skip !== undefined ? Number(skip) : undefined,
+      take: take !== undefined ? Number(take) : undefined
+    });
   }
 
   @UseGuards(JwtAuthGuard)

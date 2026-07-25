@@ -51,6 +51,7 @@ describe('UsersService', () => {
       const dto = { name: 'New Name', avatar: 'new-avatar.png' };
       const updatedUser = { id: userId, name: 'New Name', avatar: 'new-avatar.png', role: null };
 
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: userId, deletedAt: null });
       mockPrismaService.user.update.mockResolvedValue(updatedUser);
 
       const result = await service.update(userId, dto);
@@ -67,6 +68,7 @@ describe('UsersService', () => {
       const dto = { name: 'Bob', role: 'WORKER' };
       const updatedUser = { id: userId, name: 'Bob', role: null };
 
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: userId, deletedAt: null });
       mockPrismaService.user.update.mockResolvedValue(updatedUser);
 
       const result = await service.update(userId, dto as any);
@@ -222,6 +224,25 @@ describe('UsersService', () => {
       mockPrismaService.user.findUnique.mockResolvedValue(user);
 
       await expect(service.findPublicProfile(userId)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('Soft-deleted user action blocking', () => {
+    const deletedUser = { id: 'user-1', deletedAt: new Date() };
+
+    it('should block update() for soft-deleted user and throw NotFoundException', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(deletedUser);
+      await expect(service.update('user-1', { name: 'Bob' })).rejects.toThrow(NotFoundException);
+    });
+
+    it('should block setRole() for soft-deleted user and throw NotFoundException', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(deletedUser);
+      await expect(service.setRole('user-1', 'WORKER')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should block setActiveCategory() for soft-deleted user and throw NotFoundException', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(deletedUser);
+      await expect(service.setActiveCategory('user-1', 'cat-123')).rejects.toThrow(NotFoundException);
     });
   });
 });

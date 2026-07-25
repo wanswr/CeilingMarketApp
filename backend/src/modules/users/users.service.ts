@@ -73,6 +73,9 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
+
     const filteredDto: Partial<UpdateUserDto> = {};
 
     if (dto.name !== undefined) filteredDto.name = dto.name;
@@ -99,7 +102,7 @@ export class UsersService {
 
   async setRole(userId: string, role: 'WORKER' | 'EMPLOYER') {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
     if (user.role) {
       throw new ForbiddenException('Role is already set and cannot be changed');
     }
@@ -110,14 +113,21 @@ export class UsersService {
     });
   }
 
-  async getPortfolio(userId: string) {
+  async getPortfolio(userId: string, params?: { skip?: number; take?: number }) {
+    const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
+    const take = params?.take !== undefined ? Number(params.take) : 50;
     return this.prisma.portfolioItem.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take
     });
   }
 
   async addPortfolioItem(userId: string, dto: { imageUrl: string; description?: string; workType?: any }) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
+
     return this.prisma.portfolioItem.create({
       data: {
         userId,
@@ -129,6 +139,9 @@ export class UsersService {
   }
 
   async deletePortfolioItem(userId: string, itemId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
+
     const item = await this.prisma.portfolioItem.findUnique({
       where: { id: itemId }
     });
@@ -145,7 +158,7 @@ export class UsersService {
 
   async setActiveCategory(userId: string, categoryId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException(`User with ID ${userId} not found`);
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
     if (user.role !== 'WORKER') {
       throw new ForbiddenException('Only workers can select a direction');
     }

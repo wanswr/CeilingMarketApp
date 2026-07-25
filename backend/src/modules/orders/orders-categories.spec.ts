@@ -5,7 +5,7 @@ import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
 import { OrderStatus } from '@prisma/client';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 
 describe('OrdersService - Categories & Filters', () => {
   let service: OrdersService;
@@ -290,6 +290,37 @@ describe('OrdersService - Categories & Filters', () => {
         expect(result).toEqual({ app: existingApp, order });
         expect(mockPrismaService.application.create).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('Soft-deleted user blocking in Orders', () => {
+    it('should block create() if employer is soft-deleted', async () => {
+      const userId = 'employer-1';
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: userId, deletedAt: new Date() });
+      await expect(service.create({ title: 'My order' }, userId)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should block apply() if worker is soft-deleted', async () => {
+      const orderId = 'order-123';
+      const executorId = 'executor-1';
+      mockPrismaService.order.findUnique.mockResolvedValue({ id: orderId, status: OrderStatus.PUBLISHED });
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: executorId, role: 'WORKER', deletedAt: new Date() });
+      await expect(service.apply(orderId, executorId)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should block acceptApplication() if applicant is soft-deleted', async () => {
+      const userId = 'employer-1';
+      const applicationId = 'app-123';
+      const app = {
+        id: applicationId,
+        orderId: 'order-123',
+        executorId: 'executor-1',
+        order: { id: 'order-123', employerId: userId, status: OrderStatus.PUBLISHED },
+        executor: { id: 'executor-1', deletedAt: new Date() }
+      };
+
+      mockPrismaService.application.findUnique.mockResolvedValue(app);
+      await expect(service.acceptApplication(applicationId, userId)).rejects.toThrow(ConflictException);
     });
   });
 });
