@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OrderStatus, Prisma, Role } from '@prisma/client';
+import { ORDER_STATE_MACHINE } from './order-state-machine';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
@@ -18,34 +19,54 @@ export class OrdersService {
   }
 
   private canTransition(from: OrderStatus, to: OrderStatus): boolean {
-    const priorities: Record<OrderStatus, number> = {
-      [OrderStatus.PENDING]: -1,
-      [OrderStatus.PUBLISHED]: 0,
-      [OrderStatus.HAS_RESPONSES]: 1,
-      [OrderStatus.CLAIMED]: 2,
-      [OrderStatus.IN_PROGRESS]: 3,
-      [OrderStatus.COMPLETED]: 4,
-      [OrderStatus.CANCELLED]: 5,
-      [OrderStatus.DISPUTE]: 6,
-      [OrderStatus.REVIEWED]: 7,
-    };
+    const currentTransitions = ORDER_STATE_MACHINE[from];
+    if (!currentTransitions) return false;
+    return !!currentTransitions[to];
+  }
 
-    // V12 Hardened rules:
-    if (from === OrderStatus.CANCELLED) return false; // Terminal
-    if (from === OrderStatus.COMPLETED && to !== OrderStatus.REVIEWED) return false;
-    if (to === OrderStatus.CANCELLED) {
-        // Block cancellation if work has already started, completed, or is in dispute
-        if (from === OrderStatus.IN_PROGRESS ||
-            from === OrderStatus.COMPLETED ||
-            from === OrderStatus.REVIEWED ||
-            from === OrderStatus.DISPUTE) {
-            return false;
-        }
-        return true;
+  private validateTransition(
+    order: any,
+    toStatus: OrderStatus,
+    userId: string,
+    isSystem = false
+  ): void {
+    const fromStatus = order.status;
+
+    if (fromStatus === toStatus) {
+      throw new ConflictException(`Cannot transition from ${fromStatus} to ${toStatus}`);
     }
 
-    // Strict forward progression only
-    return priorities[to] > priorities[from];
+    const currentTransitions = ORDER_STATE_MACHINE[fromStatus];
+    if (!currentTransitions) {
+      throw new ConflictException(`Cannot transition from ${fromStatus} to ${toStatus}`);
+    }
+
+    const rule = currentTransitions[toStatus];
+    if (!rule) {
+      throw new ConflictException(`Cannot transition from ${fromStatus} to ${toStatus}`);
+    }
+
+    if (rule.requiresParticipant === 'system' && !isSystem) {
+      throw new ConflictException(`Cannot transition from ${fromStatus} to ${toStatus}`);
+    }
+
+    if (isSystem) {
+      return;
+    }
+
+    if (rule.requiresParticipant === 'employer') {
+      if (order.employerId !== userId) {
+        throw new ForbiddenException(`Only the employer can transition this order to ${toStatus}`);
+      }
+    } else if (rule.requiresParticipant === 'executor') {
+      if (order.executorId !== userId) {
+        throw new ForbiddenException(`Only the executor can transition this order to ${toStatus}`);
+      }
+    } else if (rule.requiresParticipant === 'any') {
+      if (order.employerId !== userId && order.executorId !== userId) {
+        throw new ForbiddenException(`Only order participants can transition this order to ${toStatus}`);
+      }
+    }
   }
 
   private async broadcast(event: string, payload: any, userId?: string) {
@@ -205,9 +226,7 @@ export class OrdersService {
     if (order.employerId !== userId) throw new ForbiddenException();
 
     if (dto.status && dto.status !== order.status) {
-      if (!this.canTransition(order.status, dto.status)) {
-        throw new ConflictException(`Transition ${order.status} -> ${dto.status} not allowed`);
-      }
+      this.validateTransition(order, dto.status, userId, false);
     }
 
     const result = await this.prisma.order.update({
@@ -253,7 +272,9 @@ export class OrdersService {
     }
 
     // Safety check: cannot apply to already taken or completed orders
-    if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
+    if (order.status === OrderStatus.PUBLISHED) {
+        this.validateTransition(order, OrderStatus.HAS_RESPONSES, executorId, true);
+    } else if (order.status !== OrderStatus.HAS_RESPONSES) {
         throw new ConflictException('Order is no longer open for applications');
     }
 
@@ -279,10 +300,13 @@ export class OrdersService {
           data: { orderId, executorId, price, status: 'PENDING', idempotencyKey }
         });
 
-        const updatedOrder = await tx.order.update({
-          where: { id: orderId },
-          data: { status: OrderStatus.HAS_RESPONSES }
-        });
+        let updatedOrder = order;
+        if (order.status === OrderStatus.PUBLISHED) {
+          updatedOrder = await tx.order.update({
+            where: { id: orderId },
+            data: { status: OrderStatus.HAS_RESPONSES }
+          });
+        }
 
         return { app, order: updatedOrder };
       });
@@ -326,9 +350,7 @@ export class OrdersService {
      if (!app || app.order.employerId !== userId) throw new ForbiddenException();
 
      // Conflict Check: Is order already claimed or in progress?
-     if (app.order.status !== OrderStatus.HAS_RESPONSES && app.order.status !== OrderStatus.PUBLISHED) {
-         throw new ConflictException(`Cannot accept application. Order status is already ${app.order.status}`);
-     }
+     this.validateTransition(app.order, OrderStatus.CLAIMED, userId, true);
 
      const result = await this.prisma.$transaction(async (tx) => {
          const updatedCount = await tx.order.updateMany({
@@ -384,12 +406,8 @@ export class OrdersService {
   async startWork(id: string, userId: string) {
       const order = await this.prisma.order.findUnique({ where: { id } });
       if (!order) throw new NotFoundException();
-      if (order.executorId !== userId) throw new ForbiddenException();
 
-      // Production Guard: must be CLAIMED
-      if (order.status !== OrderStatus.CLAIMED) {
-          throw new ConflictException(`Cannot start work. Expected status CLAIMED, found ${order.status}`);
-      }
+      this.validateTransition(order, OrderStatus.IN_PROGRESS, userId, false);
 
       const result = await this.prisma.order.update({
           where: { id },
@@ -404,12 +422,8 @@ export class OrdersService {
   async completeWork(id: string, userId: string) {
       const order = await this.prisma.order.findUnique({ where: { id } });
       if (!order) throw new NotFoundException();
-      if (order.executorId !== userId) throw new ForbiddenException();
 
-      // Production Guard: must be IN_PROGRESS
-      if (order.status !== OrderStatus.IN_PROGRESS) {
-          throw new ConflictException(`Cannot complete work. Expected status IN_PROGRESS, found ${order.status}`);
-      }
+      this.validateTransition(order, OrderStatus.COMPLETED, userId, false);
 
       const result = await this.prisma.order.update({
           where: { id },
@@ -425,9 +439,7 @@ export class OrdersService {
       const order = await this.prisma.order.findUnique({ where: { id } });
       if (!order) throw new NotFoundException();
 
-      if (!this.canTransition(order.status, status)) {
-          throw new ConflictException(`Transition ${order.status} -> ${status} not allowed`);
-      }
+      this.validateTransition(order, status, userId, false);
 
       return this.update(id, { status }, userId);
   }
@@ -467,6 +479,7 @@ export class OrdersService {
       });
 
       if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
+        this.validateTransition(order, OrderStatus.PUBLISHED, executorId, true);
         return tx.order.update({
           where: { id: orderId },
           data: { status: OrderStatus.PUBLISHED },
@@ -687,9 +700,7 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
 
-    if (order.employerId !== userId && order.executorId !== userId) {
-        throw new ForbiddenException('Only order participants can open a dispute');
-    }
+    this.validateTransition(order, OrderStatus.DISPUTE, userId, false);
 
     const result = await this.prisma.order.update({
       where: { id: orderId },

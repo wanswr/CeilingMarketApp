@@ -72,8 +72,8 @@ describe('OrdersService - canTransition state machine', () => {
   });
 
   describe('Blocked Moves from COMPLETED Status', () => {
-    it('should BLOCK any transition from COMPLETED except to REVIEWED', () => {
-      const statuses = Object.values(OrderStatus).filter(s => s !== OrderStatus.REVIEWED);
+    it('should BLOCK any transition from COMPLETED except to REVIEWED and DISPUTE', () => {
+      const statuses = Object.values(OrderStatus).filter(s => s !== OrderStatus.REVIEWED && s !== OrderStatus.DISPUTE);
       statuses.forEach((toStatus) => {
         expect(canTransition(OrderStatus.COMPLETED, toStatus)).toBe(false);
       });
@@ -94,8 +94,8 @@ describe('OrdersService - canTransition state machine', () => {
       expect(canTransition(OrderStatus.COMPLETED, OrderStatus.IN_PROGRESS)).toBe(false);
     });
 
-    it('should allow priority-based multi-step forward progression', () => {
-      expect(canTransition(OrderStatus.PUBLISHED, OrderStatus.COMPLETED)).toBe(true);
+    it('should block priority-based arbitrary multi-step forward progression', () => {
+      expect(canTransition(OrderStatus.PUBLISHED, OrderStatus.COMPLETED)).toBe(false);
     });
   });
 });
