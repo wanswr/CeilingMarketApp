@@ -52,6 +52,8 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [orders, setOrders] = useState<Order[]>(mapEngine.getOrders(true));
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
 
   // Filters
@@ -82,15 +84,17 @@ const OrdersListScreen = ({ navigation }: any) => {
       else mapEngine.syncUser().then(setCurrentUser);
 
       if (!mapEngine.entityStore.isMyOrdersLoaded) {
-        mapEngine.syncMyOrders();
+        setHasMore(true);
+        mapEngine.syncMyOrders({ skip: 0, take: 50 });
       }
     }, [])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setHasMore(true);
     await Promise.all([
-      mapEngine.syncMyOrders(),
+      mapEngine.syncMyOrders({ skip: 0, take: 50 }),
       mapEngine.syncUser(true)
     ]);
     setRefreshing(false);
@@ -149,6 +153,23 @@ const OrdersListScreen = ({ navigation }: any) => {
 
     return result;
   }, [orders, activeTab, statusFilter, workTypeFilter, sortOrder, currentUser]);
+
+  const loadMoreOrders = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const skip = mapEngine.entityStore.getMyOrders().length;
+      const take = 50;
+      const res = await mapEngine.syncMyOrders({ skip, take });
+      if (res && res.length < take) {
+        setHasMore(false);
+      }
+    } catch (e) {
+      logger.error('UI_ERROR', { error: 'Load more my orders failed:', e });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleDelete = (orderId: string) => {
     if (submitting) return;
@@ -313,6 +334,16 @@ const OrdersListScreen = ({ navigation }: any) => {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
+        onEndReached={loadMoreOrders}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={() => {
+          if (!loadingMore) return null;
+          return (
+            <View style={{ paddingVertical: 15, alignItems: 'center' }}>
+              <ActivityIndicator color={COLORS.primary} />
+            </View>
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="documents-outline" size={64} color={COLORS.border} />
