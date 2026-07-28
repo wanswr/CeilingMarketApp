@@ -35,6 +35,9 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const currentUser = mapEngine.getCurrentUser();
   const isMe = !userId || userId === currentUser?.id || userId === currentUser?.uid;
 
+  const profileKey = userId || 'me';
+  const lastFetchRef = React.useRef<{ [key: string]: number }>({});
+
   // App Settings States
   const [pushEnabled, setPushEnabled] = useState(true);
   const [offlineCacheEnabled, setOfflineCacheEnabled] = useState(true);
@@ -58,18 +61,30 @@ const ProfileScreen = ({ route, navigation }: any) => {
           const portRes = await apiService.api.get(`users/${userData.id}/portfolio`);
           setPortfolioItems(portRes.data);
       }
+      // Record successful fetch timestamp
+      lastFetchRef.current[profileKey] = Date.now();
     } catch (e) {
       logger.error("UI_ERROR", { error: e });
       if (!isMe) Alert.alert("Ошибка", "Не удалось загрузить профиль");
     } finally {
       setLoading(false);
     }
-  }, [userId, isMe]);
+  }, [userId, isMe, profileKey]);
 
   useFocusEffect(
       useCallback(() => {
+          const now = Date.now();
+          const lastFetch = lastFetchRef.current[profileKey] || 0;
+          const CACHE_WINDOW = 15000; // 15 seconds guard
+
+          if (now - lastFetch < CACHE_WINDOW) {
+              logger.debug('PROFILE_FOCUS_FETCH_SKIPPED', { profileKey, age: now - lastFetch });
+              setLoading(false);
+              return;
+          }
+
           fetchProfile();
-      }, [fetchProfile])
+      }, [fetchProfile, profileKey])
   );
 
   const toggleRole = async () => {
