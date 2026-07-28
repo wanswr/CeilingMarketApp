@@ -98,10 +98,10 @@ describe('OrdersService - Categories & Filters', () => {
       expect(result).toEqual(mockCreatedOrder);
     });
 
-    it('should fall back to "ceiling" category if no categoryId is provided', async () => {
+    it('should fall back to "ceilings" category if no categoryId is provided', async () => {
       const dto = { title: 'New Order' };
       const userId = 'user-1';
-      const mockCeilingCategory = { id: 'ceiling-id', slug: 'ceiling' };
+      const mockCeilingCategory = { id: 'ceiling-id', slug: 'ceilings' };
       const mockCreatedOrder = { id: 'order-123', title: 'New Order', categoryId: 'ceiling-id', employerId: userId };
 
       mockPrismaService.user.findUnique.mockResolvedValue({ id: userId, role: 'EMPLOYER' });
@@ -111,7 +111,7 @@ describe('OrdersService - Categories & Filters', () => {
       const result = await service.create(dto, userId);
 
       expect(mockPrismaService.category.findUnique).toHaveBeenCalledWith({
-        where: { slug: 'ceiling' },
+        where: { slug: 'ceilings' },
       });
       expect(mockPrismaService.order.create).toHaveBeenCalledWith({
         data: {

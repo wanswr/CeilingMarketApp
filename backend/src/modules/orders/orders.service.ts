@@ -99,7 +99,7 @@ export class OrdersService {
     let categoryId = dto.categoryId;
     if (!categoryId) {
       const ceilingCategory = await this.prisma.category.findUnique({
-        where: { slug: 'ceiling' }
+        where: { slug: 'ceilings' }
       });
       if (ceilingCategory) {
         categoryId = ceilingCategory.id;
