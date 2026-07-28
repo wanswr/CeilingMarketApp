@@ -307,6 +307,18 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     />
                 </View>
 
+                {user?.role === 'WORKER' && (
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('CategorySelection')}>
+                        <View style={styles.settingLeft}>
+                            <View style={[styles.settingIcon, { backgroundColor: COLORS.primary + '15' }]}>
+                                <Ionicons name="compass-outline" size={20} color={COLORS.primary} />
+                            </View>
+                            <Text style={styles.settingLabel}>Сменить направление</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
+                    </TouchableOpacity>
+                )}
+
                 <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Subscription')}>
                     <View style={styles.settingLeft}>
                         <View style={[styles.settingIcon, { backgroundColor: COLORS.warning + '15' }]}>

@@ -32,6 +32,7 @@ import { z } from 'zod'
 import { AppInput } from '../components/Input'
 import { Button } from '../components/Button'
 import { mapEngine } from '../services/MapEngine'
+import { apiService } from '../services/ApiService'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import i18n from '../constants/i18n';
@@ -41,7 +42,9 @@ const orderSchema = z.object({
   address: z.string().min(5, "Укажите полный адрес"),
   price: z.string().refine(v => !isNaN(Number(v)) && Number(v) > 0, "Укажите корректную сумму"),
   details: z.string().min(10, "Добавьте больше деталей"),
-  workType: z.string().min(1, "Выберите тип работы") });
+  workType: z.string().min(1, "Выберите тип работы"),
+  categoryId: z.string().min(1, "Выберите категорию")
+});
 
 export default function CreateOrderScreen({ navigation }: any) {
   const idempotencyKeyRef = useRef(Crypto.randomUUID());
@@ -52,7 +55,22 @@ export default function CreateOrderScreen({ navigation }: any) {
     price: '',
     details: '',
     workType: 'INSTALLATION',
-    date: new Date() });
+    date: new Date(),
+    categoryId: ''
+  });
+  const [categories, setCategories] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchCats = async () => {
+      try {
+        const res = await apiService.getCategories();
+        setCategories(res.data || []);
+      } catch (err) {
+        logger.error("FETCH_CATS_ERROR", { error: err });
+      }
+    };
+    fetchCats();
+  }, []);
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [importText, setImportText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
@@ -260,7 +278,8 @@ export default function CreateOrderScreen({ navigation }: any) {
         address: parsedData.address || '',
         price: parsedData.price ? parsedData.price.toString() : '',
         details: parsedData.details || '',
-        date: parsedData.date ? new Date(parsedData.date) : new Date()
+        date: parsedData.date ? new Date(parsedData.date) : new Date(),
+        categoryId: form.categoryId
       });
       if (parsedData.address) {
           handleGeocode(parsedData.address);
@@ -377,6 +396,29 @@ export default function CreateOrderScreen({ navigation }: any) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Детали заказа</Text>
 
+            <Text style={styles.label}>Категория заказа</Text>
+            {categories.length > 0 ? (
+              <View style={styles.workTypeGrid}>
+                {categories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[styles.workTypeBtn, form.categoryId === cat.id && styles.workTypeBtnActive]}
+                    onPress={() => {
+                      setForm({ ...form, categoryId: cat.id });
+                      setErrors((e) => ({ ...e, categoryId: undefined }));
+                    }}
+                  >
+                    <Text style={[styles.workTypeBtnText, form.categoryId === cat.id && styles.workTypeBtnTextActive]}>
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <ActivityIndicator size="small" color={COLORS.primary} style={{ alignSelf: 'flex-start', marginBottom: 15 }} />
+            )}
+            {errors.categoryId && <Text style={{ color: COLORS.danger, fontSize: 12, marginTop: -10, marginBottom: 15, marginLeft: 4 }}>{errors.categoryId}</Text>}
+
             <Text style={styles.label}>Тип работ</Text>
             <View style={styles.workTypeGrid}>
                 {['INSTALLATION', 'FROZE', 'REPAIR', 'SERVICE', 'OTHER'].map((type) => (
@@ -428,9 +470,9 @@ export default function CreateOrderScreen({ navigation }: any) {
           </View>
 
           <TouchableOpacity
-            style={[styles.publishButton, loading && { opacity: 0.7 }]}
+            style={[styles.publishButton, (loading || !form.categoryId) && { opacity: 0.7 }]}
             onPress={handlePublish}
-            disabled={loading}
+            disabled={loading || !form.categoryId}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />

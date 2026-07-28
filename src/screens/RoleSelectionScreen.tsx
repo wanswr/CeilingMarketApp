@@ -14,13 +14,18 @@ const RoleSelectionScreen = ({ navigation }: any) => {
     try {
       const data = await mapEngine.setRole(role);
       updateUser(data);
-      // navigation.replace('MainTabs') is not needed, useAuth re-renders Navigation
+      if (role === 'WORKER') {
+        navigation.navigate('CategorySelection');
+      }
     } catch (error: any) {
       if (error.response?.status === 403) {
         Alert.alert('Инфо', 'Роль уже была установлена ранее');
         try {
           const freshProfile = await mapEngine.syncUser(true);
           updateUser(freshProfile);
+          if (role === 'WORKER') {
+            navigation.navigate('CategorySelection');
+          }
         } catch (e) {
           // fallback ignore
         }
