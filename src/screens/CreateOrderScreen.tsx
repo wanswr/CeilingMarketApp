@@ -33,6 +33,7 @@ import { AppInput } from '../components/Input'
 import { Button } from '../components/Button'
 import { mapEngine } from '../services/MapEngine'
 import { apiService } from '../services/ApiService'
+import { usePendingAction } from '../context/PendingActionContext'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import i18n from '../constants/i18n';
@@ -47,6 +48,7 @@ const orderSchema = z.object({
 });
 
 export default function CreateOrderScreen({ navigation }: any) {
+  const { requireRoleAndCategory } = usePendingAction();
   const idempotencyKeyRef = useRef(Crypto.randomUUID());
   const route = useRoute<any>();
   const [form, setForm] = useState({
@@ -225,20 +227,28 @@ export default function CreateOrderScreen({ navigation }: any) {
         return;
       }
 
-      setLoading(true);
-      await mapEngine.createOrder({
-        ...form,
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-        price: Number(form.price),
-        images: [],
-        idempotencyKey: idempotencyKeyRef.current
-      });
+      requireRoleAndCategory(async () => {
+        setLoading(true);
+        try {
+          await mapEngine.createOrder({
+            ...form,
+            latitude: coordinates.latitude,
+            longitude: coordinates.longitude,
+            price: Number(form.price),
+            images: [],
+            idempotencyKey: idempotencyKeyRef.current
+          });
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Успех', 'Заказ успешно опубликован!', [
-        { text: 'OK', onPress: () => navigation.navigate('MainTabs', { screen: 'Map' }) }
-      ]);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert('Успех', 'Заказ успешно опубликован!', [
+            { text: 'OK', onPress: () => navigation.navigate('MainTabs', { screen: 'Map' }) }
+          ]);
+        } catch (err: any) {
+          Alert.alert('Ошибка', 'Не удалось опубликовать заказ. Попробуйте позже.');
+        } finally {
+          setLoading(false);
+        }
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         const newErrors: any = {};
@@ -249,8 +259,6 @@ export default function CreateOrderScreen({ navigation }: any) {
       } else {
         Alert.alert('Ошибка', 'Не удалось опубликовать заказ. Попробуйте позже.');
       }
-    } finally {
-      setLoading(false);
     }
   };
 
