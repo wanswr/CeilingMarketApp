@@ -27,6 +27,8 @@ interface Message {
   senderName?: string;
   createdAt: string;
   isRead: boolean;
+  pending?: boolean;
+  failed?: boolean;
 }
 
 const ChatDetailScreen = ({ route, navigation }: any) => {
@@ -52,6 +54,15 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
         if (msg.chatId === activeChatId) {
             setMessages(prev => {
                 if (prev.some(m => m.id === msg.id)) return prev;
+                // Replace matching pending message of the current user
+                if (msg.senderId === myId) {
+                    const pendingIdx = prev.findIndex(m => m.pending && m.text === msg.text);
+                    if (pendingIdx !== -1) {
+                        const updated = [...prev];
+                        updated[pendingIdx] = { ...msg, pending: false, failed: false };
+                        return updated;
+                    }
+                }
                 return [...prev, msg];
             });
             if (msg.senderId !== myId) {
@@ -138,16 +149,43 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     }
   };
 
+  const retryMessage = async (msg: Message) => {
+    if (!msg.failed || !activeChatId) return;
+
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, pending: true, failed: false } : m));
+
+    try {
+        await apiService.sendMessage(activeChatId, msg.text);
+    } catch (e) {
+        logger.error("UI_ERROR", { error: 'Retry send error:', e });
+        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, pending: false, failed: true } : m));
+    }
+  };
+
   const sendMessage = async () => {
     if (inputText.trim() === '' || !activeChatId) return;
 
     const textToSend = inputText;
     setInputText('');
 
+    const tempId = `temp-${Date.now()}`;
+    const tempMsg: Message = {
+      id: tempId,
+      text: textToSend,
+      senderId: myId || 'me',
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      pending: true,
+      failed: false
+    };
+
+    setMessages(prev => [...prev, tempMsg]);
+
     try {
         await apiService.sendMessage(activeChatId, textToSend);
     } catch (e) {
         logger.error("UI_ERROR", { error: 'Send error:', e });
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, pending: false, failed: true } : m));
     }
   };
 
@@ -157,13 +195,26 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
 
     return (
       <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.otherMessageWrapper]}>
-        <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.otherBubble]}>
+        <TouchableOpacity
+          disabled={!item.failed}
+          onPress={() => retryMessage(item)}
+          activeOpacity={0.7}
+          style={[styles.messageBubble, isMe ? styles.myBubble : styles.otherBubble]}
+        >
           <Text style={styles.messageText}>{item.text}</Text>
           <View style={styles.messageFooter}>
             <Text style={styles.timestamp}>{time}</Text>
-            {isMe && <Ionicons name={item.isRead ? "checkmark-done" : "checkmark"} size={16} color={item.isRead ? "#34B7F1" : "#A7E5FF"} style={{marginLeft: 4}} />}
+            {isMe && (
+              item.failed ? (
+                <Ionicons name="alert-circle" size={16} color={COLORS.danger} style={{ marginLeft: 4 }} />
+              ) : item.pending ? (
+                <Ionicons name="time-outline" size={14} color="#888" style={{ marginLeft: 4 }} />
+              ) : (
+                <Ionicons name={item.isRead ? "checkmark-done" : "checkmark"} size={16} color={item.isRead ? "#34B7F1" : "#A7E5FF"} style={{ marginLeft: 4 }} />
+              )
+            )}
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
     );
   };
