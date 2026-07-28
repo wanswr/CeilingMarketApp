@@ -87,7 +87,7 @@ class ApiService {
   parseOrderText = (text: string) => this.api.post('orders/parse', { text });
   createOrder = (data: any) => this.api.post('orders', data);
   getOrderDetails = (id: string) => this.api.get(`orders/${id}`);
-  applyForOrder = (id: string, price?: number) => this.api.post(`orders/${id}/apply`, { price });
+  applyForOrder = (id: string, price?: number, idempotencyKey?: string) => this.api.post(`orders/${id}/apply`, { price, idempotencyKey });
   cancelApplication = (id: string) => this.api.delete(`orders/${id}/apply`);
   acceptApplication = (applicationId: string) => this.api.post(`orders/applications/${applicationId}/accept`);
   markApplicationViewed = (applicationId: string) => this.api.patch(`orders/applications/${applicationId}/view`);
@@ -112,7 +112,7 @@ class ApiService {
 
   // Chats
   getMyChats = () => this.api.get('chats');
-  getChatMessages = (chatId: string) => this.api.get(`chats/${chatId}/messages`);
+  getChatMessages = (chatId: string, cursor?: string) => this.api.get(`chats/${chatId}/messages`, { params: { cursor } });
   getOrCreateChat = (orderId: string, executorId: string) => this.api.post('chats', { orderId, executorId });
   sendMessage = (chatId: string, text: string) => this.api.post(`chats/${chatId}/messages`, { text });
   markChatAsRead = (chatId: string) => this.api.patch(`chats/${chatId}/read`);

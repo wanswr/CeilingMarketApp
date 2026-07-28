@@ -131,27 +131,50 @@ class MapEngine {
 
     try {
       const viewRegion = region || mapViewportStore.getRegion();
+      const limit = 250;
+      let cursorId: string | undefined = undefined;
+      let allCreated: any[] = [];
+      let pagesFetched = 0;
+      const maxPages = 4; // Max 1000 orders total
 
-      const res = await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial({
+      while (pagesFetched < maxPages) {
+        const params: any = {
           lat: viewRegion.latitude,
           lng: viewRegion.longitude,
-          radius: 100
-      }), force ? 0 : 30000);
-
-      if (res && res.data) {
-        const { created } = res.data;
-        if (created && created.length > 0) {
-            this.entityStore.setOrders(created, 'spatial');
+          radius: 100,
+          limit,
+        };
+        if (cursorId) {
+          params.cursorId = cursorId;
         }
 
-        this.lastSyncRegion = {
-            latitude: viewRegion.latitude,
-            longitude: viewRegion.longitude,
-            latitudeDelta: viewRegion.latitudeDelta
-        };
-        this.triggerNotify();
-        this.entityStore.persist();
+        const res = await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
+
+        if (res && res.data) {
+          const { created } = res.data;
+          if (created && created.length > 0) {
+            allCreated = [...allCreated, ...created];
+            if (created.length === limit) {
+              cursorId = created[created.length - 1].id;
+              pagesFetched++;
+              continue;
+            }
+          }
+        }
+        break;
       }
+
+      if (allCreated.length > 0) {
+        this.entityStore.setOrders(allCreated, 'spatial');
+      }
+
+      this.lastSyncRegion = {
+          latitude: viewRegion.latitude,
+          longitude: viewRegion.longitude,
+          latitudeDelta: viewRegion.latitudeDelta
+      };
+      this.triggerNotify();
+      this.entityStore.persist();
     } catch (error: any) {
         if (error.name !== 'AbortError') logger.error('Map Sync Fail:', { error: error.message });
     } finally {
@@ -293,8 +316,8 @@ class MapEngine {
     return res.data;
   }
 
-  applyForOrder = async (id: string, price?: number) => {
-    const res = await this.apiService.applyForOrder(id, price);
+  applyForOrder = async (id: string, price?: number, idempotencyKey?: string) => {
+    const res = await this.apiService.applyForOrder(id, price, idempotencyKey);
     if (res.data?.order) {
         this.requestRouter.invalidate(`order:${id}`);
         try {

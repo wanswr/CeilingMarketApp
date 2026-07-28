@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as Crypto from 'expo-crypto';
 import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Image, Modal, TextInput, FlatList, RefreshControl } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
@@ -15,6 +16,7 @@ const activeApplications = new Set();
 const activeReviews = new Set();
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
+  const applyIdempotencyKeyRef = useRef(Crypto.randomUUID());
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
   const [loading, setLoading] = useState(!order);
@@ -125,7 +127,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     const aid = logger.startAction('SUBMIT_APPLICATION', { orderId, price: numericPrice });
     setSubmitting(true);
     try {
-        const res = await mapEngine.applyForOrder(orderId, numericPrice);
+        const res = await mapEngine.applyForOrder(orderId, numericPrice, applyIdempotencyKeyRef.current);
         if (res?.order) setOrder(res.order);
 
         logger.endAction('SUBMIT_APPLICATION', { aid });

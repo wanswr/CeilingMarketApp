@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as Crypto from 'expo-crypto';
 import { logger } from '../services/logger/LoggerService';
 
 import {
@@ -43,6 +44,7 @@ const orderSchema = z.object({
   workType: z.string().min(1, "Выберите тип работы") });
 
 export default function CreateOrderScreen({ navigation }: any) {
+  const idempotencyKeyRef = useRef(Crypto.randomUUID());
   const route = useRoute<any>();
   const [form, setForm] = useState({
     title: '',
@@ -211,7 +213,8 @@ export default function CreateOrderScreen({ navigation }: any) {
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
         price: Number(form.price),
-        images: []
+        images: [],
+        idempotencyKey: idempotencyKeyRef.current
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

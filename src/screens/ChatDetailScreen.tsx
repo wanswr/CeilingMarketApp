@@ -34,6 +34,8 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [activeChatId, setActiveChatId] = useState(chatId);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = mapEngine.getCurrentUser();
@@ -81,7 +83,10 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
           setMessages(res.data.messages || []);
         } else if (currentChatId) {
           const res = await apiService.getChatMessages(currentChatId);
-          setMessages(res.data);
+          const msgs = res.data?.messages || (Array.isArray(res.data) ? res.data : []);
+          const cursor = res.data?.nextCursor || null;
+          setMessages(msgs);
+          setNextCursor(cursor);
         }
 
         if (currentChatId) {
@@ -115,6 +120,23 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
         }
     };
   }, [chatId, activeChatId]);
+
+  const loadMoreMessages = async () => {
+    if (loadingMore || !nextCursor || !activeChatId) return;
+    setLoadingMore(true);
+    try {
+      const res = await apiService.getChatMessages(activeChatId, nextCursor);
+      const newMessages = res.data?.messages || (Array.isArray(res.data) ? res.data : []);
+      const newCursor = res.data?.nextCursor || null;
+
+      setMessages(prev => [...newMessages, ...prev]);
+      setNextCursor(newCursor);
+    } catch (e) {
+      logger.error("UI_ERROR", { error: 'Load more messages error:', e });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const sendMessage = async () => {
     if (inputText.trim() === '' || !activeChatId) return;
@@ -168,8 +190,24 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
                 renderItem={renderMessage}
                 keyExtractor={item => item.id}
                 contentContainerStyle={styles.listPadding}
-                onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+                onContentSizeChange={(w, h) => {
+                  if (!loadingMore) {
+                    flatListRef.current?.scrollToEnd();
+                  }
+                }}
                 onLayout={() => flatListRef.current?.scrollToEnd()}
+                ListHeaderComponent={() => {
+                  if (!nextCursor) return null;
+                  return (
+                    <TouchableOpacity onPress={loadMoreMessages} disabled={loadingMore} style={{ padding: 10, alignItems: 'center' }}>
+                      {loadingMore ? (
+                        <ActivityIndicator color={COLORS.primary} />
+                      ) : (
+                        <Text style={{ color: COLORS.primary, fontWeight: '600' }}>Показать предыдущие сообщения</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
             />
           )}
           <View style={styles.inputContainer}>
