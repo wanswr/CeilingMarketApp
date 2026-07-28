@@ -148,7 +148,9 @@ class MapEngine {
           params.cursorId = cursorId;
         }
 
-        const res = await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
+        const res = cursorId
+          ? await this.apiService.getOrdersSpatial(params)
+          : await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
 
         if (res && res.data) {
           const { created } = res.data;
