@@ -93,7 +93,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const login = async (phone: string, code: string) => {
-    const aid = logger.startAction('AUTH_LOGIN', { phone });
+    // 1. disconnect websocket
+    socketService.disconnect();
+
+    // 2. clear auth state
+    setToken(null);
+    setUser(null);
+
+    // 3. clear user cache & clear entity store
+    mapEngine.entityStore.clear();
+    requestRouter.clear();
+
+    const maskedPhone = phone.replace(/^(\+?\d{4})\d{4}(\d{3})$/, '$1****$2');
+    const aid = logger.startAction('AUTH_LOGIN', { phone: maskedPhone });
     try {
       const res = await apiService.verifyOtp(phone, code);
       const { access_token, user } = res.data;
@@ -102,12 +114,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('No access_token returned from server');
       }
 
+      // 4. save new token
       await SecureStore.setItemAsync('userToken', access_token);
       setToken(access_token);
+
+      // 5. save user state (including entityStore first so that connect can query it)
+      mapEngine.entityStore.setUser({ ...user, isMe: true });
       setUser(user);
 
-      socketService.connect(apiService.getBaseUrl(), 'auth_login');
-      mapEngine.entityStore.setUser({ ...user, isMe: true });
+      // 6. connect websocket
+      await socketService.connect(apiService.getBaseUrl(), 'auth_login');
+
       logger.endAction('AUTH_LOGIN', { aid, userId: user.id });
     } catch (error: any) {
       logger.logNetworkError(aid, error);

@@ -18,8 +18,9 @@ export class AuthService {
 
   async requestOtp(phone: string) {
     const authMode = this.configService.get('AUTH_MODE') || 'development';
+    const nodeEnv = this.configService.get('NODE_ENV') || process.env.NODE_ENV || 'development';
 
-    if (authMode === 'development') {
+    if (authMode === 'development' && nodeEnv !== 'production') {
       return {
         status: 'sent',
         devCode: '1234'
