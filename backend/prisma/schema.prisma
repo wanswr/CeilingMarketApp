@@ -49,6 +49,8 @@ model User {
   experience        Int?           @default(0)
   ordersCount       Int            @default(0)
   completedOrders   Int            @default(0)
+  ratingAverage     Float          @default(0)
+  ratingCount       Int            @default(0)
   instagram         String?
   telegram          String?
   isVerified        Boolean        @default(false)
@@ -113,6 +115,7 @@ model Order {
   reviews           Review[]
   categoryId        String?
   category          Category?      @relation(fields: [categoryId], references: [id])
+  statusHistory     OrderStatusHistory[]
 }
 
 model PortfolioItem {
@@ -165,6 +168,9 @@ model Message {
   senderId          String
   text              String
   isRead            Boolean        @default(false)
+  type              MessageType    @default(TEXT)
+  status            MessageStatus  @default(SENT)
+  fileUrl           String?
   createdAt         DateTime       @default(now())
 
   chat              Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -226,4 +232,32 @@ model Category {
 
   orders    Order[]
   masters   User[]   @relation("UserActiveCategory")
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(uuid())
+  orderId     String
+  oldStatus   OrderStatus
+  newStatus   OrderStatus
+  changedById String?
+  createdAt   DateTime    @default(now())
+
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  VOICE
+  FILE
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
 }

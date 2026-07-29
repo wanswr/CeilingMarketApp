@@ -148,7 +148,9 @@ class MapEngine {
           params.cursorId = cursorId;
         }
 
-        const res = await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
+        const res = cursorId
+          ? await this.apiService.getOrdersSpatial(params)
+          : await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
 
         if (res && res.data) {
           const { created } = res.data;
@@ -396,6 +398,17 @@ class MapEngine {
     const res = await this.apiService.login(phone);
     if (res.data.user) this.entityStore?.setUser({ ...res.data.user, isMe: true });
     return res.data;
+  }
+  getExternalUser = async (id: string) => {
+    const res = await this.apiService.getUserProfile(id);
+    if (res && res.data) {
+        this.entityStore.setUser(res.data);
+        return res.data;
+    }
+    return this.entityStore.getUser(id);
+  }
+  forceRefresh = () => {
+    this.syncMap(true);
   }
   parseOrderText = async (text: string) => (await this.apiService.parseOrderText(text)).data;
 }

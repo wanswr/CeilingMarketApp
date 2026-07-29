@@ -6,12 +6,16 @@ async function main() {
     console.log('--- Seeding Categories ---');
 
     const categories = [
-      { slug: 'ceiling', name: 'Натяжные потолки' },
+      { slug: 'ceilings', name: 'Потолки' },
+      { slug: 'walls', name: 'Стены' },
+      { slug: 'floors', name: 'Полы' },
       { slug: 'plumbing', name: 'Сантехника' },
-      { slug: 'electrical', name: 'Электрика' },
-      { slug: 'tiling', name: 'Плитка' },
-      { slug: 'flooring', name: 'Напольные покрытия' },
-      { slug: 'painting', name: 'Малярные работы' },
+      { slug: 'electricity', name: 'Электрика' },
+      { slug: 'finishing', name: 'Отделка' },
+      { slug: 'doors-windows', name: 'Двери и окна' },
+      { slug: 'furniture-installation', name: 'Мебель и монтаж' },
+      { slug: 'heating-climate', name: 'Отопление и климат' },
+      { slug: 'turnkey-repair', name: 'Ремонт под ключ' }
     ];
 
     for (const cat of categories) {
@@ -23,10 +27,10 @@ async function main() {
       console.log('Category upserted:', category.id, category.slug, category.name);
     }
 
-    const ceiling = await prisma.category.findUniqueOrThrow({ where: { slug: 'ceiling' } });
+    const defaultCat = await prisma.category.findUniqueOrThrow({ where: { slug: 'ceilings' } });
     const result = await prisma.order.updateMany({
       where: { categoryId: null },
-      data: { categoryId: ceiling.id },
+      data: { categoryId: defaultCat.id },
     });
 
     console.log('Orders updated with category:', result.count);

@@ -10,12 +10,14 @@ import { Button } from '../components/Button'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import { apiService } from '../services/ApiService'
+import { usePendingAction } from '../context/PendingActionContext'
 import { logger } from '../services/logger/LoggerService'
 
 const activeApplications = new Set();
 const activeReviews = new Set();
 
 const OrderDetailScreen = ({ route, navigation }: any) => {
+  const { requireRoleAndCategory } = usePendingAction();
   const applyIdempotencyKeyRef = useRef(Crypto.randomUUID());
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
@@ -122,23 +124,26 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     }
 
     setShowPriceModal(false);
-    if (activeApplications.has(orderId)) return;
-    activeApplications.add(orderId);
-    const aid = logger.startAction('SUBMIT_APPLICATION', { orderId, price: numericPrice });
-    setSubmitting(true);
-    try {
-        const res = await mapEngine.applyForOrder(orderId, numericPrice, applyIdempotencyKeyRef.current);
-        if (res?.order) setOrder(res.order);
 
-        logger.endAction('SUBMIT_APPLICATION', { aid });
-        Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
-    } catch (error: any) {
-        logger.logNetworkError(aid, error, { orderId });
-        Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
-    } finally {
-        setSubmitting(false);
-        activeApplications.delete(orderId);
-    }
+    requireRoleAndCategory(async () => {
+      if (activeApplications.has(orderId)) return;
+      activeApplications.add(orderId);
+      const aid = logger.startAction('SUBMIT_APPLICATION', { orderId, price: numericPrice });
+      setSubmitting(true);
+      try {
+          const res = await mapEngine.applyForOrder(orderId, numericPrice, applyIdempotencyKeyRef.current);
+          if (res?.order) setOrder(res.order);
+
+          logger.endAction('SUBMIT_APPLICATION', { aid });
+          Alert.alert('Успех', 'Вы успешно откликнулись на заказ');
+      } catch (error: any) {
+          logger.logNetworkError(aid, error, { orderId });
+          Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось отправить отклик');
+      } finally {
+          setSubmitting(false);
+          activeApplications.delete(orderId);
+      }
+    });
   };
 
   const handleAcceptApplication = async (applicationId: string) => {

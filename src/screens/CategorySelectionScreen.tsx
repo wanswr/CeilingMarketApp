@@ -39,6 +39,17 @@ const CategorySelectionScreen = ({ navigation, route }: any) => {
         navigation.navigate('MainTabs');
       }
     } catch (error: any) {
+      if (error.response?.status === 403 || error.response?.status === 400) {
+        const errorMsg = error.response?.data?.message || '';
+        if (
+          errorMsg.toLowerCase().includes('subscription') ||
+          errorMsg.toLowerCase().includes('active') ||
+          errorMsg.toLowerCase().includes('подписк')
+        ) {
+          Alert.alert('Ошибка', 'Нельзя сменить направление, пока активна подписка');
+          return;
+        }
+      }
       Alert.alert('Ошибка', 'Не удалось сохранить направление');
     } finally {
       setLoading(false);
