@@ -92,7 +92,7 @@ export class UsersService {
           where: { id },
           data: filteredDto,
         });
-    } catch (error) {
+    } catch (error: any) {
         if (error.code === 'P2025') {
             throw new NotFoundException(`User with ID ${id} not found`);
         }

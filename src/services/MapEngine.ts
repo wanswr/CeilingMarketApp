@@ -399,6 +399,17 @@ class MapEngine {
     if (res.data.user) this.entityStore?.setUser({ ...res.data.user, isMe: true });
     return res.data;
   }
+  getExternalUser = async (id: string) => {
+    const res = await this.apiService.getUserProfile(id);
+    if (res && res.data) {
+        this.entityStore.setUser(res.data);
+        return res.data;
+    }
+    return this.entityStore.getUser(id);
+  }
+  forceRefresh = () => {
+    this.syncMap(true);
+  }
   parseOrderText = async (text: string) => (await this.apiService.parseOrderText(text)).data;
 }
 

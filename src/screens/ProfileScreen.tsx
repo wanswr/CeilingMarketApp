@@ -28,6 +28,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const { userId } = route.params || {};
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -43,6 +44,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const [offlineCacheEnabled, setOfflineCacheEnabled] = useState(true);
 
   const fetchProfile = useCallback(async () => {
+    setError(null);
     try {
       let userData;
       if (isMe) {
@@ -63,8 +65,9 @@ const ProfileScreen = ({ route, navigation }: any) => {
       }
       // Record successful fetch timestamp
       lastFetchRef.current[profileKey] = Date.now();
-    } catch (e) {
+    } catch (e: any) {
       logger.error("UI_ERROR", { error: e });
+      setError(e.message || "Не удалось загрузить данные профиля");
       if (!isMe) Alert.alert("Ошибка", "Не удалось загрузить профиль");
     } finally {
       setLoading(false);
@@ -145,6 +148,24 @@ const ProfileScreen = ({ route, navigation }: any) => {
 
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  }
+
+  if (error || !user) {
+    return (
+      <SafeAreaView style={styles.center} edges={['top']}>
+        <Ionicons name="alert-circle-outline" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
+        <Text style={[styles.name, { marginBottom: 20, textAlign: 'center', paddingHorizontal: 30 }]}>{error || "Профиль не найден"}</Text>
+        <TouchableOpacity
+          style={[styles.mainActionBtn, { paddingHorizontal: 30 }]}
+          onPress={() => {
+            setLoading(true);
+            fetchProfile();
+          }}
+        >
+          <Text style={styles.mainActionText}>Повторить попытку</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
   }
 
   return (

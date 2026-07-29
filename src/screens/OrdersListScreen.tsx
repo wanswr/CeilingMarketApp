@@ -52,6 +52,8 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
   const [orders, setOrders] = useState<Order[]>(mapEngine.getOrders(true));
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
+  const [loading, setLoading] = useState(!mapEngine.entityStore.isMyOrdersLoaded);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -85,8 +87,17 @@ const OrdersListScreen = ({ navigation }: any) => {
       else mapEngine.syncUser().then(setCurrentUser);
 
       if (!mapEngine.entityStore.isMyOrdersLoaded) {
+        setLoading(true);
+        setError(null);
         setHasMore(true);
-        mapEngine.syncMyOrders({ skip: 0, take: 50 });
+        mapEngine.syncMyOrders({ skip: 0, take: 50 })
+          .then(() => setLoading(false))
+          .catch((e: any) => {
+             setError(e.message || "Не удалось загрузить список заказов");
+             setLoading(false);
+          });
+      } else {
+        setLoading(false);
       }
     }, [])
   );
@@ -250,6 +261,35 @@ const OrdersListScreen = ({ navigation }: any) => {
       </Text>
     </TouchableOpacity>
   );
+
+  if (loading && filteredOrders.length === 0) {
+    return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  }
+
+  if (error && filteredOrders.length === 0) {
+    return (
+      <SafeAreaView style={styles.center} edges={['top']}>
+        <Ionicons name="alert-circle-outline" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
+        <Text style={[styles.headerTitle, { fontSize: 18, marginBottom: 20, textAlign: 'center', paddingHorizontal: 30 }]}>{error}</Text>
+        <TouchableOpacity
+          style={[styles.sortButton, { paddingHorizontal: 20, paddingVertical: 12 }]}
+          onPress={() => {
+            setLoading(true);
+            setError(null);
+            setHasMore(true);
+            mapEngine.syncMyOrders({ skip: 0, take: 50 })
+              .then(() => setLoading(false))
+              .catch((err: any) => {
+                 setError(err.message || "Не удалось загрузить список заказов");
+                 setLoading(false);
+              });
+          }}
+        >
+          <Text style={styles.sortButtonText}>Повторить попытку</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
