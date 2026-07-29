@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur'
@@ -43,6 +44,26 @@ const MapScreen = ({ navigation }: any) => {
   const lastHandledRegionRef = useRef<string>('');
   const currentUser = mapEngine.getCurrentUser();
   const myId = currentUser?.uid || currentUser?.id;
+
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (currentUser && myId) {
+      const key = `onboarding_shown_${myId}`;
+      const shown = require('../services/StorageService').storageService.get(key);
+      if (!shown) {
+        setShowOnboarding(true);
+      }
+    }
+  }, [currentUser, myId]);
+
+  const handleCloseOnboarding = () => {
+    if (myId) {
+      const key = `onboarding_shown_${myId}`;
+      require('../services/StorageService').storageService.set(key, true);
+    }
+    setShowOnboarding(false);
+  };
 
   const isSubscribedRef = useRef(false);
 
@@ -407,6 +428,58 @@ const MapScreen = ({ navigation }: any) => {
             </View>
         )}
 
+      {/* First-time Onboarding Modal */}
+      <Modal
+        visible={showOnboarding}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={handleCloseOnboarding}
+      >
+        <View style={styles.onboardingOverlay}>
+          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill}>
+            <TouchableOpacity style={{ flex: 1 }} onPress={handleCloseOnboarding} />
+          </BlurView>
+          <View style={styles.onboardingContent}>
+            <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.onboardingIconContainer}>
+              <Ionicons
+                name={currentUser?.role === 'worker' ? "person-circle" : "construct"}
+                size={48}
+                color="#fff"
+              />
+            </LinearGradient>
+
+            <Text style={styles.onboardingTitle}>Добро пожаловать!</Text>
+
+            <Text style={styles.onboardingMessage}>
+              {currentUser?.role === 'worker'
+                ? "Заполните ваш профиль, чтобы начать получать предложения о работе!"
+                : "Создайте ваш первый заказ, чтобы найти лучших мастеров по потолкам!"}
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.onboardingCtaBtn}
+              onPress={() => {
+                handleCloseOnboarding();
+                if (currentUser?.role === 'worker') {
+                  navigation.navigate('EditProfile');
+                } else {
+                  navigation.navigate('MainTabs', { screen: 'Add' });
+                }
+              }}
+            >
+              <Text style={styles.onboardingCtaText}>
+                {currentUser?.role === 'worker' ? "Заполнить профиль" : "Создать заказ"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.onboardingSkipBtn} onPress={handleCloseOnboarding}>
+              <Text style={styles.onboardingSkipText}>Пропустить</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
         {loading && displayedOrders.length === 0 && (
             <View style={styles.loaderOverlay} pointerEvents="none">
                 <ActivityIndicator size="large" color={COLORS.primary} />
@@ -424,6 +497,15 @@ const mapStyle = [
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  onboardingOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.5)' },
+  onboardingContent: { backgroundColor: '#fff', borderRadius: 32, padding: 24, width: '100%', alignItems: 'center', ...SHADOWS.heavy },
+  onboardingIconContainer: { width: 90, height: 90, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  onboardingTitle: { fontSize: 24, fontWeight: '900', color: COLORS.dark, marginBottom: 12 },
+  onboardingMessage: { fontSize: 16, color: COLORS.gray, textAlign: 'center', lineHeight: 24, marginBottom: 24, paddingHorizontal: 10, fontWeight: '500' },
+  onboardingCtaBtn: { backgroundColor: COLORS.primary, width: '100%', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', ...SHADOWS.medium },
+  onboardingCtaText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  onboardingSkipBtn: { marginTop: 15, padding: 10 },
+  onboardingSkipText: { color: COLORS.gray, fontSize: 14, fontWeight: '600' },
   map: { flex: 1, ...StyleSheet.absoluteFillObject },
   headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   topContainer: {
