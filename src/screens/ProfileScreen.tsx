@@ -39,6 +39,18 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const profileKey = userId || 'me';
   const lastFetchRef = React.useRef<{ [key: string]: number }>({});
 
+  const calculateCompletion = () => {
+    let score = 0;
+    if (user?.avatar) score += 20;
+    if (user?.activeCategoryId) score += 20;
+    if (user?.telegram) score += 20;
+    if (user?.experience && user.experience > 0) score += 20;
+    if (portfolioItems && portfolioItems.length > 0) score += 20;
+    return score;
+  };
+
+  const completionPercentage = calculateCompletion();
+
   // App Settings States
   const [pushEnabled, setPushEnabled] = useState(true);
   const [offlineCacheEnabled, setOfflineCacheEnabled] = useState(true);
@@ -201,6 +213,16 @@ const ProfileScreen = ({ route, navigation }: any) => {
             <View style={styles.roleBadge}>
                 <Text style={styles.roleText}>{user?.role === 'EMPLOYER' ? 'Заказчик' : 'Мастер'}</Text>
             </View>
+
+            {/* Profile Completion Indicator (WORKER only) */}
+            {user?.role === 'WORKER' && (
+                <View style={styles.completionContainer}>
+                    <Text style={styles.completionLabel}>Профиль заполнен на {completionPercentage}%</Text>
+                    <View style={styles.progressBarBg}>
+                        <View style={[styles.progressBarFill, { width: `${completionPercentage}%` }]} />
+                    </View>
+                </View>
+            )}
 
             {/* Social Links Icons */}
             {(user?.telegram || user?.instagram) && (
@@ -444,6 +466,10 @@ const ProfileScreen = ({ route, navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+  completionContainer: { width: '80%', marginTop: 15, alignItems: 'center' },
+  completionLabel: { fontSize: 13, fontWeight: '700', color: COLORS.primary, marginBottom: 6 },
+  progressBarBg: { width: '100%', height: 8, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 4 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   topHeaderBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
   topHeaderTitle: { fontSize: 20, fontWeight: '800', color: COLORS.dark },
