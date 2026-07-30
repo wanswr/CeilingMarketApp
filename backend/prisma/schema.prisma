@@ -97,14 +97,13 @@ model Order {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  employer      User                 @relation("EmployerOrders", fields: [employerId], references: [id], onDelete: Cascade)
-  executor      User?                @relation("ExecutorOrders", fields: [executorId], references: [id], onDelete: SetNull)
-  applications  Application[]
-  chats         Chat[]
-  reviews       Review[]
-  categoryId    String?
-  category      Category?            @relation(fields: [categoryId], references: [id])
-  statusHistory OrderStatusHistory[]
+  employer     User          @relation("EmployerOrders", fields: [employerId], references: [id], onDelete: Cascade)
+  executor     User?         @relation("ExecutorOrders", fields: [executorId], references: [id], onDelete: SetNull)
+  applications Application[]
+  chats        Chat[]
+  reviews      Review[]
+  categoryId   String?
+  category     Category?     @relation(fields: [categoryId], references: [id])
 
   @@index([status, latitude, longitude])
   @@index([latitude])
@@ -161,15 +160,12 @@ model Chat {
 }
 
 model Message {
-  id        String        @id @default(uuid())
+  id        String   @id @default(uuid())
   chatId    String
   senderId  String
   text      String
-  isRead    Boolean       @default(false)
-  type      MessageType   @default(TEXT)
-  status    MessageStatus @default(SENT)
-  fileUrl   String?
-  createdAt DateTime      @default(now())
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
 
   chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
@@ -229,32 +225,4 @@ model Category {
 
   orders  Order[]
   masters User[]  @relation("UserActiveCategory")
-}
-
-model OrderStatusHistory {
-  id          String      @id @default(uuid())
-  orderId     String
-  oldStatus   OrderStatus
-  newStatus   OrderStatus
-  changedById String?
-  createdAt   DateTime    @default(now())
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([orderId])
-  @@index([createdAt])
-}
-
-enum MessageType {
-  TEXT
-  IMAGE
-  VIDEO
-  VOICE
-  FILE
-}
-
-enum MessageStatus {
-  SENT
-  DELIVERED
-  READ
 }

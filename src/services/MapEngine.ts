@@ -394,6 +394,12 @@ class MapEngine {
     this.triggerNotify();
     return res.data;
   };
+  activateSubscription = async (days: number) => {
+    const res = await this.apiService.activateSubscription(days);
+    this.requestRouter.invalidate('user:profile');
+    this.triggerNotify();
+    return res.data;
+  };
   login = async (phone: string) => {
     const res = await this.apiService.login(phone);
     if (res.data.user) this.entityStore?.setUser({ ...res.data.user, isMe: true });

@@ -18,18 +18,24 @@ export class OrdersService {
     this.logger.setService('OrdersService');
   }
 
-  private async logStatusHistory(tx: any, orderId: string, oldStatus: OrderStatus, newStatus: OrderStatus, changedById?: string) {
-    const targetStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
-    if (targetStatuses.includes(newStatus)) {
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId,
-          oldStatus,
-          newStatus,
-          changedById
-        }
-      });
-    }
+  private sanitizeOrderForPublic(order: any) {
+    if (!order) return null;
+    return {
+      id: order.id,
+      title: order.title,
+      price: order.price,
+      status: order.status,
+      workType: order.workType,
+      categoryId: order.categoryId,
+      createdAt: order.createdAt,
+      employer: order.employer ? {
+        id: order.employer.id,
+        name: order.employer.name,
+        avatar: order.employer.avatar,
+        rating: order.employer.rating,
+      } : null,
+      statusHistory: order.statusHistory || []
+    };
   }
 
   private canTransition(from: OrderStatus, to: OrderStatus): boolean {
@@ -94,13 +100,37 @@ export class OrdersService {
           } catch (e) {}
       }
 
+      let dataPayload = payload;
+      if ((event === 'order.created' || event === 'order.status.changed') && payload?.id) {
+          try {
+              const lightweightOrder = await this.prisma.order.findUnique({
+                  where: { id: payload.id },
+                  select: {
+                      id: true,
+                      latitude: true,
+                      longitude: true,
+                      price: true,
+                      status: true,
+                      title: true,
+                      workType: true,
+                      updatedAt: true,
+                      employer: { select: { id: true, name: true, rating: true, avatar: true } },
+                      _count: { select: { applications: true } }
+                  }
+              });
+              if (lightweightOrder) {
+                  dataPayload = lightweightOrder;
+              }
+          } catch (err) {}
+      }
+
       this.gateway.broadcast(event, {
           event,
           eventType: event,
           eventId: randomUUID(),
           userId: userId || 'system',
           activeRole,
-          data: payload
+          data: dataPayload
       });
   }
 
@@ -200,8 +230,7 @@ export class OrdersService {
       include: {
         employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
         executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
-        reviews: true,
-        statusHistory: true
+        reviews: true
       }
     });
     if (!order) throw new NotFoundException();
@@ -215,7 +244,12 @@ export class OrdersService {
       });
       return { ...order, applications };
     }
-    return order;
+
+    if (requesterId && requesterId === order.executorId) {
+      return order;
+    }
+
+    return this.sanitizeOrderForPublic(order);
   }
 
   async findMyOrders(userId: string, params?: { skip?: number; take?: number }) {
@@ -251,7 +285,6 @@ export class OrdersService {
 
     if (dto.status && dto.status !== order.status) {
       this.validateTransition(order, dto.status, userId, false);
-      await this.logStatusHistory(this.prisma, id, order.status, dto.status, userId);
     }
 
     const result = await this.prisma.order.update({
@@ -405,8 +438,6 @@ export class OrdersService {
              throw new NotFoundException('Order not found');
          }
 
-         await this.logStatusHistory(tx, app.orderId, app.order.status, OrderStatus.CLAIMED, userId);
-
          await tx.application.update({
              where: { id: applicationId },
              data: { status: 'ACCEPTED' }
@@ -438,7 +469,6 @@ export class OrdersService {
       if (!order) throw new NotFoundException();
 
       this.validateTransition(order, OrderStatus.IN_PROGRESS, userId, false);
-      await this.logStatusHistory(this.prisma, id, order.status, OrderStatus.IN_PROGRESS, userId);
 
       const result = await this.prisma.order.update({
           where: { id },
@@ -455,7 +485,6 @@ export class OrdersService {
       if (!order) throw new NotFoundException();
 
       this.validateTransition(order, OrderStatus.COMPLETED, userId, false);
-      await this.logStatusHistory(this.prisma, id, order.status, OrderStatus.COMPLETED, userId);
 
       const result = await this.prisma.order.update({
           where: { id },
