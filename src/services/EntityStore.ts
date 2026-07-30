@@ -136,7 +136,6 @@ class EntityStore {
     }
 
     this.meta.writes++;
-    this.persist();
   }
 
   removeOrder = (id: string, reason: string = 'unknown') => {
@@ -148,13 +147,14 @@ class EntityStore {
     this.ordersById.delete(id);
     this.myOrders.delete(id);
     this.meta.writes++;
-    this.persist();
   }
 
   applyPatch = (patch: { created?: Order[], updated?: Order[], deleted?: string[] }, source: string = 'api_patch') => {
       if (patch.created) patch.created.forEach(o => this.setOrder(o, source));
       if (patch.updated) patch.updated.forEach(o => this.setOrder(o, source));
       if (patch.deleted) patch.deleted.forEach(id => this.removeOrder(id, source));
+      this.enforceCacheLimit();
+      this.persist();
   }
 
   /**
@@ -178,6 +178,7 @@ class EntityStore {
       orders.forEach(o => this.setOrder(o, `sync_${source}`));
 
       if (source === 'my') this.isMyOrdersLoaded = true;
+      this.enforceCacheLimit();
       this.persist();
   }
 
@@ -252,6 +253,32 @@ class EntityStore {
       this.isHydratedFlag = true;
       return true;
     } catch (e) { return false; }
+  }
+
+  private enforceCacheLimit() {
+    const MAX_CACHED_ORDERS = 500;
+    if (this.ordersById.size <= MAX_CACHED_ORDERS) return;
+
+    const candidates: { id: string; updatedAt: number }[] = [];
+    this.ordersById.forEach((order, id) => {
+      if (!this.myOrders.has(id)) {
+        const upd = order.updatedAt ? new Date(order.updatedAt).getTime() : 0;
+        candidates.push({ id, updatedAt: upd });
+      }
+    });
+
+    candidates.sort((a, b) => a.updatedAt - b.updatedAt);
+
+    let toEvict = this.ordersById.size - MAX_CACHED_ORDERS;
+    for (let i = 0; i < candidates.length && toEvict > 0; i++) {
+      const candidateId = candidates[i].id;
+      const order = this.ordersById.get(candidateId);
+      if (order) {
+        this.removeFromGrid(order);
+      }
+      this.ordersById.delete(candidateId);
+      toEvict--;
+    }
   }
 
   persist = () => {

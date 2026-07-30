@@ -221,8 +221,7 @@ export class OrdersService {
         applications: {
             where: { executorId: userId },
             select: { id: true, status: true, price: true }
-        },
-        reviews: true
+        }
       },
       orderBy: { createdAt: 'desc' },
       skip,
