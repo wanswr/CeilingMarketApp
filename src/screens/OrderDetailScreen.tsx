@@ -429,6 +429,103 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           <Text style={styles.sectionTitle}>Описание задачи</Text>
           <Text style={styles.description}>{order.details || 'Описание отсутствует'}</Text>
 
+          {/* Milestones timeline */}
+          {(() => {
+            if (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES' || order.status === 'CANCELLED') {
+              return null;
+            }
+
+            const history = order.statusHistory || [];
+            const claimedEntry = history.find((h: any) => h.newStatus === 'CLAIMED');
+            const inProgressEntry = history.find((h: any) => h.newStatus === 'IN_PROGRESS');
+            const completedEntry = history.find((h: any) => h.newStatus === 'COMPLETED');
+
+            const formatTime = (dateStr: string) => {
+              if (!dateStr) return '';
+              const d = new Date(dateStr);
+              return d.toLocaleString('ru-RU', {
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+            };
+
+            const isClaimed = !!claimedEntry || ['CLAIMED', 'IN_PROGRESS', 'COMPLETED', 'REVIEWED'].includes(order.status);
+            const isInProgress = !!inProgressEntry || ['IN_PROGRESS', 'COMPLETED', 'REVIEWED'].includes(order.status);
+            const isCompleted = !!completedEntry || ['COMPLETED', 'REVIEWED'].includes(order.status);
+
+            const claimedDate = claimedEntry?.createdAt || order.claimedAt;
+            const inProgressDate = inProgressEntry?.createdAt;
+            const completedDate = completedEntry?.createdAt;
+
+            return (
+              <>
+                <View style={styles.divider} />
+                <Text style={styles.sectionTitle}>Ход выполнения</Text>
+
+                <View style={styles.milestonesContainer}>
+                  {/* Milestone 1: CLAIMED */}
+                  <View style={styles.milestoneRow}>
+                    <Ionicons
+                      name={isClaimed ? "checkmark-circle" : "ellipse-outline"}
+                      size={22}
+                      color={isClaimed ? '#10B981' : COLORS.gray}
+                    />
+                    <View style={styles.milestoneTextContainer}>
+                      <Text style={[styles.milestoneTitle, isClaimed && styles.milestoneActiveText]}>
+                        Заказ принят в работу
+                      </Text>
+                      {isClaimed && claimedDate && (
+                        <Text style={styles.milestoneDate}>
+                          {formatTime(claimedDate)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Milestone 2: IN_PROGRESS */}
+                  <View style={styles.milestoneRow}>
+                    <Ionicons
+                      name={isInProgress ? "checkmark-circle" : "ellipse-outline"}
+                      size={22}
+                      color={isInProgress ? '#10B981' : COLORS.gray}
+                    />
+                    <View style={styles.milestoneTextContainer}>
+                      <Text style={[styles.milestoneTitle, isInProgress && styles.milestoneActiveText]}>
+                        Исполнитель начал работу
+                      </Text>
+                      {isInProgress && inProgressDate && (
+                        <Text style={styles.milestoneDate}>
+                          {formatTime(inProgressDate)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Milestone 3: COMPLETED */}
+                  <View style={styles.milestoneRow}>
+                    <Ionicons
+                      name={isCompleted ? "checkmark-circle" : "ellipse-outline"}
+                      size={22}
+                      color={isCompleted ? '#10B981' : COLORS.gray}
+                    />
+                    <View style={styles.milestoneTextContainer}>
+                      <Text style={[styles.milestoneTitle, isCompleted && styles.milestoneActiveText]}>
+                        Заказ завершён
+                      </Text>
+                      {isCompleted && completedDate && (
+                        <Text style={styles.milestoneDate}>
+                          {formatTime(completedDate)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              </>
+            );
+          })()}
+
           {(() => {
             const myReview = order?.reviews?.find(r => normalizeId(r.authorId) === nid);
             const otherReview = order?.reviews?.find(r => normalizeId(r.authorId) !== nid);
@@ -1042,7 +1139,38 @@ const styles = StyleSheet.create({
       height: 8,
       borderRadius: 4,
       backgroundColor: COLORS.primary,
-      marginLeft: 6 }
+      marginLeft: 6 },
+  milestonesContainer: {
+    backgroundColor: '#F8FAFC',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 16,
+    marginTop: 8,
+  },
+  milestoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  milestoneTextContainer: {
+    flex: 1,
+  },
+  milestoneTitle: {
+    fontSize: 15,
+    color: COLORS.gray,
+    fontWeight: '600',
+  },
+  milestoneActiveText: {
+    color: COLORS.dark,
+    fontWeight: '700',
+  },
+  milestoneDate: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  }
 });
 
 export default OrderDetailScreen;
