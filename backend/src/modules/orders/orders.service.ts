@@ -467,7 +467,7 @@ export class OrdersService {
          });
 
          // Auto-create chat
-         await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId);
+         await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId, tx);
 
          return updatedOrder;
      });
