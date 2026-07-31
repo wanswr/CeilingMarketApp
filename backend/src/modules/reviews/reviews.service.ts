@@ -77,7 +77,37 @@ export class ReviewsService {
           }
         });
 
-        return { review, order };
+        const reviewCount = await tx.review.count({
+          where: { orderId: dto.orderId }
+        });
+
+        let finalOrder = order;
+        if (reviewCount === 2) {
+          const updatedCount = await tx.order.updateMany({
+            where: {
+              id: dto.orderId,
+              status: OrderStatus.COMPLETED
+            },
+            data: { status: OrderStatus.REVIEWED }
+          });
+
+          if (updatedCount.count > 0) {
+            await tx.orderStatusHistory.create({
+              data: {
+                orderId: dto.orderId,
+                oldStatus: OrderStatus.COMPLETED,
+                newStatus: OrderStatus.REVIEWED,
+                changedById: userId
+              }
+            });
+
+            finalOrder = await tx.order.findUnique({
+              where: { id: dto.orderId }
+            }) || order;
+          }
+        }
+
+        return { review, order: finalOrder };
       });
     } catch (error: any) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
