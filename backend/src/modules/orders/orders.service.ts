@@ -244,7 +244,8 @@ export class OrdersService {
       include: {
         employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
         executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
-        reviews: true
+        reviews: true,
+        statusHistory: { orderBy: { createdAt: 'asc' } }
       }
     });
     if (!order) throw new NotFoundException();
@@ -377,7 +378,6 @@ export class OrdersService {
             where: { id: orderId },
             data: { status: OrderStatus.HAS_RESPONSES }
           });
-          await this.logStatusHistory(tx, orderId, order.status, OrderStatus.HAS_RESPONSES, executorId);
         }
 
         return { app, order: updatedOrder };
@@ -451,6 +451,8 @@ export class OrdersService {
          if (!updatedOrder) {
              throw new NotFoundException('Order not found');
          }
+
+         await this.logStatusHistory(tx, app.orderId, app.order.status, OrderStatus.CLAIMED, userId);
 
          await tx.application.update({
              where: { id: applicationId },
