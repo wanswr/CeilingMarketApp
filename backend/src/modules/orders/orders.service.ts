@@ -38,6 +38,20 @@ export class OrdersService {
     };
   }
 
+  private async logStatusHistory(tx: any, orderId: string, oldStatus: OrderStatus, newStatus: OrderStatus, changedById?: string) {
+    const targetStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
+    if (targetStatuses.includes(newStatus)) {
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          oldStatus,
+          newStatus,
+          changedById
+        }
+      });
+    }
+  }
+
   private canTransition(from: OrderStatus, to: OrderStatus): boolean {
     const currentTransitions = ORDER_STATE_MACHINE[from];
     if (!currentTransitions) return false;
@@ -320,20 +334,10 @@ export class OrdersService {
   }
 
   async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) throw new NotFoundException();
-
     // Validate executor role (must be WORKER to apply)
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
     if (!executor || executor.role !== Role.WORKER || executor.deletedAt) {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
-    }
-
-    // Safety check: cannot apply to already taken or completed orders
-    if (order.status === OrderStatus.PUBLISHED) {
-        this.validateTransition(order, OrderStatus.HAS_RESPONSES, executorId, true);
-    } else if (order.status !== OrderStatus.HAS_RESPONSES) {
-        throw new ConflictException('Order is no longer open for applications');
     }
 
     if (idempotencyKey) {
@@ -354,6 +358,15 @@ export class OrdersService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
+        // Read actual status from database INSIDE the transaction
+        const order = await tx.order.findUnique({ where: { id: orderId } });
+        if (!order) throw new NotFoundException('Order not found');
+
+        // Check if the order status is open for applications
+        if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
+            throw new ConflictException('Order is no longer open for applications');
+        }
+
         const app = await tx.application.create({
           data: { orderId, executorId, price, status: 'PENDING', idempotencyKey }
         });
@@ -364,6 +377,7 @@ export class OrdersService {
             where: { id: orderId },
             data: { status: OrderStatus.HAS_RESPONSES }
           });
+          await this.logStatusHistory(tx, orderId, order.status, OrderStatus.HAS_RESPONSES, executorId);
         }
 
         return { app, order: updatedOrder };
@@ -470,14 +484,34 @@ export class OrdersService {
 
       this.validateTransition(order, OrderStatus.IN_PROGRESS, userId, false);
 
-      const result = await this.prisma.order.update({
-          where: { id },
+      const updateResult = await this.prisma.order.updateMany({
+          where: {
+              id,
+              status: OrderStatus.CLAIMED,
+              executorId: userId
+          },
           data: { status: OrderStatus.IN_PROGRESS }
       });
 
-      this.logger.info('ORDER_STARTED', `Order started by executor`, { orderId: result.id, userId });
+      if (updateResult.count === 0) {
+          throw new ConflictException('Cannot start work. Status changed or executor mismatch.');
+      }
+
+      await this.logStatusHistory(this.prisma, id, order.status, OrderStatus.IN_PROGRESS, userId);
+
+      const result = await this.prisma.order.findUnique({
+          where: { id },
+          include: {
+              employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              reviews: true,
+              statusHistory: true
+          }
+      });
+
+      this.logger.info('ORDER_STARTED', `Order started by executor`, { orderId: result!.id, userId });
       await this.broadcast('order.status.changed', result, userId);
-      return result;
+      return result!;
   }
 
   async completeWork(id: string, userId: string) {
@@ -486,14 +520,34 @@ export class OrdersService {
 
       this.validateTransition(order, OrderStatus.COMPLETED, userId, false);
 
-      const result = await this.prisma.order.update({
-          where: { id },
+      const updateResult = await this.prisma.order.updateMany({
+          where: {
+              id,
+              status: OrderStatus.IN_PROGRESS,
+              executorId: userId
+          },
           data: { status: OrderStatus.COMPLETED }
       });
 
-      this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result.id, userId });
+      if (updateResult.count === 0) {
+          throw new ConflictException('Cannot complete work. Status changed or executor mismatch.');
+      }
+
+      await this.logStatusHistory(this.prisma, id, order.status, OrderStatus.COMPLETED, userId);
+
+      const result = await this.prisma.order.findUnique({
+          where: { id },
+          include: {
+              employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              reviews: true,
+              statusHistory: true
+          }
+      });
+
+      this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result!.id, userId });
       await this.broadcast('order.status.changed', result, userId);
-      return result;
+      return result!;
   }
 
   async transitionStatus(id: string, status: OrderStatus, userId: string) {
