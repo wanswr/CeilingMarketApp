@@ -442,7 +442,7 @@ const MapScreen = ({ navigation }: any) => {
           <View style={styles.onboardingContent}>
             <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.onboardingIconContainer}>
               <Ionicons
-                name={currentUser?.role === 'worker' ? "person-circle" : "construct"}
+                name={currentUser?.role === 'WORKER' ? "person-circle" : "construct"}
                 size={48}
                 color="#fff"
               />
@@ -451,7 +451,7 @@ const MapScreen = ({ navigation }: any) => {
             <Text style={styles.onboardingTitle}>Добро пожаловать!</Text>
 
             <Text style={styles.onboardingMessage}>
-              {currentUser?.role === 'worker'
+              {currentUser?.role === 'WORKER'
                 ? "Заполните ваш профиль, чтобы начать получать предложения о работе!"
                 : "Создайте ваш первый заказ, чтобы найти лучших мастеров по потолкам!"}
             </Text>
@@ -461,7 +461,7 @@ const MapScreen = ({ navigation }: any) => {
               style={styles.onboardingCtaBtn}
               onPress={() => {
                 handleCloseOnboarding();
-                if (currentUser?.role === 'worker') {
+                if (currentUser?.role === 'WORKER') {
                   navigation.navigate('EditProfile');
                 } else {
                   navigation.navigate('MainTabs', { screen: 'Add' });
@@ -469,7 +469,7 @@ const MapScreen = ({ navigation }: any) => {
               }}
             >
               <Text style={styles.onboardingCtaText}>
-                {currentUser?.role === 'worker' ? "Заполнить профиль" : "Создать заказ"}
+                {currentUser?.role === 'WORKER' ? "Заполнить профиль" : "Создать заказ"}
               </Text>
             </TouchableOpacity>
 
