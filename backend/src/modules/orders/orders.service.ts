@@ -645,7 +645,8 @@ export class OrdersService {
     limit?: number;
   }) {
     const startTime = Date.now();
-    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit } = params;
+    const { lat, lng, radius: rawRadius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit } = params;
+    const radius = rawRadius !== undefined ? Math.min(rawRadius, 100) : undefined;
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
 
@@ -675,7 +676,7 @@ export class OrdersService {
           updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
           categoryId: categoryId || undefined,
         },
-        take: limit !== undefined ? Number(limit) : 250,
+        take: Math.min(limit !== undefined ? Number(limit) : 250, 250),
         skip: cursorId ? 1 : undefined,
         cursor: cursorId ? { id: cursorId } : undefined,
         orderBy: { id: 'asc' },
