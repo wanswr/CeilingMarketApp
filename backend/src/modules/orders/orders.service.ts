@@ -215,28 +215,7 @@ export class OrdersService {
     return order;
   }
 
-  async findAll(params: { lat?: number; lng?: number; radius?: number; status?: OrderStatus; categoryId?: string }) {
-    const { lat, lng, radius, status, categoryId } = params;
-    const where: Prisma.OrderWhereInput = {};
-    if (status) where.status = status;
-    if (categoryId) where.categoryId = categoryId;
 
-    if (lat && lng && radius) {
-      const dLat = radius / 111.32;
-      const dLng = radius / (111.32 * Math.cos(lat * Math.PI / 180));
-      where.latitude = { gte: lat - dLat, lte: lat + dLat };
-      where.longitude = { gte: lng - dLng, lte: lng + dLng };
-    }
-
-    return this.prisma.order.findMany({
-      where,
-      take: 200,
-      include: {
-        employer: { select: { id: true, name: true, rating: true, avatar: true } }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-  }
 
   async findOne(id: string, requesterId?: string) {
     const order = await this.prisma.order.findUnique({

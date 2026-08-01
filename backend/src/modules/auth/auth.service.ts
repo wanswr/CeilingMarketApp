@@ -1,3 +1,4 @@
+import { normalizePhone } from '../../common/utils/normalize-phone';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -41,12 +42,12 @@ export class AuthService {
       }
     }
 
-    let user = await this.prisma.user.findUnique({ where: { phone } });
+    let user = await this.prisma.user.findUnique({ where: { phone: normalizePhone(phone) } });
 
     if (!user) {
       user = await this.prisma.user.create({
         data: {
-          phone,
+          phone: normalizePhone(phone),
           name: `User ${phone.slice(-4)}`,
           phoneVerified: true,
         },
@@ -63,7 +64,7 @@ export class AuthService {
   }
 
   async validateUser(phone: string): Promise<any> {
-    const user = await this.prisma.user.findUnique({ where: { phone } });
+    const user = await this.prisma.user.findUnique({ where: { phone: normalizePhone(phone) } });
     return user;
   }
 
@@ -84,7 +85,7 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const user = await this.prisma.user.create({
       data: {
-        phone: dto.phone,
+        phone: normalizePhone(dto.phone),
         name: dto.name,
         role: dto.role || 'WORKER',
         phoneVerified: false,

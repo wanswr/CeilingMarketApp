@@ -16,6 +16,15 @@ describe('UsersService', () => {
     category: {
       findUnique: jest.fn(),
     },
+    order: {
+      count: jest.fn().mockResolvedValue(1),
+    },
+    application: {
+      count: jest.fn().mockResolvedValue(1),
+    },
+    chat: {
+      count: jest.fn().mockResolvedValue(1),
+    },
   };
 
   const mockSubscriptionService = {
@@ -111,6 +120,28 @@ describe('UsersService', () => {
       await expect(service.setRole(userId, role as any)).rejects.toThrow(ForbiddenException);
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({ where: { id: userId } });
       expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should allow changing role if role is already set but user has no activity', async () => {
+      const userId = 'user-3';
+      const role = 'EMPLOYER';
+      const currentUser = { id: userId, role: 'WORKER' };
+      const updatedUser = { id: userId, role: 'EMPLOYER' };
+
+      mockPrismaService.user.findUnique.mockResolvedValue(currentUser);
+      // Mock counts to 0 for no activity
+      (mockPrismaService.order.count as jest.Mock).mockResolvedValue(0);
+      (mockPrismaService.application.count as jest.Mock).mockResolvedValue(0);
+      (mockPrismaService.chat.count as jest.Mock).mockResolvedValue(0);
+      mockPrismaService.user.update.mockResolvedValue(updatedUser);
+
+      const result = await service.setRole(userId, role as any);
+
+      expect(result).toEqual(updatedUser);
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: userId },
+        data: { role: 'EMPLOYER' },
+      });
     });
   });
 

@@ -107,7 +107,7 @@ export class ChatsService {
     return message;
   }
 
-  async getMyChats(userId: string) {
+  async getMyChats(userId: string, params?: { skip?: number; take?: number }) {
     const chats = await this.prisma.chat.findMany({
       where: {
         OR: [
@@ -121,7 +121,9 @@ export class ChatsService {
         executor: { select: { id: true, name: true, avatar: true } },
         messages: { orderBy: { createdAt: 'desc' }, take: 1 }
       },
-      orderBy: { updatedAt: 'desc' }
+      orderBy: { updatedAt: 'desc' },
+      skip: params?.skip,
+      take: params?.take ?? 30
     });
 
     const unreadCounts = await this.prisma.message.groupBy({

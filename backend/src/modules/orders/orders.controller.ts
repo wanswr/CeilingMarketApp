@@ -5,6 +5,7 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { ApplyOrderDto } from './dto/apply-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { GetOrdersSpatialDto } from './dto/get-orders-spatial.dto';
+import { ParseOrderTextDto } from './dto/parse-order-text.dto';
 import { FindAllOrdersDto } from './dto/find-all-orders.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Throttle } from '@nestjs/throttler';
@@ -26,11 +27,7 @@ export class OrdersController {
     });
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get()
-  findAll(@Query() query: FindAllOrdersDto) {
-    return this.ordersService.findAll(query as any);
-  }
+
 
   @UseGuards(JwtAuthGuard)
   @Get('spatial')
@@ -50,8 +47,8 @@ export class OrdersController {
 
   @UseGuards(JwtAuthGuard)
   @Post('parse')
-  parseOrderText(@Body('text') text: string) {
-    return this.ordersService.parseOrderText(text);
+  parseOrderText(@Body() dto: ParseOrderTextDto) {
+    return this.ordersService.parseOrderText(dto.text);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -104,7 +104,21 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
     if (user.role) {
-      throw new ForbiddenException('Role is already set and cannot be changed');
+      const employerOrdersCount = await this.prisma.order.count({ where: { employerId: userId } });
+      const executorOrdersCount = await this.prisma.order.count({ where: { executorId: userId } });
+      const executorAppsCount = await this.prisma.application.count({ where: { executorId: userId } });
+      const chatsCount = await this.prisma.chat.count({
+        where: {
+          OR: [
+            { employerId: userId },
+            { executorId: userId }
+          ]
+        }
+      });
+
+      if (employerOrdersCount !== 0 || executorOrdersCount !== 0 || executorAppsCount !== 0 || chatsCount !== 0) {
+        throw new ForbiddenException('Role is already set and cannot be changed');
+      }
     }
 
     return this.prisma.user.update({
