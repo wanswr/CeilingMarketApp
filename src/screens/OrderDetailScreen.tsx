@@ -22,6 +22,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | undefined>(mapEngine.getOrder(orderId));
   const [loading, setLoading] = useState(!order);
+  const [networkError, setNetworkError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
@@ -43,8 +44,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             setOrder(updated);
         }
         setLoading(false);
-    } catch (e) {
-        if (!isRefresh) {
+    } catch (e: any) {
+        const isNetworkError = e.code === 'ERR_NETWORK' || e.message === 'Network Error' || String(e).includes('ERR_NETWORK');
+        if (isNetworkError) {
+            setNetworkError(true);
+            setLoading(false);
+        } else if (!isRefresh) {
             Alert.alert('Ошибка', 'Не удалось загрузить данные заказа');
             navigation.goBack();
         }
@@ -334,6 +339,27 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const isEmployer = !!nid && !!order?.employerId && nid === normalizeId(order.employerId);
   const isExecutor = !!nid && !!order?.executorId && nid === normalizeId(order.executorId);
   const hasApplied = !!myId && !!order?.applications?.some(a => a.executorId === myId);
+
+  if (networkError) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <Ionicons name="wifi-outline" size={64} color={COLORS.gray} style={{ marginBottom: 16 }} />
+        <Text style={{ fontSize: 16, color: COLORS.gray, textAlign: 'center', marginBottom: 20, fontWeight: '600' }}>
+          Нет подключения к интернету
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: COLORS.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 }}
+          onPress={() => {
+            setNetworkError(false);
+            setLoading(true);
+            fetchOrderDetails();
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>Повторить попытку</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (loading || !order) {
     return (

@@ -14,6 +14,8 @@ import * as Contacts from 'expo-contacts';
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS } from '../constants/theme'
 
+const APP_SHARE_URL = 'https://ceilingsapp.example.com';
+
 export default function InviteFriendsScreen() {
   const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,7 @@ export default function InviteFriendsScreen() {
   const handleInvite = async (contact: Contacts.Contact) => {
     try {
       await Share.share({
-        message: `Привет! Попробуй приложение CeilingsApp для поиска заказов и мастеров по натяжным потолкам: https://ceilingsapp.example.com` });
+        message: `Привет! Попробуй приложение CeilingsApp для поиска заказов и мастеров по натяжным потолкам: ${APP_SHARE_URL}` });
     } catch (error: any) {
       Alert.alert(error.message);
     }

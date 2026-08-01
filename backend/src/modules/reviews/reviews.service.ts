@@ -102,7 +102,8 @@ export class ReviewsService {
             });
 
             finalOrder = await tx.order.findUnique({
-              where: { id: dto.orderId }
+              where: { id: dto.orderId },
+              include: { reviews: true }
             }) || order;
           }
         }

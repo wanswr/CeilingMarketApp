@@ -372,6 +372,16 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
                 </TouchableOpacity>
 
+                <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('InviteFriends')}>
+                    <View style={styles.settingLeft}>
+                        <View style={[styles.settingIcon, { backgroundColor: COLORS.success + '15' }]}>
+                            <Ionicons name="people-outline" size={20} color={COLORS.success} />
+                        </View>
+                        <Text style={styles.settingLabel}>Пригласить друзей</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
+                </TouchableOpacity>
+
                 <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
                     <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
                     <Text style={styles.logoutText}>Выйти из профиля</Text>

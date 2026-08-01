@@ -27,7 +27,30 @@ export default function VerifyCodeScreen({ route, navigation }: any) {
   const { phone, devCode } = route.params || {};
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const { login } = useAuth();
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const interval = setInterval(() => {
+      setCountdown(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [countdown]);
+
+  const handleResend = async () => {
+    try {
+      const res = await apiService.requestOtp(phone);
+      if (res.data?.devCode) {
+        Alert.alert("Dev Mode", `Ваш код: ${res.data.devCode}`);
+      } else {
+        Alert.alert("Успешно", "Код отправлен повторно");
+      }
+      setCountdown(30);
+    } catch (err: any) {
+      Alert.alert("Ошибка", err.response?.data?.message || "Не удалось отправить код");
+    }
+  };
 
   useEffect(() => {
     if (devCode) {
@@ -86,8 +109,16 @@ export default function VerifyCodeScreen({ route, navigation }: any) {
                   style={styles.verifyBtn}
                 />
 
-                <TouchableOpacity style={styles.resendBtn}>
-                    <Text style={styles.resendText}>Отправить код повторно</Text>
+                <TouchableOpacity
+                  style={styles.resendBtn}
+                  onPress={handleResend}
+                  disabled={countdown > 0}
+                >
+                    <Text style={[styles.resendText, countdown > 0 && { color: COLORS.gray }]}>
+                        {countdown > 0
+                          ? (countdown === 30 ? "Повторить через 30с" : `${countdown}с`)
+                          : 'Отправить код повторно'}
+                    </Text>
                 </TouchableOpacity>
               </BlurView>
             </KeyboardAvoidingView>
