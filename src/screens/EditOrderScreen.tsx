@@ -4,7 +4,6 @@ import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIn
 import { AppInput } from '../components/Input'
 import { mapEngine } from '../services/MapEngine'
 import { COLORS } from '../constants/theme'
-import { apiService } from '../services/ApiService'
 
 import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -16,27 +15,13 @@ export default function EditOrderScreen({ navigation, route }: any) {
     address: '',
     price: '',
     details: '',
-    workType: 'INSTALLATION',
-    categoryId: ''
+    workType: 'INSTALLATION'
   });
-  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchOrder();
   }, [orderId]);
-
-  useEffect(() => {
-    const fetchCats = async () => {
-      try {
-        const res = await apiService.getCategories();
-        setCategories(res.data || []);
-      } catch (err) {
-        logger.error("FETCH_CATS_ERROR", { error: err });
-      }
-    };
-    fetchCats();
-  }, []);
 
   const fetchOrder = async () => {
     try {
@@ -46,8 +31,7 @@ export default function EditOrderScreen({ navigation, route }: any) {
         address: order.address || '',
         price: String(order.price || ''),
         details: order.details || '',
-        workType: order.workType || 'INSTALLATION',
-        categoryId: order.categoryId || ''
+        workType: order.workType || 'INSTALLATION'
       });
     } catch (e) {
       logger.error("UI_ERROR", { error: e });
@@ -84,27 +68,6 @@ export default function EditOrderScreen({ navigation, route }: any) {
 
       <ScrollView contentContainerStyle={{ padding: 20 }}>
         <AppInput label="Заголовок" value={form.title} onChangeText={(t:any)=>setForm({...form, title:t})} />
-
-        <Text style={styles.label}>Категория заказа</Text>
-        {categories.length > 0 ? (
-          <View style={styles.workTypeGrid}>
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[styles.workTypeBtn, form.categoryId === cat.id && styles.workTypeBtnActive]}
-                onPress={() => {
-                  setForm({ ...form, categoryId: cat.id });
-                }}
-              >
-                <Text style={[styles.workTypeBtnText, form.categoryId === cat.id && styles.workTypeBtnTextActive]}>
-                  {cat.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : (
-          <ActivityIndicator size="small" color={COLORS.primary} style={{ alignSelf: 'flex-start', marginBottom: 15 }} />
-        )}
 
         <Text style={styles.label}>Тип работы</Text>
         <View style={styles.workTypeGrid}>

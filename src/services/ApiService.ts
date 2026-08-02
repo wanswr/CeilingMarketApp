@@ -93,6 +93,7 @@ class ApiService {
   markApplicationViewed = (applicationId: string) => this.api.patch(`orders/applications/${applicationId}/view`);
   startOrder = (id: string) => this.api.post(`orders/${id}/start`);
   completeOrder = (id: string) => this.api.post(`orders/${id}/complete`);
+  uploadOrderPhoto = (id: string, url: string, type: 'before' | 'after') => this.api.post(`orders/${id}/photos`, { url, type });
   updateOrder = (id: string, data: any) => this.api.patch(`orders/${id}`, data);
   deleteOrder = (id: string) => this.api.delete(`orders/${id}`);
 

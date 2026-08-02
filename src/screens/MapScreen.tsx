@@ -485,12 +485,6 @@ const MapScreen = ({ navigation }: any) => {
                 <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
         )}
-
-        {loading && displayedOrders.length > 0 && (
-            <View style={styles.miniLoader} pointerEvents="none">
-                <ActivityIndicator size="small" color={COLORS.primary} />
-            </View>
-        )}
       </View>
     </ErrorBoundary>
   );
@@ -759,16 +753,6 @@ const styles = StyleSheet.create({
       fontSize: 16,
       fontWeight: '800',
       color: '#fff'
-  },
-  miniLoader: {
-      position: 'absolute',
-      top: 120,
-      right: 16,
-      backgroundColor: 'rgba(255, 255, 255, 0.85)',
-      padding: 6,
-      borderRadius: 12,
-      zIndex: 99,
-      ...SHADOWS.soft
   }
 });
 

@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req, UsePipes, ValidationPipe } from '@nestjs/common';
+import { IsUrl, IsIn } from 'class-validator';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -9,6 +10,15 @@ import { ParseOrderTextDto } from './dto/parse-order-text.dto';
 import { FindAllOrdersDto } from './dto/find-all-orders.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Throttle } from '@nestjs/throttler';
+
+
+export class UploadOrderPhotoDto {
+  @IsUrl({ protocols: ['http', 'https', 'file', 'content'], require_tld: false, require_protocol: false })
+  url: string;
+
+  @IsIn(['before', 'after'])
+  type: 'before' | 'after';
+}
 
 @Controller('orders')
 export class OrdersController {
@@ -120,5 +130,15 @@ export class OrdersController {
     @Req() req: any
   ) {
     return this.ordersService.transitionStatus(id, dto.status, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/photos')
+  uploadPhoto(
+    @Param('id') id: string,
+    @Body() dto: UploadOrderPhotoDto,
+    @Req() req: any
+  ) {
+    return this.ordersService.uploadOrderPhoto(id, dto.url, dto.type, req.user.id);
   }
 }

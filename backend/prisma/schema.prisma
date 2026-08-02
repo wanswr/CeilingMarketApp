@@ -105,6 +105,7 @@ model Order {
   categoryId    String?
   category      Category?            @relation(fields: [categoryId], references: [id])
   statusHistory OrderStatusHistory[]
+  photos        OrderPhoto[]
 
   @@index([status, latitude, longitude])
   @@index([latitude])
@@ -257,4 +258,17 @@ enum MessageStatus {
   SENT
   DELIVERED
   READ
+}
+
+
+model OrderPhoto {
+  id        String   @id @default(uuid())
+  orderId   String
+  url       String
+  type      String   // "before" | "after"
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }

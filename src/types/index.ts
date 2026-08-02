@@ -63,6 +63,15 @@ export interface Application {
   executor?: UserProfile;
 }
 
+
+export interface OrderPhoto {
+  id: string;
+  orderId: string;
+  url: string;
+  type: 'before' | 'after';
+  createdAt: string;
+}
+
 export interface Order {
   id: string;
   employerId: string;
@@ -96,4 +105,6 @@ export interface Order {
   employer?: UserProfile;
   executor?: UserProfile;
   reviews?: Review[];
+  statusHistory?: any[];
+  photos?: OrderPhoto[];
 }
