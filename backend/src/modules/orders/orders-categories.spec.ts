@@ -4,6 +4,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { OrderParserService } from './order-parser.service';
+import { OrderSpatialService } from './order-spatial.service';
 import { OrderStatus } from '@prisma/client';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 
@@ -49,6 +51,8 @@ describe('OrdersService - Categories & Filters', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
+        OrderParserService,
+        OrderSpatialService,
         {
           provide: PrismaService,
           useValue: mockPrismaService,

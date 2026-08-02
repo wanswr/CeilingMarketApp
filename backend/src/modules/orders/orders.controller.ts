@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req, UsePipes, ValidationPipe } from '@nestjs/common';
 import { OrdersService } from './orders.service';
+import { OrderSpatialService } from './order-spatial.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { ApplyOrderDto } from './dto/apply-order.dto';
@@ -12,7 +13,10 @@ import { Throttle } from '@nestjs/throttler';
 
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly orderSpatialService: OrderSpatialService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Get('my')
@@ -32,7 +36,7 @@ export class OrdersController {
   @UseGuards(JwtAuthGuard)
   @Get('spatial')
   getSpatialOrders(@Query() query: GetOrdersSpatialDto, @Req() req: any) {
-    return this.ordersService.findSpatial({
+    return this.orderSpatialService.findSpatial({
       ...query,
       updatedAfter: (query.updatedAfter && !isNaN(Number(query.updatedAfter))) ? new Date(Number(query.updatedAfter)) : undefined,
       requesterId: req.user.id,
