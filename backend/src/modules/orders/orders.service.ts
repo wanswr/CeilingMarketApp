@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OrderStatus, Prisma, Role } from '@prisma/client';
 import { ORDER_STATE_MACHINE } from './order-state-machine';
@@ -224,8 +224,7 @@ export class OrdersService {
         employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
         executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
         reviews: true,
-        statusHistory: { orderBy: { createdAt: 'asc' } },
-        photos: true
+        statusHistory: { orderBy: { createdAt: 'asc' } }
       }
     });
     if (!order) throw new NotFoundException();
@@ -501,16 +500,6 @@ export class OrdersService {
       if (!order) throw new NotFoundException();
 
       this.validateTransition(order, OrderStatus.COMPLETED, userId, false);
-
-      const afterPhoto = await this.prisma.orderPhoto.findFirst({
-          where: {
-              orderId: id,
-              type: 'after'
-          }
-      });
-      if (!afterPhoto) {
-          throw new BadRequestException('Прикрепите хотя бы одно фото результата работы перед завершением заказа');
-      }
 
       const updateResult = await this.prisma.order.updateMany({
           where: {
@@ -830,24 +819,6 @@ export class OrdersService {
       include: {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
         executor: { select: { id: true, name: true, avatar: true } }
-      }
-    });
-  }
-
-  async uploadOrderPhoto(orderId: string, url: string, type: 'before' | 'after', userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-    if (order.executorId !== userId) {
-      throw new ForbiddenException('Only the assigned executor can upload photos to this order');
-    }
-
-    return this.prisma.orderPhoto.create({
-      data: {
-        orderId,
-        url,
-        type
       }
     });
   }

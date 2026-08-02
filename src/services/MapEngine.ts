@@ -375,12 +375,6 @@ class MapEngine {
     this.triggerNotify();
     return res;
   };
-  uploadOrderPhoto = async (id: string, url: string, type: 'before' | 'after') => {
-    const res = await this.apiService.uploadOrderPhoto(id, url, type);
-    await this.syncOrder(id, true);
-    return res;
-  };
-
   completeOrder = async (id: string) => {
     const res = await this.apiService.completeOrder(id);
     this.requestRouter.invalidate(`order:${id}`);

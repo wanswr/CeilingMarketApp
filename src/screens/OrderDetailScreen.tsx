@@ -10,7 +10,6 @@ import { Button } from '../components/Button'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import { apiService } from '../services/ApiService'
-import * as ImagePicker from 'expo-image-picker';
 import { usePendingAction } from '../context/PendingActionContext'
 import { logger } from '../services/logger/LoggerService'
 
@@ -29,7 +28,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [showApplications, setShowApplications] = useState(false);
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [offerPrice, setOfferPrice] = useState('');
@@ -239,88 +237,9 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const handleUploadAndComplete = async (uri: string) => {
-    logger.action('UPLOAD_PHOTO_AND_COMPLETE', 'UI', { orderId, uri });
-    const aid = logger.startAction('UPLOAD_PHOTO_AND_COMPLETE', { orderId });
-    setSubmitting(true);
-    try {
-      // 1. Upload photo to backend
-      await mapEngine.uploadOrderPhoto(orderId, uri, 'after');
-
-      // 2. Complete order work
-      const res = await mapEngine.completeOrder(orderId);
-      if (res.data) setOrder(res.data);
-
-      logger.logStateTransition('COMPLETE_WORK', 'IN_PROGRESS', 'COMPLETED', { orderId, actionId: aid });
-      logger.endAction('UPLOAD_PHOTO_AND_COMPLETE', { aid });
-
-      Alert.alert('Успех', 'Фото загружено, заказ успешно выполнен!', [
-          { text: 'Оставить отзыв', onPress: () => setShowReviewModal(true) },
-          { text: 'Позже' }
-      ]);
-    } catch (error: any) {
-      logger.logNetworkError(aid, error, { orderId });
-      Alert.alert('Ошибка', error.response?.data?.message || 'Не удалось завершить заказ с фотографией');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const pickPhotoFromGallery = async () => {
-    setShowPhotoModal(false);
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Доступ запрещен', 'Разрешите доступ к галерее в настройках устройства');
-      return;
-    }
-
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets[0]?.uri) {
-        await handleUploadAndComplete(result.assets[0].uri);
-      }
-    } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось выбрать изображение');
-    }
-  };
-
-  const takePhotoWithCamera = async () => {
-    setShowPhotoModal(false);
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Доступ запрещен', 'Разрешите доступ к камере в настройках устройства');
-      return;
-    }
-
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets[0]?.uri) {
-        await handleUploadAndComplete(result.assets[0].uri);
-      }
-    } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось сделать снимок');
-    }
-  };
-
   const handleCompleteWork = async () => {
     if (submitting || order?.status !== 'IN_PROGRESS') {
         return;
-    }
-
-    const hasAfterPhoto = !!order?.photos?.some((p: any) => p.type === 'after');
-    if (!hasAfterPhoto) {
-      setShowPhotoModal(true);
-      return;
     }
 
     logger.action('COMPLETE_WORK', 'UI', { orderId });
@@ -887,46 +806,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   </TouchableOpacity>
               </View>
           </View>
-      </Modal>
-
-      <Modal
-        visible={showPhotoModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowPhotoModal(false)}
-      >
-        <View style={styles.modalOverlayCenter}>
-          <BlurView intensity={30} style={StyleSheet.absoluteFill}>
-            <TouchableOpacity style={{flex: 1}} onPress={() => setShowPhotoModal(false)} />
-          </BlurView>
-          <View style={styles.priceModalContent}>
-            <Text style={styles.modalTitleSmall}>Прикрепите фото работы</Text>
-            <Text style={{ fontSize: 14, color: COLORS.gray, textAlign: 'center', marginBottom: 20 }}>
-              Для завершения заказа необходимо прикрепить хотя бы одно фото результата работы ("после").
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.modalApplyBtn, { backgroundColor: COLORS.primary, marginBottom: 12 }]}
-              onPress={takePhotoWithCamera}
-            >
-              <Text style={styles.modalApplyBtnText}>Сделать фото</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modalApplyBtn, { backgroundColor: '#8B5CF6', marginBottom: 12 }]}
-              onPress={pickPhotoFromGallery}
-            >
-              <Text style={styles.modalApplyBtnText}>Выбрать из галереи</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modalCancelBtn, { width: '100%', paddingVertical: 12 }]}
-              onPress={() => setShowPhotoModal(false)}
-            >
-              <Text style={[styles.modalCancelBtnText, { textAlign: 'center' }]}>Отмена</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
       </Modal>
 
       <Modal

@@ -40,6 +40,8 @@ export class AuthService {
       if (code !== '1234') {
         throw new UnauthorizedException('Invalid OTP code');
       }
+    } else {
+      throw new UnauthorizedException('Authentication is only allowed in development mode');
     }
 
     let user = await this.prisma.user.findUnique({ where: { phone: normalizePhone(phone) } });
@@ -92,6 +94,13 @@ export class AuthService {
       },
     });
     this.logger.info('USER_REGISTERED', `User registered/verified via OTP`, { userId: user.id });
-    return this.login(user);
+
+    const otpResult = await this.requestOtp(dto.phone);
+
+    return {
+      requiresVerification: true,
+      phone: dto.phone,
+      ...otpResult
+    };
   }
 }
