@@ -19,6 +19,7 @@ export class GetOrdersSpatialDto {
   @IsOptional()
   @IsNumber()
   @IsPositive()
+  @Max(100)
   @Type(() => Number)
   radius?: number;
 
@@ -66,5 +67,6 @@ export class GetOrdersSpatialDto {
   @IsNumber()
   @Type(() => Number)
   @Min(1)
+  @Max(250)
   limit?: number;
 }

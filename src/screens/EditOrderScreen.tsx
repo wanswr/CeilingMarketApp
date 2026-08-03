@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from '../services/logger/LoggerService';
-import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native'
+import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native'
 import { AppInput } from '../components/Input'
 import { mapEngine } from '../services/MapEngine'
 import { COLORS } from '../constants/theme'
@@ -66,7 +66,11 @@ export default function EditOrderScreen({ navigation, route }: any) {
           <View style={{ width: 28 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={{ padding: 20 }}>
         <AppInput label="Заголовок" value={form.title} onChangeText={(t:any)=>setForm({...form, title:t})} />
 
         <Text style={styles.label}>Тип работы</Text>
@@ -104,6 +108,7 @@ export default function EditOrderScreen({ navigation, route }: any) {
           <Text style={styles.btnText}>СОХРАНИТЬ ИЗМЕНЕНИЯ</Text>
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -40,55 +40,72 @@ enum WorkType {
 }
 
 model User {
-  id                String         @id @default(uuid())
-  phone             String         @unique
-  name              String?
-  role              Role?
-  avatar            String?
-  rating            Float?
-  experience        Int?           @default(0)
-  ordersCount       Int            @default(0)
-  completedOrders   Int            @default(0)
-  ratingAverage     Float          @default(0)
-  ratingCount       Int            @default(0)
-  instagram         String?
-  telegram          String?
-  isVerified        Boolean        @default(false)
-  phoneVerified     Boolean        @default(false)
-  isTrialUsed       Boolean        @default(false)
-  pushToken         String?
-  deletedAt         DateTime?
-  activeCategoryId  String?
-  activeCategory    Category?      @relation("UserActiveCategory", fields: [activeCategoryId], references: [id])
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id               String    @id @default(uuid())
+  phone            String    @unique
+  name             String?
+  role             Role?
+  avatar           String?
+  rating           Float?
+  experience       Int?      @default(0)
+  ordersCount      Int       @default(0)
+  completedOrders  Int       @default(0)
+  instagram        String?
+  telegram         String?
+  isVerified       Boolean   @default(false)
+  phoneVerified    Boolean   @default(false)
+  isTrialUsed      Boolean   @default(false)
+  pushToken        String?
+  deletedAt        DateTime?
+  activeCategoryId String?
+  activeCategory   Category? @relation("UserActiveCategory", fields: [activeCategoryId], references: [id])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  orders            Order[]        @relation("EmployerOrders")
-  assignedOrders    Order[]        @relation("ExecutorOrders")
-  applications      Application[]
-  employerChats     Chat[]         @relation("EmployerChats")
-  executorChats     Chat[]         @relation("ExecutorChats")
-  messages          Message[]
-  subscription      Subscription?
-  authoredReviews   Review[]       @relation("AuthoredReviews")
-  receivedReviews   Review[]       @relation("TargetedReviews")
-  portfolioItems    PortfolioItem[]
-  notifications     Notification[]
+  orders          Order[]         @relation("EmployerOrders")
+  assignedOrders  Order[]         @relation("ExecutorOrders")
+  applications    Application[]
+  employerChats   Chat[]          @relation("EmployerChats")
+  executorChats   Chat[]          @relation("ExecutorChats")
+  messages        Message[]
+  subscription    Subscription?
+  authoredReviews Review[]        @relation("AuthoredReviews")
+  receivedReviews Review[]        @relation("TargetedReviews")
+  portfolioItems  PortfolioItem[]
+  notifications   Notification[]
 
   @@index([role])
   @@index([rating])
 }
 
 model Order {
-  id                String         @id @default(uuid())
-  employerId        String
-  executorId        String?
-  title             String
-  address           String
-  latitude          Float
-  longitude         Float
-  date              DateTime
-  workType          WorkType       @default(INSTALLATION)
+  id             String      @id @default(uuid())
+  employerId     String
+  executorId     String?
+  title          String
+  address        String
+  latitude       Float
+  longitude      Float
+  date           DateTime
+  workType       WorkType    @default(INSTALLATION)
+  price          Float
+  details        String?
+  status         OrderStatus @default(PUBLISHED)
+  images         String[]
+  isPinned       Boolean     @default(false)
+  idempotencyKey String?     @unique
+  claimedAt      DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  employer      User                 @relation("EmployerOrders", fields: [employerId], references: [id], onDelete: Cascade)
+  executor      User?                @relation("ExecutorOrders", fields: [executorId], references: [id], onDelete: SetNull)
+  applications  Application[]
+  chats         Chat[]
+  reviews       Review[]
+  categoryId    String?
+  category      Category?            @relation(fields: [categoryId], references: [id])
+  statusHistory OrderStatusHistory[]
+  photos        OrderPhoto[]
 
   @@index([status, latitude, longitude])
   @@index([latitude])
@@ -98,24 +115,6 @@ model Order {
   @@index([updatedAt])
   @@index([employerId])
   @@index([executorId])
-  price             Float
-  details           String?
-  status            OrderStatus    @default(PUBLISHED)
-  images            String[]
-  isPinned          Boolean        @default(false)
-  idempotencyKey    String?        @unique
-  claimedAt         DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-
-  employer          User           @relation("EmployerOrders", fields: [employerId], references: [id], onDelete: Cascade)
-  executor          User?          @relation("ExecutorOrders", fields: [executorId], references: [id], onDelete: SetNull)
-  applications      Application[]
-  chats             Chat[]
-  reviews           Review[]
-  categoryId        String?
-  category          Category?      @relation(fields: [categoryId], references: [id])
-  statusHistory     OrderStatusHistory[]
 }
 
 model PortfolioItem {
@@ -127,7 +126,7 @@ model PortfolioItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -141,87 +140,86 @@ model Notification {
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
 }
 
 model Chat {
-  id                String         @id @default(uuid())
-  orderId           String
-  employerId        String
-  executorId        String
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id         String   @id @default(uuid())
+  orderId    String
+  employerId String
+  executorId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  employer          User           @relation("EmployerChats", fields: [employerId], references: [id], onDelete: Cascade)
-  executor          User           @relation("ExecutorChats", fields: [executorId], references: [id], onDelete: Cascade)
-  messages          Message[]
+  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  employer User      @relation("EmployerChats", fields: [employerId], references: [id], onDelete: Cascade)
+  executor User      @relation("ExecutorChats", fields: [executorId], references: [id], onDelete: Cascade)
+  messages Message[]
 
   @@unique([orderId, executorId])
 }
 
 model Message {
-  id                String         @id @default(uuid())
-  chatId            String
-  senderId          String
-  text              String
-  isRead            Boolean        @default(false)
-  type              MessageType    @default(TEXT)
-  status            MessageStatus  @default(SENT)
-  fileUrl           String?
-  createdAt         DateTime       @default(now())
+  id        String        @id @default(uuid())
+  chatId    String
+  senderId  String
+  text      String
+  isRead    Boolean       @default(false)
+  type      MessageType   @default(TEXT)
+  status    MessageStatus @default(SENT)
+  fileUrl   String?
+  createdAt DateTime      @default(now())
 
-  chat              Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  sender            User           @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([chatId, createdAt])
 }
 
 model Application {
-  id                String         @id @default(uuid())
-  orderId           String
-  executorId        String
-  price             Float?
-  status            ApplicationStatus @default(PENDING)
-  idempotencyKey    String?        @unique
-  createdAt         DateTime       @default(now())
+  id             String            @id @default(uuid())
+  orderId        String
+  executorId     String
+  price          Float?
+  status         ApplicationStatus @default(PENDING)
+  idempotencyKey String?           @unique
+  createdAt      DateTime          @default(now())
 
-  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  executor          User           @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  executor User  @relation(fields: [executorId], references: [id], onDelete: Cascade)
 
   @@unique([orderId, executorId])
   @@index([executorId])
 }
 
 model Subscription {
-  id                String         @id @default(uuid())
-  userId            String         @unique
-  activeUntil       DateTime
-  isActive          Boolean        @default(true)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  activeUntil DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Review {
-  id                String         @id @default(uuid())
-  orderId           String
-  authorId          String
-  targetId          String
-  rating            Int
-  comment           String?
-  createdAt         DateTime       @default(now())
+  id        String   @id @default(uuid())
+  orderId   String
+  authorId  String
+  targetId  String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
 
-  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  author            User           @relation("AuthoredReviews", fields: [authorId], references: [id], onDelete: Cascade)
-  target            User           @relation("TargetedReviews", fields: [targetId], references: [id], onDelete: Cascade)
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author User  @relation("AuthoredReviews", fields: [authorId], references: [id], onDelete: Cascade)
+  target User  @relation("TargetedReviews", fields: [targetId], references: [id], onDelete: Cascade)
 
   @@unique([orderId, authorId])
 }
-
 
 model Category {
   id        String   @id @default(uuid())
@@ -230,8 +228,8 @@ model Category {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  orders    Order[]
-  masters   User[]   @relation("UserActiveCategory")
+  orders  Order[]
+  masters User[]  @relation("UserActiveCategory")
 }
 
 model OrderStatusHistory {
@@ -242,7 +240,7 @@ model OrderStatusHistory {
   changedById String?
   createdAt   DateTime    @default(now())
 
-  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@index([createdAt])
@@ -260,4 +258,17 @@ enum MessageStatus {
   SENT
   DELIVERED
   READ
+}
+
+
+model OrderPhoto {
+  id        String   @id @default(uuid())
+  orderId   String
+  url       String
+  type      String   // "before" | "after"
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }

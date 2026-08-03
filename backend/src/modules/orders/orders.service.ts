@@ -5,6 +5,8 @@ import { ORDER_STATE_MACHINE } from './order-state-machine';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { OrderParserService } from './order-parser.service';
+import { OrderSpatialService } from './order-spatial.service';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -14,8 +16,44 @@ export class OrdersService {
     private gateway: AppGateway,
     private logger: LoggerService,
     private chats: ChatsService,
+    private orderParserService: OrderParserService,
+    private orderSpatialService: OrderSpatialService,
   ) {
     this.logger.setService('OrdersService');
+  }
+
+  private sanitizeOrderForPublic(order: any) {
+    if (!order) return null;
+    return {
+      id: order.id,
+      title: order.title,
+      price: order.price,
+      status: order.status,
+      workType: order.workType,
+      categoryId: order.categoryId,
+      createdAt: order.createdAt,
+      employer: order.employer ? {
+        id: order.employer.id,
+        name: order.employer.name,
+        avatar: order.employer.avatar,
+        rating: order.employer.rating,
+      } : null,
+      statusHistory: order.statusHistory || []
+    };
+  }
+
+  private async logStatusHistory(tx: any, orderId: string, oldStatus: OrderStatus, newStatus: OrderStatus, changedById?: string) {
+    const targetStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
+    if (targetStatuses.includes(newStatus)) {
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          oldStatus,
+          newStatus,
+          changedById
+        }
+      });
+    }
   }
 
   private canTransition(from: OrderStatus, to: OrderStatus): boolean {
@@ -80,13 +118,37 @@ export class OrdersService {
           } catch (e) {}
       }
 
+      let dataPayload = payload;
+      if ((event === 'order.created' || event === 'order.status.changed') && payload?.id) {
+          try {
+              const lightweightOrder = await this.prisma.order.findUnique({
+                  where: { id: payload.id },
+                  select: {
+                      id: true,
+                      latitude: true,
+                      longitude: true,
+                      price: true,
+                      status: true,
+                      title: true,
+                      workType: true,
+                      updatedAt: true,
+                      employer: { select: { id: true, name: true, rating: true, avatar: true } },
+                      _count: { select: { applications: true } }
+                  }
+              });
+              if (lightweightOrder) {
+                  dataPayload = lightweightOrder;
+              }
+          } catch (err) {}
+      }
+
       this.gateway.broadcast(event, {
           event,
           eventType: event,
           eventId: randomUUID(),
           userId: userId || 'system',
           activeRole,
-          data: payload
+          data: dataPayload
       });
   }
 
@@ -94,6 +156,9 @@ export class OrdersService {
     const creator = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!creator || creator.deletedAt) {
       throw new ForbiddenException('User account is deleted');
+    }
+    if (creator.role !== 'EMPLOYER') {
+      throw new ForbiddenException('Только заказчик может публиковать заказы');
     }
 
     let categoryId = dto.categoryId;
@@ -157,28 +222,7 @@ export class OrdersService {
     return order;
   }
 
-  async findAll(params: { lat?: number; lng?: number; radius?: number; status?: OrderStatus; categoryId?: string }) {
-    const { lat, lng, radius, status, categoryId } = params;
-    const where: Prisma.OrderWhereInput = {};
-    if (status) where.status = status;
-    if (categoryId) where.categoryId = categoryId;
 
-    if (lat && lng && radius) {
-      const dLat = radius / 111.32;
-      const dLng = radius / (111.32 * Math.cos(lat * Math.PI / 180));
-      where.latitude = { gte: lat - dLat, lte: lat + dLat };
-      where.longitude = { gte: lng - dLng, lte: lng + dLng };
-    }
-
-    return this.prisma.order.findMany({
-      where,
-      take: 200,
-      include: {
-        employer: { select: { id: true, name: true, rating: true, avatar: true } }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-  }
 
   async findOne(id: string, requesterId?: string) {
     const order = await this.prisma.order.findUnique({
@@ -186,7 +230,8 @@ export class OrdersService {
       include: {
         employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
         executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
-        reviews: true
+        reviews: true,
+        statusHistory: { orderBy: { createdAt: 'asc' } }
       }
     });
     if (!order) throw new NotFoundException();
@@ -200,7 +245,12 @@ export class OrdersService {
       });
       return { ...order, applications };
     }
-    return order;
+
+    if (requesterId && requesterId === order.executorId) {
+      return order;
+    }
+
+    return this.sanitizeOrderForPublic(order);
   }
 
   async findMyOrders(userId: string, params?: { skip?: number; take?: number }) {
@@ -221,8 +271,7 @@ export class OrdersService {
         applications: {
             where: { executorId: userId },
             select: { id: true, status: true, price: true }
-        },
-        reviews: true
+        }
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -272,20 +321,10 @@ export class OrdersService {
   }
 
   async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) throw new NotFoundException();
-
     // Validate executor role (must be WORKER to apply)
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
     if (!executor || executor.role !== Role.WORKER || executor.deletedAt) {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
-    }
-
-    // Safety check: cannot apply to already taken or completed orders
-    if (order.status === OrderStatus.PUBLISHED) {
-        this.validateTransition(order, OrderStatus.HAS_RESPONSES, executorId, true);
-    } else if (order.status !== OrderStatus.HAS_RESPONSES) {
-        throw new ConflictException('Order is no longer open for applications');
     }
 
     if (idempotencyKey) {
@@ -306,6 +345,15 @@ export class OrdersService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
+        // Read actual status from database INSIDE the transaction
+        const order = await tx.order.findUnique({ where: { id: orderId } });
+        if (!order) throw new NotFoundException('Order not found');
+
+        // Check if the order status is open for applications
+        if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
+            throw new ConflictException('Order is no longer open for applications');
+        }
+
         const app = await tx.application.create({
           data: { orderId, executorId, price, status: 'PENDING', idempotencyKey }
         });
@@ -390,6 +438,8 @@ export class OrdersService {
              throw new NotFoundException('Order not found');
          }
 
+         await this.logStatusHistory(tx, app.orderId, app.order.status, OrderStatus.CLAIMED, userId);
+
          await tx.application.update({
              where: { id: applicationId },
              data: { status: 'ACCEPTED' }
@@ -405,7 +455,7 @@ export class OrdersService {
          });
 
          // Auto-create chat
-         await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId);
+         await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId, tx);
 
          return updatedOrder;
      });
@@ -422,14 +472,34 @@ export class OrdersService {
 
       this.validateTransition(order, OrderStatus.IN_PROGRESS, userId, false);
 
-      const result = await this.prisma.order.update({
-          where: { id },
+      const updateResult = await this.prisma.order.updateMany({
+          where: {
+              id,
+              status: OrderStatus.CLAIMED,
+              executorId: userId
+          },
           data: { status: OrderStatus.IN_PROGRESS }
       });
 
-      this.logger.info('ORDER_STARTED', `Order started by executor`, { orderId: result.id, userId });
+      if (updateResult.count === 0) {
+          throw new ConflictException('Cannot start work. Status changed or executor mismatch.');
+      }
+
+      await this.logStatusHistory(this.prisma, id, order.status, OrderStatus.IN_PROGRESS, userId);
+
+      const result = await this.prisma.order.findUnique({
+          where: { id },
+          include: {
+              employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              reviews: true,
+              statusHistory: true
+          }
+      });
+
+      this.logger.info('ORDER_STARTED', `Order started by executor`, { orderId: result!.id, userId });
       await this.broadcast('order.status.changed', result, userId);
-      return result;
+      return result!;
   }
 
   async completeWork(id: string, userId: string) {
@@ -438,14 +508,34 @@ export class OrdersService {
 
       this.validateTransition(order, OrderStatus.COMPLETED, userId, false);
 
-      const result = await this.prisma.order.update({
-          where: { id },
+      const updateResult = await this.prisma.order.updateMany({
+          where: {
+              id,
+              status: OrderStatus.IN_PROGRESS,
+              executorId: userId
+          },
           data: { status: OrderStatus.COMPLETED }
       });
 
-      this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result.id, userId });
+      if (updateResult.count === 0) {
+          throw new ConflictException('Cannot complete work. Status changed or executor mismatch.');
+      }
+
+      await this.logStatusHistory(this.prisma, id, order.status, OrderStatus.COMPLETED, userId);
+
+      const result = await this.prisma.order.findUnique({
+          where: { id },
+          include: {
+              employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              reviews: true,
+              statusHistory: true
+          }
+      });
+
+      this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result!.id, userId });
       await this.broadcast('order.status.changed', result, userId);
-      return result;
+      return result!;
   }
 
   async transitionStatus(id: string, status: OrderStatus, userId: string) {
@@ -467,6 +557,14 @@ export class OrdersService {
     if (!app) {
         // Idempotent: already cancelled or not found
         return { success: true };
+    }
+
+    if (app.status === 'ACCEPTED') {
+      throw new ForbiddenException('Нельзя отменить уже принятую заявку — используйте отмену заказа');
+    }
+    if (app.status === 'REJECTED') {
+      // уже отклонена, ничего не делать, вернуть success как для idempotent-случая
+      return { success: true };
     }
 
     const now = new Date();
@@ -540,173 +638,11 @@ export class OrdersService {
     cursorId?: string;
     limit?: number;
   }) {
-    const startTime = Date.now();
-    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit } = params;
-
-    let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
-
-    if (lat !== undefined && lng !== undefined && radius !== undefined) {
-      const R = 6371;
-      const deltaLat = (radius / R) * (180 / Math.PI);
-      const deltaLng = (radius / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
-
-      searchBounds = {
-        minLat: lat - deltaLat,
-        maxLat: lat + deltaLat,
-        minLng: lng - deltaLng,
-        maxLng: lng + deltaLng,
-      };
-    } else if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
-      searchBounds = { minLat, maxLat, minLng, maxLng };
-    }
-
-    if (!searchBounds) return { created: [], updated: [], deleted: [] };
-
-    try {
-      const orders = await this.prisma.order.findMany({
-        where: {
-          status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES, OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
-          latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
-          longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
-          updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
-          categoryId: categoryId || undefined,
-        },
-        take: limit !== undefined ? Number(limit) : 250,
-        skip: cursorId ? 1 : undefined,
-        cursor: cursorId ? { id: cursorId } : undefined,
-        orderBy: { id: 'asc' },
-        // V12 Lightweight Map DTO optimization:
-        select: {
-            id: true,
-            latitude: true,
-            longitude: true,
-            price: true,
-            status: true,
-            title: true,
-            workType: true,
-            updatedAt: true,
-            employer: { select: { id: true, name: true, rating: true, avatar: true } },
-            _count: { select: { applications: true } }
-        }
-      });
-
-      const duration = Date.now() - startTime;
-      if (duration > 500) {
-        this.logger.warn('SPATIAL_SEARCH_SLOW', 'Map spatial search took too long', {
-            metadata: { duration, lat, lng, radius, count: orders.length }
-        });
-      }
-
-      return { created: orders, updated: [], deleted: [] };
-    } catch (error) {
-      this.logger.error('SPATIAL_SEARCH_ERROR', 'Map spatial search failed', {
-          metadata: { error: (error as any).message, lat, lng, radius }
-      });
-      throw error;
-    }
+    return this.orderSpatialService.findSpatial(params);
   }
 
   parseOrderText(text: string) {
-    const cleanText = text.replace(/\[\d{2}\.\d{2}\.\d{4}\s\d{2}:\d{2}\].*?:/g, '').trim();
-    const lines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
-    const result: any = {
-      title: '',
-      details: text,
-      price: 0,
-      address: '',
-      date: new Date(),
-    };
-
-    const priceRegex = /(?:зп|зарплата|цена|стоимость|выплата)[:\s-]*(\d[\d\s.,]{3,})/i;
-    const priceMatch = text.match(priceRegex);
-
-    if (priceMatch) {
-      const rawPrice = priceMatch[1].replace(/[\s.,]/g, '');
-      result.price = parseInt(rawPrice, 10);
-    } else {
-        const currencyRegex = /(\d[\d\s.,]*)(?:₽|р|руб|рублей)/i;
-        const currencyMatch = text.match(currencyRegex);
-        if (currencyMatch) {
-            result.price = parseInt(currencyMatch[1].replace(/[\s.,]/g, ''), 10);
-        }
-    }
-
-    const today = new Date();
-    const daysOfWeek: Record<string, number> = {
-      'воскресенье': 0, 'понедельник': 1, 'вторник': 2, 'среда': 3, 'четверг': 4, 'пятница': 5, 'суббота': 6
-    };
-
-    if (/сегодня/i.test(cleanText)) {
-      result.date = new Date(today);
-    } else if (/завтра/i.test(cleanText)) {
-      const tomorrow = new Date();
-      tomorrow.setDate(today.getDate() + 1);
-      result.date = tomorrow;
-    } else if (/послезавтра/i.test(cleanText)) {
-      const dayAfter = new Date();
-      dayAfter.setDate(today.getDate() + 2);
-      result.date = dayAfter;
-    } else {
-      for (const [dayName, dayIndex] of Object.entries(daysOfWeek)) {
-        const dayRegex = new RegExp(`(?:на|в|во)?\\s*${dayName.slice(0, -1)}`, 'i');
-        if (dayRegex.test(cleanText)) {
-          const targetDate = new Date();
-          const currentDay = today.getDay();
-          let daysUntil = dayIndex - currentDay;
-          if (daysUntil <= 0) daysUntil += 7;
-          targetDate.setDate(today.getDate() + daysUntil);
-          result.date = targetDate;
-          break;
-        }
-      }
-    }
-
-    const addressKeywords = ['улица', 'ул', 'шоссе', 'ш', 'проспект', 'пр', 'бульвар', 'б-р', 'переулок', 'пер', 'набережная', 'наб', 'корпус', 'корп', 'дом', 'д', 'жк'];
-    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное', 'варшавское', 'римского', 'корсако', 'судостроительная'];
-
-    for (const line of lines) {
-       const lowerLine = line.toLowerCase();
-       const isPriceLine = /зп|зарплата|цена|руб|₽/i.test(lowerLine);
-       const isDateLine = /завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\\d{1,2}\\.\\d{1,2}/i.test(lowerLine);
-
-       const hasCity = cities.some(c => lowerLine.includes(c));
-       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' ') || lowerLine.includes(' ' + k) || lowerLine === k);
-       const hasHouseNum = /\\d+[а-я]?/.test(lowerLine) && !isPriceLine && !isDateLine && (lowerLine.includes(' ') || lowerLine.length < 10 || lowerLine.match(/\\d+к\\d+/));
-
-       if ((hasCity || hasKeyword || hasHouseNum) && !isPriceLine && !isDateLine) {
-         result.address = line;
-         const idx = lines.indexOf(line);
-         if (idx !== -1 && idx < lines.length - 1) {
-             const nextLine = lines[idx+1];
-             if (nextLine.length < 40 && !/зп|цена|руб|завтра|сегодня/i.test(nextLine)) {
-                 if (nextLine.match(/\\d+/) || line.length < 25 || nextLine.toLowerCase().includes('жк') || cities.some(c => nextLine.toLowerCase().includes(c))) {
-                    result.address += ', ' + nextLine;
-                 }
-             }
-         }
-         break;
-       }
-    }
-
-    for (const line of lines) {
-        if (result.address && result.address.includes(line)) continue;
-        const lowerLine = line.toLowerCase();
-        if (/завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\\d{1,2}\\.\\d{1,2}/i.test(line)) continue;
-        if (/зп|зарплата|цена|руб|₽/i.test(line)) continue;
-
-        if (lowerLine.includes('потолок') || lowerLine.includes('монтаж') || lowerLine.includes('замер') || lowerLine.includes('ремонт')) {
-            result.title = line;
-            break;
-        }
-
-        if (!result.title && line.length > 5 && line.length < 60) {
-            result.title = line;
-        }
-    }
-
-    if (!result.title) result.title = "Монтаж натяжных потолков";
-
-    return result;
+    return this.orderParserService.parseOrderText(text);
   }
 
   async openDispute(orderId: string, userId: string, reason: string) {

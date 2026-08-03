@@ -11,8 +11,15 @@ export class ChatsController {
   constructor(private readonly chatsService: ChatsService) {}
 
   @Get()
-  async getMyChats(@Req() req: any) {
-    return this.chatsService.getMyChats(req.user.id);
+  async getMyChats(
+    @Req() req: any,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string
+  ) {
+    return this.chatsService.getMyChats(req.user.id, {
+      skip: skip !== undefined ? Number(skip) : undefined,
+      take: take !== undefined ? Number(take) : undefined
+    });
   }
 
   @Post()

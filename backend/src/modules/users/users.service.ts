@@ -62,7 +62,6 @@ export class UsersService {
         ordersCount: true,
         isVerified: true,
         portfolioItems: true,
-        subscription: true,
         deletedAt: true,
         activeCategory: { select: { id: true, slug: true, name: true } },
       }
@@ -104,7 +103,21 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
     if (user.role) {
-      throw new ForbiddenException('Role is already set and cannot be changed');
+      const employerOrdersCount = await this.prisma.order.count({ where: { employerId: userId } });
+      const executorOrdersCount = await this.prisma.order.count({ where: { executorId: userId } });
+      const executorAppsCount = await this.prisma.application.count({ where: { executorId: userId } });
+      const chatsCount = await this.prisma.chat.count({
+        where: {
+          OR: [
+            { employerId: userId },
+            { executorId: userId }
+          ]
+        }
+      });
+
+      if (employerOrdersCount !== 0 || executorOrdersCount !== 0 || executorAppsCount !== 0 || chatsCount !== 0) {
+        throw new ForbiddenException('Role is already set and cannot be changed');
+      }
     }
 
     return this.prisma.user.update({
@@ -115,7 +128,7 @@ export class UsersService {
 
   async getPortfolio(userId: string, params?: { skip?: number; take?: number }) {
     const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
-    const take = params?.take !== undefined ? Number(params.take) : 50;
+    const take = Math.min(params?.take !== undefined ? Number(params.take) : 50, 100);
     return this.prisma.portfolioItem.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },

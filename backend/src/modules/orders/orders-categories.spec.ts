@@ -4,6 +4,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { OrderParserService } from './order-parser.service';
+import { OrderSpatialService } from './order-spatial.service';
 import { OrderStatus } from '@prisma/client';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 
@@ -49,6 +51,8 @@ describe('OrdersService - Categories & Filters', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
+        OrderParserService,
+        OrderSpatialService,
         {
           provide: PrismaService,
           useValue: mockPrismaService,
@@ -125,39 +129,7 @@ describe('OrdersService - Categories & Filters', () => {
     });
   });
 
-  describe('findAll', () => {
-    it('should filter by categoryId if passed', async () => {
-      const params = { categoryId: 'cat-123' };
-      mockPrismaService.order.findMany.mockResolvedValue([]);
 
-      await service.findAll(params);
-
-      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith({
-        where: { categoryId: 'cat-123' },
-        take: 200,
-        include: {
-          employer: { select: { id: true, name: true, rating: true, avatar: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-    });
-
-    it('should not filter by categoryId if omitted', async () => {
-      const params = {};
-      mockPrismaService.order.findMany.mockResolvedValue([]);
-
-      await service.findAll(params);
-
-      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith({
-        where: {},
-        take: 200,
-        include: {
-          employer: { select: { id: true, name: true, rating: true, avatar: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-    });
-  });
 
   describe('findSpatial', () => {
     it('should filter by categoryId if passed', async () => {

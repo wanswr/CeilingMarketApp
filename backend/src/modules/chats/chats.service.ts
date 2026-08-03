@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
@@ -14,8 +15,9 @@ export class ChatsService {
     this.logger.setService('ChatsService');
   }
 
-  async getOrCreateChat(orderId: string, executorId: string, employerId: string) {
-    const order = await this.prisma.order.findUnique({
+  async getOrCreateChat(orderId: string, executorId: string, employerId: string, tx?: Prisma.TransactionClient) {
+    const db = tx ?? this.prisma;
+    const order = await db.order.findUnique({
       where: { id: orderId },
       include: { applications: true }
     });
@@ -33,7 +35,7 @@ export class ChatsService {
       throw new ConflictException('Executor has not applied to this order');
     }
 
-    const chat = await this.prisma.chat.upsert({
+    const chat = await db.chat.upsert({
       where: {
         orderId_executorId: { orderId, executorId }
       },
@@ -105,7 +107,7 @@ export class ChatsService {
     return message;
   }
 
-  async getMyChats(userId: string) {
+  async getMyChats(userId: string, params?: { skip?: number; take?: number }) {
     const chats = await this.prisma.chat.findMany({
       where: {
         OR: [
@@ -119,7 +121,9 @@ export class ChatsService {
         executor: { select: { id: true, name: true, avatar: true } },
         messages: { orderBy: { createdAt: 'desc' }, take: 1 }
       },
-      orderBy: { updatedAt: 'desc' }
+      orderBy: { updatedAt: 'desc' },
+      skip: params?.skip,
+      take: params?.take ?? 30
     });
 
     const unreadCounts = await this.prisma.message.groupBy({
@@ -150,7 +154,7 @@ export class ChatsService {
     if (!chat) throw new NotFoundException('Chat not found');
     if (chat.employerId !== userId && chat.executorId !== userId) throw new ForbiddenException();
 
-    const takeLimit = limit !== undefined ? limit : 50;
+    const takeLimit = Math.min(limit !== undefined ? Number(limit) : 50, 100);
 
     const messages = await this.prisma.message.findMany({
       where: { chatId },

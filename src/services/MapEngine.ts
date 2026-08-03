@@ -268,9 +268,10 @@ class MapEngine {
   }
 
   getApiBaseUrl = () => this.apiService.getBaseUrl();
-  syncMyOrders = async () => {
+  syncMyOrders = async (params?: { skip?: number; take?: number }) => {
     try {
-      const res = await this.requestRouter.request('orders:my', () => this.apiService.getMyOrders(), 10000);
+      const key = params ? `orders:my:${JSON.stringify(params)}` : 'orders:my';
+      const res = await this.requestRouter.request(key, () => this.apiService.getMyOrders(params), 10000);
       if (res && res.data) {
           this.entityStore.setOrders(res.data, 'my');
           this.triggerNotify();
@@ -391,6 +392,12 @@ class MapEngine {
     this.requestRouter.invalidate(`order:${id}`);
     this.requestRouter.invalidate('orders:my');
     this.entityStore.removeOrder(id, 'api_delete');
+    this.triggerNotify();
+    return res.data;
+  };
+  activateSubscription = async (days: number) => {
+    const res = await this.apiService.activateSubscription(days);
+    this.requestRouter.invalidate('user:profile');
     this.triggerNotify();
     return res.data;
   };
