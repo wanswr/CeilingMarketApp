@@ -154,7 +154,7 @@ export class ChatsService {
     if (!chat) throw new NotFoundException('Chat not found');
     if (chat.employerId !== userId && chat.executorId !== userId) throw new ForbiddenException();
 
-    const takeLimit = limit !== undefined ? limit : 50;
+    const takeLimit = Math.min(limit !== undefined ? Number(limit) : 50, 100);
 
     const messages = await this.prisma.message.findMany({
       where: { chatId },

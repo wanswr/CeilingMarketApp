@@ -62,7 +62,6 @@ export class UsersService {
         ordersCount: true,
         isVerified: true,
         portfolioItems: true,
-        subscription: true,
         deletedAt: true,
         activeCategory: { select: { id: true, slug: true, name: true } },
       }
@@ -129,7 +128,7 @@ export class UsersService {
 
   async getPortfolio(userId: string, params?: { skip?: number; take?: number }) {
     const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
-    const take = params?.take !== undefined ? Number(params.take) : 50;
+    const take = Math.min(params?.take !== undefined ? Number(params.take) : 50, 100);
     return this.prisma.portfolioItem.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },

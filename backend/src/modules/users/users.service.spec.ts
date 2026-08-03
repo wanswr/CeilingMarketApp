@@ -223,7 +223,6 @@ describe('UsersService', () => {
           ordersCount: true,
           isVerified: true,
           portfolioItems: true,
-          subscription: true,
           deletedAt: true,
           activeCategory: { select: { id: true, slug: true, name: true } },
         },

@@ -157,6 +157,9 @@ export class OrdersService {
     if (!creator || creator.deletedAt) {
       throw new ForbiddenException('User account is deleted');
     }
+    if (creator.role !== 'EMPLOYER') {
+      throw new ForbiddenException('Только заказчик может публиковать заказы');
+    }
 
     let categoryId = dto.categoryId;
     if (!categoryId) {
@@ -554,6 +557,14 @@ export class OrdersService {
     if (!app) {
         // Idempotent: already cancelled or not found
         return { success: true };
+    }
+
+    if (app.status === 'ACCEPTED') {
+      throw new ForbiddenException('Нельзя отменить уже принятую заявку — используйте отмену заказа');
+    }
+    if (app.status === 'REJECTED') {
+      // уже отклонена, ничего не делать, вернуть success как для idempotent-случая
+      return { success: true };
     }
 
     const now = new Date();
