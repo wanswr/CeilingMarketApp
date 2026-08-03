@@ -48,6 +48,21 @@ const orderSchema = z.object({
 });
 
 export default function CreateOrderScreen({ navigation }: any) {
+  const currentUser = mapEngine.getCurrentUser();
+
+  if (currentUser?.role === 'WORKER') {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Ionicons name="lock-closed" size={64} color={COLORS.gray} style={{ marginBottom: 16 }} />
+        <Text style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.dark, textAlign: 'center', marginBottom: 8 }}>
+          Доступ ограничен
+        </Text>
+        <Text style={{ fontSize: 14, color: COLORS.gray, textAlign: 'center', lineHeight: 20 }}>
+          Заказы может публиковать только заказчик.
+        </Text>
+      </SafeAreaView>
+    );
+  }
   const { requireRoleAndCategory } = usePendingAction();
   const idempotencyKeyRef = useRef(Crypto.randomUUID());
   const route = useRoute<any>();
