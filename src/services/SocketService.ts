@@ -81,7 +81,16 @@ class SocketService {
   }
 
   async connect(url: string, source: string = 'unknown') {
-    const socketUrl = url.replace('/api/', '');
+    let socketUrl = url;
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.pathname.startsWith('/api')) {
+        parsedUrl.pathname = parsedUrl.pathname.replace(/^\/api\/?/, '');
+      }
+      socketUrl = parsedUrl.toString();
+    } catch (e) {
+      socketUrl = url.replace('/api/', '');
+    }
     const currentUser = entityStore.getCurrentUser();
     const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
     const activeRole = currentUser?.role || 'none';
