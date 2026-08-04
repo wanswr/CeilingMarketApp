@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { SubscriptionService } from '../subscription/subscription.service';
@@ -203,6 +203,20 @@ export class UsersService {
   async deleteProfile(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
+
+    const activeOrdersCount = await this.prisma.order.count({
+      where: {
+        OR: [
+          { employerId: id },
+          { executorId: id }
+        ],
+        status: { in: ['CLAIMED', 'IN_PROGRESS'] }
+      }
+    });
+
+    if (activeOrdersCount > 0) {
+      throw new ConflictException('Нельзя удалить аккаунт при наличии активных заказов в работе');
+    }
 
     await this.prisma.user.update({
       where: { id },
