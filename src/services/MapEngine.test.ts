@@ -29,6 +29,7 @@ jest.mock('./MapViewportStore', () => {
 });
 
 import { mapEngine } from './MapEngine';
+import { CONFIG } from '../constants/config';
 import { apiService } from './ApiService';
 import { requestRouter } from './RequestRouter';
 
@@ -113,7 +114,7 @@ describe('MapEngine - syncMap pagination', () => {
     expect(getOrdersSpatialSpy.mock.calls[0][0]).toEqual({
       lat: 55.75,
       lng: 37.61,
-      radius: 100,
+      radius: CONFIG.INITIAL_SEARCH_RADIUS_KM,
       limit: 250,
     });
 
@@ -121,7 +122,7 @@ describe('MapEngine - syncMap pagination', () => {
     expect(getOrdersSpatialSpy.mock.calls[1][0]).toEqual({
       lat: 55.75,
       lng: 37.61,
-      radius: 100,
+      radius: CONFIG.INITIAL_SEARCH_RADIUS_KM,
       limit: 250,
       cursorId: 'order-250',
     });
@@ -130,7 +131,7 @@ describe('MapEngine - syncMap pagination', () => {
     expect(getOrdersSpatialSpy.mock.calls[2][0]).toEqual({
       lat: 55.75,
       lng: 37.61,
-      radius: 100,
+      radius: CONFIG.INITIAL_SEARCH_RADIUS_KM,
       limit: 250,
       cursorId: 'order-500',
     });

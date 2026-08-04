@@ -37,6 +37,7 @@ import { usePendingAction } from '../context/PendingActionContext'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import i18n from '../constants/i18n';
+import { CONFIG } from '../constants/config';
 
 const orderSchema = z.object({
   title: z.string().min(5, "Заголовок слишком короткий"),
@@ -64,6 +65,13 @@ export default function CreateOrderScreen({ navigation }: any) {
     );
   }
   const { requireRoleAndCategory } = usePendingAction();
+  const debounceTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
   const idempotencyKeyRef = useRef(Crypto.randomUUID());
   const route = useRoute<any>();
   const [form, setForm] = useState({
@@ -151,34 +159,40 @@ export default function CreateOrderScreen({ navigation }: any) {
 
   const handleAddressChange = async (text: string) => {
     setForm({ ...form, address: text });
-    if (text.length > 2) {
-      try {
-        const queries = [
-          text,
-          `Москва, ${text}`,
-          `Московская область, ${text}`
-        ];
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
 
-        let foundSuggestions: string[] = [];
-        for (const q of queries) {
-          const results = await Location.geocodeAsync(q);
-          if (results.length > 0) {
-            const rev = await Location.reverseGeocodeAsync({
-              latitude: results[0].latitude,
-              longitude: results[0].longitude
-            });
-            if (rev.length > 0) {
-              const r = rev[0];
-              const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
-              if (formatted && !foundSuggestions.includes(formatted)) {
-                foundSuggestions.push(formatted);
+    if (text.length > 2) {
+      debounceTimerRef.current = setTimeout(async () => {
+        try {
+          const queries = [
+            text,
+            `Москва, ${text}`,
+            `Московская область, ${text}`
+          ];
+
+          let foundSuggestions: string[] = [];
+          for (const q of queries) {
+            const results = await Location.geocodeAsync(q);
+            if (results.length > 0) {
+              const rev = await Location.reverseGeocodeAsync({
+                latitude: results[0].latitude,
+                longitude: results[0].longitude
+              });
+              if (rev.length > 0) {
+                const r = rev[0];
+                const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
+                if (formatted && !foundSuggestions.includes(formatted)) {
+                  foundSuggestions.push(formatted);
+                }
               }
             }
+            if (foundSuggestions.length > 2) break;
           }
-          if (foundSuggestions.length > 2) break;
-        }
-        setSuggestions(foundSuggestions);
-      } catch (e) {}
+          setSuggestions(foundSuggestions);
+        } catch (e) {}
+      }, CONFIG.GEOCODE_DEBOUNCE_DELAY_MS);
     } else {
       setSuggestions([]);
     }
@@ -208,11 +222,8 @@ export default function CreateOrderScreen({ navigation }: any) {
       for (const query of queries) {
         const results = await Location.geocodeAsync(query);
         if (results.length > 0) {
-          const res = results[0];
-          if (res.latitude > 54 && res.latitude < 57 && res.longitude > 35 && res.longitude < 40) {
-            bestResult = res;
-            break;
-          }
+          bestResult = results[0];
+          break;
         }
       }
 

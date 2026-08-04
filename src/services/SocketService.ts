@@ -182,26 +182,8 @@ class SocketService {
       logger.error('WEBSOCKET_CONNECT_ERROR', { error: err.message, url: socketUrl });
     });
 
-    this.socket.io.on('reconnect', async () => {
-      if (this.isResyncing) return;
-      if (Date.now() - this.lastResyncAt < 3000) return;
-      this.isResyncing = true;
-      try {
-        const { mapViewportStore } = require('./MapViewportStore');
-        const { mapEngine } = require('./MapEngine');
-        const region = mapViewportStore.getRegion();
-        if (region) {
-          logger.info('[WebSocket] Connection re-established. Performing map resync...', {
-              region
-          });
-          await mapEngine.initialLoad(region.latitude, region.longitude);
-        }
-        this.lastResyncAt = Date.now();
-      } catch (err) {
-        logger.error('[WebSocket] Error during map resync on reconnect', { error: (err as any).message });
-      } finally {
-        this.isResyncing = false;
-      }
+    this.socket.io.on('reconnect', () => {
+      logger.info('[WebSocket] Connection re-established. Relying on real-time event updates.');
     });
 
     // Rebind all registered event listeners to the new socket instance

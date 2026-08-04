@@ -6,6 +6,7 @@ import { GeoClusterService } from './GeoClusterService'
 import { spatialManager } from '../map/SpatialManager'
 import { mapViewportStore } from './MapViewportStore'
 import { logger } from './logger/LoggerService'
+import { CONFIG } from '../constants/config'
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -16,7 +17,7 @@ class MapEngine {
   private currentAbortController: AbortController | null = null;
   private requestCounter: number = 0;
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
-  private searchRadius: number = 100;
+  private searchRadius: number = CONFIG.INITIAL_SEARCH_RADIUS_KM;
   private lastGeoJoinKey: string | null = null;
 
   setSearchRadius = (radius: number) => {
@@ -141,7 +142,7 @@ class MapEngine {
         const params: any = {
           lat: viewRegion.latitude,
           lng: viewRegion.longitude,
-          radius: 100,
+          radius: this.searchRadius,
           limit,
         };
         if (cursorId) {
