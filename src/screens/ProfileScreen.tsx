@@ -106,11 +106,15 @@ const ProfileScreen = ({ route, navigation }: any) => {
     if (!user) return;
     const newRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
     try {
-        await mapEngine.updateProfile({ role: newRole });
+        await mapEngine.setRole(newRole);
         fetchProfile();
         Alert.alert("Роль изменена", `Теперь вы ${newRole === 'EMPLOYER' ? 'Заказчик' : 'Мастер'}`);
-    } catch (e) {
-        Alert.alert("Ошибка", "Не удалось сменить роль");
+    } catch (e: any) {
+        if (e.response?.status === 403) {
+            Alert.alert("Ошибка", "Роль нельзя сменить — у вас уже есть заказы, заявки или чаты, привязанные к текущей роли");
+        } else {
+            Alert.alert("Ошибка", "Не удалось сменить роль");
+        }
     }
   };
 
