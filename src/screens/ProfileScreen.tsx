@@ -32,7 +32,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const [reviews, setReviews] = useState<any[]>([]);
   const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const { logout } = useAuth();
+  const { logout, updateUser } = useAuth();
   const currentUser = mapEngine.getCurrentUser();
   const isMe = !userId || userId === currentUser?.id || userId === currentUser?.uid;
 
@@ -106,7 +106,8 @@ const ProfileScreen = ({ route, navigation }: any) => {
     if (!user) return;
     const newRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
     try {
-        await mapEngine.setRole(newRole);
+        const updatedUser = await mapEngine.setRole(newRole);
+        updateUser(updatedUser);
         fetchProfile();
         Alert.alert("Роль изменена", `Теперь вы ${newRole === 'EMPLOYER' ? 'Заказчик' : 'Мастер'}`);
     } catch (e: any) {
