@@ -7,9 +7,13 @@ import { LoggerService } from './modules/logger/logger.service';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const redisIoAdapter = new RedisIoAdapter(app);
+  await redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
   app.use(helmet());
 
   (app as any).useBodyParser('json', { limit: '2mb' });

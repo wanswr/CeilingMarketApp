@@ -8,6 +8,17 @@ import { PendingActionProvider } from './src/context/PendingActionContext';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import { startConnectionWatchdog } from './src/services/logger/ConnectionLogger';
 import { logger } from './src/services/logger/LoggerService';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 export default function App() {
   useEffect(() => {
@@ -17,8 +28,9 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <SafeAreaProvider>
-        <AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <AuthProvider>
           <NavigationContainer>
             <PendingActionProvider>
               <Navigation />
@@ -27,6 +39,7 @@ export default function App() {
           </NavigationContainer>
         </AuthProvider>
       </SafeAreaProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }
