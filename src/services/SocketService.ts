@@ -55,12 +55,6 @@ class SocketService {
     });
 
     this.on('order.created', (order: any) => {
-      const currentUser = entityStore.getCurrentUser();
-      const activeCategoryId = currentUser?.activeCategoryId;
-      if (activeCategoryId && order?.categoryId && order.categoryId !== activeCategoryId) {
-          logger.debug('WS_EVENT_CATEGORY_MISMATCH_IGNORED', { orderId: order.id, categoryId: order.categoryId, activeCategoryId });
-          return;
-      }
       logger.info('ORDER_CREATED_RECEIVED', { orderId: order?.id, status: order?.status, lat: order?.latitude ?? order?.lat, lng: order?.longitude ?? order?.lng });
       requestRouter.metrics.websocketUpdates++;
       entityStore.setOrder(order, 'websocket');
@@ -69,12 +63,6 @@ class SocketService {
     });
 
     this.on('order.status.changed', (order: any) => {
-      const currentUser = entityStore.getCurrentUser();
-      const activeCategoryId = currentUser?.activeCategoryId;
-      if (activeCategoryId && order?.categoryId && order.categoryId !== activeCategoryId) {
-          logger.debug('WS_EVENT_CATEGORY_MISMATCH_IGNORED', { orderId: order.id, categoryId: order.categoryId, activeCategoryId });
-          return;
-      }
       logger.info('WS_ORDER_STATUS_CHANGED', { orderId: order.id, status: order.status });
       requestRouter.metrics.websocketUpdates++;
       entityStore.setOrder(order, 'websocket');

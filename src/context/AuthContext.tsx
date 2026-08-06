@@ -5,7 +5,6 @@ import { apiService } from '../services/ApiService';
 import { mapEngine } from '../services/MapEngine';
 import { requestRouter } from '../services/RequestRouter';
 import { socketService } from '../services/SocketService';
-import { storageService } from '../services/StorageService';
 import { UserProfile } from '../types';
 import { logger } from '../services/logger/LoggerService';
 
@@ -50,7 +49,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkAuth = async () => {
     logger.info('[AuthContext] Initializing auth check...');
     try {
-      await storageService.initFallback();
       const storedToken = await SecureStore.getItemAsync('userToken');
 
       if (storedToken) {

@@ -3,65 +3,6 @@
  * Hardened version with dynamic require and graceful degradation.
  */
 import { logger } from './logger/LoggerService';
-import * as SecureStore from 'expo-secure-store';
-
-const CHUNK_SIZE = 2000;
-
-const secureStoreHelper = {
-  async setItem(key: string, value: string): Promise<void> {
-    try {
-      if (value.length <= CHUNK_SIZE) {
-        await SecureStore.setItemAsync(key, value);
-        await SecureStore.deleteItemAsync(`${key}_chunks`);
-        return;
-      }
-      const chunksCount = Math.ceil(value.length / CHUNK_SIZE);
-      for (let i = 0; i < chunksCount; i++) {
-        const chunk = value.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-        await SecureStore.setItemAsync(`${key}_chunk_${i}`, chunk);
-      }
-      await SecureStore.setItemAsync(`${key}_chunks`, String(chunksCount));
-    } catch (e) {
-      logger.error('[secureStoreHelper] Error setting item:', e);
-    }
-  },
-
-  async getItem(key: string): Promise<string | null> {
-    try {
-      const chunksCountStr = await SecureStore.getItemAsync(`${key}_chunks`);
-      if (!chunksCountStr) {
-        return await SecureStore.getItemAsync(key);
-      }
-      const chunksCount = parseInt(chunksCountStr, 10);
-      let value = '';
-      for (let i = 0; i < chunksCount; i++) {
-        const chunk = await SecureStore.getItemAsync(`${key}_chunk_${i}`);
-        if (chunk) value += chunk;
-      }
-      return value;
-    } catch (e) {
-      logger.error('[secureStoreHelper] Error getting item:', e);
-      return null;
-    }
-  },
-
-  async deleteItem(key: string): Promise<void> {
-    try {
-      await SecureStore.deleteItemAsync(key);
-      const chunksCountStr = await SecureStore.getItemAsync(`${key}_chunks`);
-      if (chunksCountStr) {
-        const chunksCount = parseInt(chunksCountStr, 10);
-        for (let i = 0; i < chunksCount; i++) {
-          await SecureStore.deleteItemAsync(`${key}_chunk_${i}`);
-        }
-        await SecureStore.deleteItemAsync(`${key}_chunks`);
-      }
-    } catch (e) {
-      logger.error('[secureStoreHelper] Error deleting item:', e);
-    }
-  }
-};
-
 
 /**
  * V11 Storage Adapter Interface: Unifies native and in-memory storage operations.
@@ -133,83 +74,11 @@ class MMKVAdapter implements StorageAdapter {
  */
 class MemoryAdapter implements StorageAdapter {
   private cache: Map<string, string> = new Map();
-  private initialized = false;
-  private initPromise: Promise<void> | null = null;
-
-  constructor() {
-    this.init();
-  }
-
-  async init(): Promise<void> {
-    if (this.initialized) return;
-    if (this.initPromise) return this.initPromise;
-
-    this.initPromise = (async () => {
-      try {
-        const keysListStr = await SecureStore.getItemAsync('__memory_adapter_keys__');
-        if (keysListStr) {
-          const keys = JSON.parse(keysListStr) as string[];
-          for (const key of keys) {
-            const val = await secureStoreHelper.getItem(key);
-            if (val !== null) {
-              this.cache.set(key, val);
-            }
-          }
-        }
-        this.initialized = true;
-        logger.info('[MemoryAdapter] Hydrated persistent fallback state from SecureStore.');
-      } catch (e: any) {
-        logger.error('[MemoryAdapter] Failed to hydrate persistent fallback:', e.message);
-      }
-    })();
-
-    return this.initPromise;
-  }
-
-  get(key: string): string | null {
-    return this.cache.get(key) ?? null;
-  }
-
-  set(key: string, value: string): void {
-    this.cache.set(key, value);
-    (async () => {
-      await this.init();
-      await secureStoreHelper.setItem(key, value);
-      await this.persistKeysList();
-    })();
-  }
-
-  delete(key: string): void {
-    this.cache.delete(key);
-    (async () => {
-      await this.init();
-      await secureStoreHelper.deleteItem(key);
-      await this.persistKeysList();
-    })();
-  }
-
-  clearAll(): void {
-    const keys = Array.from(this.cache.keys());
-    this.cache.clear();
-    (async () => {
-      await this.init();
-      for (const key of keys) {
-        await secureStoreHelper.deleteItem(key);
-      }
-      await SecureStore.deleteItemAsync('__memory_adapter_keys__');
-    })();
-  }
-
-  getAllKeys(): string[] {
-    return Array.from(this.cache.keys());
-  }
-
-  private async persistKeysList() {
-    try {
-      const keys = Array.from(this.cache.keys());
-      await SecureStore.setItemAsync('__memory_adapter_keys__', JSON.stringify(keys));
-    } catch (e) {}
-  }
+  get(key: string): string | null { return this.cache.get(key) ?? null; }
+  set(key: string, value: string): void { this.cache.set(key, value); }
+  delete(key: string): void { this.cache.delete(key); }
+  clearAll(): void { this.cache.clear(); }
+  getAllKeys(): string[] { return Array.from(this.cache.keys()); }
 }
 
 const _memoryFallback = new MemoryAdapter();
@@ -267,9 +136,6 @@ const getAdapter = (): StorageAdapter => {
 };
 
 export const storageService = {
-  async initFallback(): Promise<void> {
-    await _memoryFallback.init();
-  },
   set(key: string, value: any): void {
     try {
       const adapter = getAdapter();

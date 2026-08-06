@@ -20,10 +20,9 @@ export class OrderSpatialService {
     requesterId?: string;
     cursorId?: string;
     limit?: number;
-    zoom?: number;
   }) {
     const startTime = Date.now();
-    const { lat, lng, radius: rawRadius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit, zoom } = params;
+    const { lat, lng, radius: rawRadius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit } = params;
     const radius = rawRadius !== undefined ? Math.min(rawRadius, 100) : undefined;
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
@@ -78,56 +77,6 @@ export class OrderSpatialService {
         this.logger.warn('SPATIAL_SEARCH_SLOW', 'Map spatial search took too long', {
             metadata: { duration, lat, lng, radius, count: orders.length }
         });
-      }
-
-      const isWideZoom = zoom !== undefined ? (zoom <= 11) : ((searchBounds.maxLat - searchBounds.minLat) > 0.4);
-
-      if (isWideZoom && orders.length > 5) {
-        const precision = zoom !== undefined ? (zoom <= 5 ? 0 : (zoom <= 8 ? 1 : 2)) : 1;
-        const clusters: Record<string, any> = {};
-
-        for (const order of orders) {
-          const latVal = order.latitude;
-          const lngVal = order.longitude;
-          const factor = Math.pow(10, precision);
-          const bucketLat = Math.floor(latVal * factor) / factor;
-          const bucketLng = Math.floor(lngVal * factor) / factor;
-          const key = bucketLat.toFixed(precision) + "_" + bucketLng.toFixed(precision);
-
-          if (!clusters[key]) {
-            clusters[key] = {
-              id: "cluster_" + key,
-              latitude: bucketLat,
-              longitude: bucketLng,
-              count: 0,
-              isCluster: true,
-              type: 'weak',
-              status: 'PUBLISHED',
-              price: 0,
-              title: 'Кластер заказов',
-            };
-          }
-          clusters[key].count++;
-          clusters[key].price = Math.max(clusters[key].price, Number(order.price) || 0);
-        }
-
-        const resultOrders: any[] = [];
-        for (const key of Object.keys(clusters)) {
-          const cluster = clusters[key];
-          if (cluster.count <= 3) {
-            const matchedOrders = orders.filter(o => {
-              const factor = Math.pow(10, precision);
-              const bLat = Math.floor(o.latitude * factor) / factor;
-              const bLng = Math.floor(o.longitude * factor) / factor;
-              return (bLat.toFixed(precision) + "_" + bLng.toFixed(precision)) === key;
-            });
-            resultOrders.push(...matchedOrders);
-          } else {
-            cluster.type = cluster.count > 10 ? 'strong' : 'weak';
-            resultOrders.push(cluster);
-          }
-        }
-        return { created: resultOrders, updated: [], deleted: [] };
       }
 
       return { created: orders, updated: [], deleted: [] };

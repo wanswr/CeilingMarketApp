@@ -51,25 +51,3 @@ export function useApplyForOrderMutation() {
     },
   });
 }
-
-export function useMapSpatialQuery(params: {
-  lat?: number;
-  lng?: number;
-  radius?: number;
-  minLat?: number;
-  maxLat?: number;
-  minLng?: number;
-  maxLng?: number;
-  zoom?: number;
-  categoryId?: string | null;
-}) {
-  return useQuery({
-    queryKey: ['map', 'spatial', params],
-    queryFn: async () => {
-      const res = await apiService.getOrdersSpatial(params);
-      return res.data;
-    },
-    enabled: !!((params.lat && params.lng) || (params.minLat && params.maxLat)),
-    staleTime: 1000 * 10, // 10 seconds cache validity
-  });
-}

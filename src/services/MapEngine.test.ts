@@ -113,26 +113,32 @@ describe('MapEngine - syncMap pagination', () => {
 
     // First call has no cursorId
     expect(getOrdersSpatialSpy.mock.calls[0][0]).toEqual({
-      lat: 55.75,
-      lng: 37.61,
-      radius: CONFIG.INITIAL_SEARCH_RADIUS_KM,
+      minLat: 55.690000000000005,
+      maxLat: 55.809999999999995,
+      minLng: 37.550000000000004,
+      maxLng: 37.669999999999995,
+      zoom: 12,
       limit: 250,
     });
 
     // Second call must have cursorId: 'order-250'
     expect(getOrdersSpatialSpy.mock.calls[1][0]).toEqual({
-      lat: 55.75,
-      lng: 37.61,
-      radius: CONFIG.INITIAL_SEARCH_RADIUS_KM,
+      minLat: 55.690000000000005,
+      maxLat: 55.809999999999995,
+      minLng: 37.550000000000004,
+      maxLng: 37.669999999999995,
+      zoom: 12,
       limit: 250,
       cursorId: 'order-250',
     });
 
     // Third call must have cursorId: 'order-500'
     expect(getOrdersSpatialSpy.mock.calls[2][0]).toEqual({
-      lat: 55.75,
-      lng: 37.61,
-      radius: CONFIG.INITIAL_SEARCH_RADIUS_KM,
+      minLat: 55.690000000000005,
+      maxLat: 55.809999999999995,
+      minLng: 37.550000000000004,
+      maxLng: 37.669999999999995,
+      zoom: 12,
       limit: 250,
       cursorId: 'order-500',
     });

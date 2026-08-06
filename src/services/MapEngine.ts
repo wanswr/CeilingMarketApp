@@ -23,6 +23,25 @@ class MapEngine {
   setSearchRadius = (radius: number) => {
     this.searchRadius = radius;
   }
+
+  onDirectionChanged = (newCategoryId: string) => {
+    logger.info('[MapEngine] Direction/category changed, performing full invalidation...', { newCategoryId });
+    this.entityStore.clearSpatialOrders();
+    this.requestRouter.clear();
+    try {
+      const { queryClient } = require('./QueryClient');
+      queryClient.clear();
+      logger.info('[MapEngine] React Query cache cleared successfully.');
+    } catch (e: any) {
+      logger.warn('[MapEngine] Failed to clear React Query cache:', e.message);
+    }
+    this.lastSyncRegion = null;
+    this.forceRefresh();
+    const region = mapViewportStore.getRegion();
+    if (region) {
+      this.updateSocketRoom(region, true);
+    }
+  }
   public spatialManager = spatialManager;
   public entityStore = entityStore;
   public apiService = apiService;
@@ -32,13 +51,6 @@ class MapEngine {
   private isHydrated = false;
   private lastClusteredOrders: any[] = [];
 
-  onDirectionChanged = (newCategoryId: string) => {
-    logger.info('[MapEngine] Direction/category changed, clearing old spatial orders...', { newCategoryId });
-    this.entityStore.clearSpatialOrders();
-    this.lastSyncRegion = null;
-    this.forceRefresh();
-  }
-
   constructor() {
       this.initPersistence();
 
@@ -46,8 +58,8 @@ class MapEngine {
       setTimeout(() => {
           // V9: Reactive architecture - Engine listens to Camera
           mapViewportStore.subscribe((region) => {
-              this.triggerMapUpdate(region);
               this.updateSocketRoom(region);
+              this.triggerMapUpdate(region);
           }, 'MapEngine_Core');
       }, 0);
   }
@@ -155,8 +167,6 @@ class MapEngine {
       let pagesFetched = 0;
       const maxPages = 4; // Max 1000 orders total
 
-      const isCloseZoom = latDelta < 0.2;
-
       while (pagesFetched < maxPages) {
         const params: any = {
           limit,
@@ -166,19 +176,13 @@ class MapEngine {
           params.categoryId = activeCategoryId;
         }
 
-        if (isCloseZoom) {
-          params.lat = viewRegion.latitude;
-          params.lng = viewRegion.longitude;
-          params.radius = this.searchRadius;
-        } else {
-          const latPadding = viewRegion.latitudeDelta * 0.1;
-          const lngPadding = viewRegion.longitudeDelta * 0.1;
-          params.minLat = viewRegion.latitude - viewRegion.latitudeDelta / 2 - latPadding;
-          params.maxLat = viewRegion.latitude + viewRegion.latitudeDelta / 2 + latPadding;
-          params.minLng = viewRegion.longitude - viewRegion.longitudeDelta / 2 - lngPadding;
-          params.maxLng = viewRegion.longitude + viewRegion.longitudeDelta / 2 + lngPadding;
-          params.zoom = zoom;
-        }
+        const latPadding = viewRegion.latitudeDelta * 0.1;
+        const lngPadding = viewRegion.longitudeDelta * 0.1;
+        params.minLat = viewRegion.latitude - viewRegion.latitudeDelta / 2 - latPadding;
+        params.maxLat = viewRegion.latitude + viewRegion.latitudeDelta / 2 + latPadding;
+        params.minLng = viewRegion.longitude - viewRegion.longitudeDelta / 2 - lngPadding;
+        params.maxLng = viewRegion.longitude + viewRegion.longitudeDelta / 2 + lngPadding;
+        params.zoom = zoom;
 
         if (cursorId) {
           params.cursorId = cursorId;
@@ -186,13 +190,8 @@ class MapEngine {
 
         const keyParts = ['map:spatial'];
         if (activeCategoryId) keyParts.push("dir:" + activeCategoryId);
-        if (isCloseZoom) {
-          keyParts.push("radius:" + this.searchRadius);
-          keyParts.push("lat:" + viewRegion.latitude.toFixed(3) + ":lng:" + viewRegion.longitude.toFixed(3));
-        } else {
-          keyParts.push("bounds:" + params.minLat.toFixed(3) + ":" + params.maxLat.toFixed(3) + ":" + params.minLng.toFixed(3) + ":" + params.maxLng.toFixed(3));
-          keyParts.push("zoom:" + zoom);
-        }
+        keyParts.push("bounds:" + params.minLat.toFixed(3) + ":" + params.maxLat.toFixed(3) + ":" + params.minLng.toFixed(3) + ":" + params.maxLng.toFixed(3));
+        keyParts.push("zoom:" + zoom);
         const routerKey = keyParts.join('_');
 
         const res = cursorId
