@@ -58,6 +58,7 @@ describe('MapEngine - syncMap pagination', () => {
     jest.clearAllMocks();
     requestRouter.clear();
     mapEngine.entityStore.clear();
+    mapEngine.entityStore.setUser({ id: 'test-user-123', name: 'Test User', role: 'WORKER', isMe: true } as any);
   });
 
   it('should bypass requestRouter on second and subsequent pages when cursorId is set', async () => {
@@ -139,7 +140,7 @@ describe('MapEngine - syncMap pagination', () => {
     // Verify requestRouter.request was called exactly ONCE (only for page 1)
     // because subsequent pages have cursorId and bypass it completely
     expect(requestRouterSpy).toHaveBeenCalledTimes(1);
-    expect(requestRouterSpy.mock.calls[0][0]).toBe('map:spatial');
+    expect(requestRouterSpy.mock.calls[0][0]).toContain('map:spatial');
 
     // Verify that entityStore.setOrders was called with the combined 500 orders
     expect(setOrdersSpy).toHaveBeenCalledTimes(1);

@@ -292,6 +292,20 @@ class EntityStore {
     } catch (e) {}
   }
 
+  clearSpatialOrders = () => {
+    const myOrderIds = new Set(this.myOrders);
+    for (const key of this.ordersById.keys()) {
+      if (!myOrderIds.has(key)) {
+        this.ordersById.delete(key);
+      }
+    }
+    this.spatialGrid.clear();
+    this.ordersById.forEach(order => {
+      this.updateOrderInGrid(order);
+    });
+    this.persist();
+  }
+
   clear = () => {
     this.ordersById.clear();
     this.myOrders.clear();
