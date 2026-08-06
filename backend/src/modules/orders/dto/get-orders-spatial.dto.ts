@@ -66,6 +66,11 @@ export class GetOrdersSpatialDto {
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
+  zoom?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
   @Min(1)
   @Max(250)
   limit?: number;

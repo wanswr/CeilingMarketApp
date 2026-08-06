@@ -166,11 +166,27 @@ class EntityStore {
       const incomingIds = new Set(orders.map(o => o.id));
 
       if (source === 'my') {
-          // Reconcile: remove local orders that I participate in but are missing from the "my orders" server response
           const currentMyOrders = Array.from(this.myOrders);
+          logger.info('[EntityStore] Reconciling my orders...', {
+              localCount: currentMyOrders.length,
+              serverCount: orders.length
+          });
+
+          const { apiService } = require('./ApiService');
           currentMyOrders.forEach(id => {
               if (!incomingIds.has(id)) {
-                  this.removeOrder(id, 'reconcile_my_orders');
+                  apiService.getOrderDetails(id)
+                      .then(() => {
+                          logger.debug('[EntityStore] Reconcile bypass: order still exists on server', { id });
+                      })
+                      .catch((err: any) => {
+                          if (err.response?.status === 404) {
+                              logger.warn('[EntityStore] Reconcile: order confirmed deleted by server (404), removing', { id });
+                              this.removeOrder(id, 'reconcile_my_orders');
+                          } else {
+                              logger.warn('[EntityStore] Reconcile: order fetch failed but not 404, keeping', { id, status: err.response?.status });
+                          }
+                      });
               }
           });
       }
