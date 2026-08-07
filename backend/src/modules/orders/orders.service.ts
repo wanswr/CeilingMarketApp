@@ -171,7 +171,26 @@ export class OrdersService {
       }
     }
 
-    const { idempotencyKey, ...orderData } = dto;
+    const { idempotencyKey } = dto;
+
+    const whitelist: any = {
+      title: dto.title,
+      address: dto.address,
+      latitude: dto.latitude !== undefined ? Number(dto.latitude) : undefined,
+      longitude: dto.longitude !== undefined ? Number(dto.longitude) : undefined,
+      date: dto.date ? new Date(dto.date) : undefined,
+      price: dto.price !== undefined ? Number(dto.price) : undefined,
+      details: dto.details,
+      workType: dto.workType,
+      images: dto.images,
+      categoryId,
+    };
+
+    Object.keys(whitelist).forEach(key => {
+      if (whitelist[key] === undefined) {
+        delete whitelist[key];
+      }
+    });
 
     if (idempotencyKey) {
       const existing = await this.prisma.order.findUnique({
@@ -185,9 +204,8 @@ export class OrdersService {
       try {
         const order = await this.prisma.order.create({
           data: {
-            ...orderData,
+            ...whitelist,
             idempotencyKey,
-            categoryId,
             employerId: userId,
             status: OrderStatus.PUBLISHED,
           },
@@ -211,8 +229,7 @@ export class OrdersService {
 
     const order = await this.prisma.order.create({
       data: {
-        ...dto,
-        categoryId,
+        ...whitelist,
         employerId: userId,
         status: OrderStatus.PUBLISHED,
       },
@@ -288,9 +305,20 @@ export class OrdersService {
       this.validateTransition(order, dto.status, userId, false);
     }
 
+    const whitelist: any = {};
+    if (dto.title !== undefined) whitelist.title = dto.title;
+    if (dto.details !== undefined) whitelist.details = dto.details;
+    if (dto.address !== undefined) whitelist.address = dto.address;
+    if (dto.price !== undefined) whitelist.price = Number(dto.price);
+    if (dto.date !== undefined) whitelist.date = new Date(dto.date);
+    if (dto.images !== undefined) whitelist.images = dto.images;
+    if (dto.status !== undefined && dto.status !== order.status) {
+      whitelist.status = dto.status;
+    }
+
     const result = await this.prisma.order.update({
       where: { id },
-      data: dto
+      data: whitelist
     });
 
     await this.broadcast('order.status.changed', result, userId);

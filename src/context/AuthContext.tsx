@@ -52,6 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const storedToken = await SecureStore.getItemAsync('userToken');
 
       if (storedToken) {
+        mapEngine.setCachedToken(storedToken);
         setToken(storedToken);
         try {
           // Attempt to fetch fresh profile
@@ -116,6 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // 4. save new token
       await SecureStore.setItemAsync('userToken', access_token);
+      mapEngine.setCachedToken(access_token);
       setToken(access_token);
 
       // 5. save user state (including entityStore first so that connect can query it)
@@ -135,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     logger.info('AUTH_LOGOUT', { userId: user?.id });
     await SecureStore.deleteItemAsync('userToken');
+    mapEngine.setCachedToken(null);
     setToken(null);
     setUser(null);
     socketService.disconnect();

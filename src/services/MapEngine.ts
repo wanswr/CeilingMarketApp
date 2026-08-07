@@ -10,7 +10,34 @@ import { CONFIG } from '../constants/config'
 
 type OrderCallback = (orders: Order[]) => void;
 
+
+function simpleHash(str: string): string {
+  if (!str) return 'none';
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16).substring(0, 8);
+}
+
 class MapEngine {
+  private cachedToken: string | null = null;
+  private isTokenLoaded: boolean = false;
+
+  setCachedToken = (token: string | null) => {
+    this.cachedToken = token;
+    this.isTokenLoaded = true;
+  }
+
+  getCachedToken = async (): Promise<string | null> => {
+    if (!this.isTokenLoaded) {
+      const SecureStore = require('expo-secure-store');
+      this.cachedToken = await SecureStore.getItemAsync('userToken');
+      this.isTokenLoaded = true;
+    }
+    return this.cachedToken;
+  }
+
   private subscribers: Map<string, OrderCallback> = new Map();
   private debounceTimer: NodeJS.Timeout | null = null;
   private syncLock: boolean = false;
@@ -147,9 +174,8 @@ class MapEngine {
 
   syncMap = async (force: boolean = false, region?: any) => {
     const currentUser = this.getCurrentUser();
-    const SecureStore = require('expo-secure-store');
-    const token = await SecureStore.getItemAsync('userToken');
-    const tokenHash = token ? token.substring(0, 8) : 'none';
+    const token = await this.getCachedToken();
+    const tokenHash = token ? simpleHash(token) : 'none';
     const authReady = !!(currentUser && token);
 
     logger.info('[MapEngine] syncMap diagnostic check', {
