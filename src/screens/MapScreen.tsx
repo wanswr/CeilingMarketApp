@@ -76,6 +76,24 @@ const MapScreen = ({ navigation }: any) => {
     const unsubscribeOrders = mapEngine.subscribe((newOrders: any) => {
       setDisplayedOrders([...newOrders]);
       setLoading(false);
+
+      const curUser = mapEngine.getCurrentUser();
+      const currentRegion = mapViewportStore.getRegion();
+      logger.info('MAP_DEBUG', {
+          userId: curUser?.id || curUser?.uid || 'anonymous',
+          role: curUser?.role || 'none',
+          ordersCount: newOrders.filter((o: any) => !o.isCluster).length,
+          entitiesCount: mapEngine.entityStore.getAllOrders().length,
+          visibleMarkersCount: newOrders.length,
+          viewport: {
+              latitudeDelta: currentRegion?.latitudeDelta,
+              longitudeDelta: currentRegion?.longitudeDelta
+          },
+          coordinates: {
+              latitude: currentRegion?.latitude,
+              longitude: currentRegion?.longitude
+          }
+      });
     }, 'MapScreen');
 
     const unsubscribeViewport = mapViewportStore.subscribe((newRegion: any) => {
@@ -96,11 +114,18 @@ const MapScreen = ({ navigation }: any) => {
     setStatusState('loading');
     setLoading(true);
     try {
+        let loc = null;
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({});
-          setLocation(loc);
+          try {
+            loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            setLocation(loc);
+          } catch (locationError: any) {
+            logger.warn('[MapScreen] Failed to get GPS location, using fallback region:', { error: locationError.message });
+          }
+        }
 
+        if (loc) {
           // Calculate precise latitude/longitude deltas for 50km radius coverage (100km total span)
           const totalRangeKm = CONFIG.DEFAULT_SEARCH_RADIUS_KM * 2;
           const latDelta = totalRangeKm / 111;

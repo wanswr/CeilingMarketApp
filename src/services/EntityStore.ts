@@ -67,6 +67,22 @@ class EntityStore {
 
     const existing = this.ordersById.get(order.id);
 
+    if (existing) {
+        const isIdentical =
+          existing.status === order.status &&
+          Number(existing.price) === Number(order.price) &&
+          existing.title === order.title &&
+          existing.description === order.description &&
+          existing.workType === order.workType &&
+          existing.executorId === order.executorId &&
+          (existing.applications?.length || 0) === (order.applications?.length || 0);
+
+        if (isIdentical) {
+          logger.debug('DUPLICATE_ORDER_UPDATE_IGNORED', { orderId: order.id, status: order.status, source });
+          return;
+        }
+    }
+
     if (existing && order.status) {
         const currentPrio = this.STATUS_PRIORITY[existing.status] || 0;
         const newPrio = this.STATUS_PRIORITY[order.status] || 0;
