@@ -13,6 +13,7 @@ class EntityStore {
   public currentUserId: string | null = null;
   public isInitialLoaded = false;
   public isMyOrdersLoaded = false;
+  private reconcileVersion = 0;
   public loadedBounds: { north: number, south: number, east: number, west: number } | null = null;
 
   public meta = {
@@ -193,29 +194,49 @@ class EntityStore {
       const incomingIds = new Set(orders.map(o => o.id));
 
       if (source === 'my') {
+          const currentVersion = ++this.reconcileVersion;
           const currentMyOrders = Array.from(this.myOrders);
-          logger.info('[EntityStore] Reconciling my orders...', {
-              localCount: currentMyOrders.length,
-              serverCount: orders.length
-          });
 
+          const SecureStore = require('expo-secure-store');
           const { apiService } = require('./ApiService');
-          currentMyOrders.forEach(id => {
-              if (!incomingIds.has(id)) {
-                  apiService.getOrderDetails(id)
-                      .then(() => {
-                          logger.debug('[EntityStore] Reconcile bypass: order still exists on server', { id });
-                      })
-                      .catch((err: any) => {
+
+          (async () => {
+              const token = await SecureStore.getItemAsync('userToken');
+              const tokenHash = token ? token.substring(0, 8) : 'none';
+              const myId = this.currentUserId || 'anonymous';
+
+              logger.info('RECONCILE_DEBUG', {
+                  userId: myId,
+                  tokenHash,
+                  timestamp: Date.now(),
+                  endpoint: 'orders/my',
+                  responseCount: orders.length,
+                  reconcileVersion: currentVersion,
+                  localCount: currentMyOrders.length
+              });
+
+              for (const id of currentMyOrders) {
+                  if (!incomingIds.has(id)) {
+                      try {
+                          await apiService.getOrderDetails(id);
+                          logger.debug('[EntityStore] Reconcile bypass: order still exists on server', { id, version: currentVersion });
+                      } catch (err: any) {
+                          // Check if a newer reconcile has preempted us!
+                          if (currentVersion < this.reconcileVersion) {
+                              logger.info('[EntityStore] Reconcile preempted and discarded', { old: currentVersion, current: this.reconcileVersion });
+                              return;
+                          }
+
                           if (err.response?.status === 404) {
-                              logger.warn('[EntityStore] Reconcile: order confirmed deleted by server (404), removing', { id });
+                              logger.warn('[EntityStore] Reconcile: order confirmed deleted by server (404), removing', { id, version: currentVersion });
                               this.removeOrder(id, 'reconcile_my_orders');
                           } else {
                               logger.warn('[EntityStore] Reconcile: order fetch failed but not 404, keeping', { id, status: err.response?.status });
                           }
-                      });
+                      }
+                  }
               }
-          });
+          })();
       }
 
       orders.forEach(o => this.setOrder(o, `sync_${source}`));
