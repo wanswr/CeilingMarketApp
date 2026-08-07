@@ -2,6 +2,16 @@ import { Order, UserProfile } from '../types'
 import { logger } from './logger/LoggerService';
 import { storageService } from './StorageService';
 
+
+function simpleHash(str: string): string {
+  if (!str) return 'none';
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16).substring(0, 8);
+}
+
 class EntityStore {
   private readonly PERSISTENCE_KEY = 'entity_store_v11';
   private ordersById: Map<string, Order> = new Map();
@@ -202,7 +212,7 @@ class EntityStore {
 
           (async () => {
               const token = await SecureStore.getItemAsync('userToken');
-              const tokenHash = token ? token.substring(0, 8) : 'none';
+              const tokenHash = token ? simpleHash(token) : 'none';
               const myId = this.currentUserId || 'anonymous';
 
               logger.info('RECONCILE_DEBUG', {
@@ -381,6 +391,9 @@ class EntityStore {
     storageService.delete(this.getPersistenceKey());
     this.currentUserId = null;
     this.isHydratedFlag = false;
+    this.isMyOrdersLoaded = false;
+    this.isInitialLoaded = false;
+    this.loadedBounds = null;
   }
 
   isEventSeen(eventId: string): boolean { return this.seenEvents.has(eventId); }

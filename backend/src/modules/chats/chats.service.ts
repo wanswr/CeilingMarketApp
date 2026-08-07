@@ -61,6 +61,12 @@ export class ChatsService {
     return chat;
   }
 
+  private sanitizeText(text: string, maxLen = 4000): string {
+    if (!text) return '';
+    const trimmed = text.trim();
+    return trimmed.length > maxLen ? trimmed.substring(0, maxLen) : trimmed;
+  }
+
   async sendMessage(chatId: string, senderId: string, text: string) {
     const sender = await this.prisma.user.findUnique({ where: { id: senderId } });
     if (!sender || sender.deletedAt) throw new ForbiddenException('User account is deleted');
@@ -74,12 +80,14 @@ export class ChatsService {
       throw new ForbiddenException('Not a member of this chat');
     }
 
+    const sanitizedText = this.sanitizeText(text, 4000);
+
     const [message] = await this.prisma.$transaction([
       this.prisma.message.create({
         data: {
           chatId,
           senderId,
-          text,
+          text: sanitizedText,
         },
         include: {
           sender: { select: { id: true, name: true, avatar: true } }
