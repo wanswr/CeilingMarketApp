@@ -215,6 +215,10 @@ class EntityStore {
                   localCount: currentMyOrders.length
               });
 
+              const idsBefore = [...currentMyOrders];
+              const deletedIds: string[] = [];
+              const addedIds = orders.map(o => o.id).filter(id => !idsBefore.includes(id));
+
               for (const id of currentMyOrders) {
                   if (!incomingIds.has(id)) {
                       try {
@@ -230,12 +234,22 @@ class EntityStore {
                           if (err.response?.status === 404) {
                               logger.warn('[EntityStore] Reconcile: order confirmed deleted by server (404), removing', { id, version: currentVersion });
                               this.removeOrder(id, 'reconcile_my_orders');
+                              deletedIds.push(id);
                           } else {
                               logger.warn('[EntityStore] Reconcile: order fetch failed but not 404, keeping', { id, status: err.response?.status });
                           }
                       }
                   }
               }
+
+              const idsAfter = Array.from(this.myOrders);
+              logger.info('RECONCILE_DIAGNOSTICS', {
+                  idsBefore,
+                  idsAfter,
+                  deletedIds,
+                  addedIds,
+                  reconcileVersion: currentVersion
+              });
           })();
       }
 

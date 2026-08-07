@@ -37,6 +37,10 @@ export class ReviewsService {
         throw new ForbiddenException('Only order participants can leave a review');
     }
 
+    if (order.status === OrderStatus.REVIEWED) {
+        throw new ConflictException('Заказ уже получил все отзывы и завершен');
+    }
+
     if (order.status !== OrderStatus.COMPLETED) {
       throw new ConflictException('Order must be completed to leave a review');
     }

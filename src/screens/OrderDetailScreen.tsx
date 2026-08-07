@@ -764,7 +764,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowPriceModal(false)}>
                         <Text style={styles.modalCancelBtnText}>Отмена</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.modalApplyBtn} onPress={submitOffer}>
+                    <TouchableOpacity style={[styles.modalApplyBtn, submitting && { opacity: 0.5 }]} onPress={submitOffer} disabled={submitting}>
                         <Text style={styles.modalApplyBtnText}>Откликнуться</Text>
                     </TouchableOpacity>
                 </View>
