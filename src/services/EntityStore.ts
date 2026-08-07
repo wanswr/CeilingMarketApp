@@ -23,10 +23,21 @@ class EntityStore {
 
   private isHydratedFlag = false;
 
+  getPersistenceKey() {
+    return this.currentUserId ? `entity_store_v11_${this.currentUserId}` : 'entity_store_v11_anonymous';
+  }
+
   setCurrentUserId(id: string) {
-    this.currentUserId = id;
-    this.recomputeMyOrders();
-    this.persist();
+    if (this.currentUserId !== id) {
+      logger.info('[EntityStore] User switched, re-initializing store...', { old: this.currentUserId, new: id });
+      this.currentUserId = id;
+      this.isHydratedFlag = false;
+      this.ordersById.clear();
+      this.myOrders.clear();
+      this.spatialGrid.clear();
+      this.seenEvents.clear();
+      this.hydrate();
+    }
   }
 
   private recomputeMyOrders() {
@@ -266,11 +277,12 @@ class EntityStore {
   hydrate = () => {
     if (this.isHydratedFlag) return true;
     try {
-      const data = storageService.get<any>(this.PERSISTENCE_KEY);
+      const key = this.getPersistenceKey();
+      const data = storageService.get<any>(key);
       if (!data) return false;
       const CACHE_TTL = 30 * 60 * 1000;
       if (!data.updatedAt || Date.now() - data.updatedAt > CACHE_TTL) {
-          storageService.delete(this.PERSISTENCE_KEY);
+          storageService.delete(key);
           return false;
       }
       if (data.currentUserId) this.currentUserId = data.currentUserId;
@@ -315,7 +327,8 @@ class EntityStore {
 
   persist = () => {
     try {
-      storageService.set(this.PERSISTENCE_KEY, {
+      const key = this.getPersistenceKey();
+      storageService.set(key, {
         orders: Array.from(this.ordersById.values()),
         currentUserId: this.currentUserId,
         updatedAt: Date.now(),
@@ -339,11 +352,14 @@ class EntityStore {
   }
 
   clear = () => {
+    logger.info('[EntityStore] Clearing global session state and persistent storage...');
     this.ordersById.clear();
     this.myOrders.clear();
     this.spatialGrid.clear();
     this.seenEvents.clear();
-    storageService.delete(this.PERSISTENCE_KEY);
+    storageService.delete(this.getPersistenceKey());
+    this.currentUserId = null;
+    this.isHydratedFlag = false;
   }
 
   isEventSeen(eventId: string): boolean { return this.seenEvents.has(eventId); }

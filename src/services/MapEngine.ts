@@ -147,8 +147,21 @@ class MapEngine {
 
   syncMap = async (force: boolean = false, region?: any) => {
     const currentUser = this.getCurrentUser();
-    if (!currentUser) {
-      logger.info('[MapEngine] Bypassing syncMap because user is not authenticated yet.');
+    const SecureStore = require('expo-secure-store');
+    const token = await SecureStore.getItemAsync('userToken');
+    const tokenHash = token ? token.substring(0, 8) : 'none';
+    const authReady = !!(currentUser && token);
+
+    logger.info('[MapEngine] syncMap diagnostic check', {
+        userId: currentUser?.id || 'anonymous',
+        tokenHash,
+        authReady,
+        force,
+        reason: force ? 'force_initial_load' : 'camera_movement_viewport_sync'
+    });
+
+    if (!authReady) {
+      logger.info('[MapEngine] Bypassing syncMap because auth is not ready yet.', { userId: currentUser?.id, hasToken: !!token });
       return;
     }
 
