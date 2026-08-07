@@ -9,7 +9,7 @@ This backlog consolidates all architectural and engineering items across fronten
 | Domain | Task / Goal | Priority | Status | Target Phase | Files Affected |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Storage** | **MMKV Migration & Storage Infrastructure**<br>Replace async storage with synchronous MMKV for zero-lag data hydration. | P0 | **IMPLEMENTED** | Phase 1 (Launch) | `EntityStore.ts`, `StorageService.ts` |
-| **State** | **React Query Hybrid Integration**<br>Implement server-state management while piping data into EntityStore for consistency. | P0 | **IMPLEMENTED** | Phase 1 (Launch) | `App.tsx`, `ApiService.ts` |
+| **State** | **React Query Hybrid Integration**<br>Implement server-state management while piping data into EntityStore for consistency. | P0 | **PLANNED** | Phase 2 (Growth) | `App.tsx`, `ApiService.ts` |
 | **Account** | **App Store Account Deletion Compliance**<br>Implement cascade DB deletes on user, user profile deletion route, settings modal, and delete button. | P0 | **IMPLEMENTED** | Phase 1 (Launch) | `schema.prisma`, `UsersController.ts`, `ProfileScreen.tsx` |
 | **Realtime** | **WebSocket Parallel Connect and Deduplication Fixes**<br>Prevent redundant WS reconnections and deduplicate inbound events on clients with TTL. | P0 | **IMPLEMENTED** | Phase 1 (Launch) | `SocketService.ts`, `MapEngine.ts` |
 | **Backend** | **Modular Monolith & Event Bus (BullMQ)**<br>Prepare backend for modular Domain-Driven separation and background job queues. | P1 | **IN PROGRESS** | Phase 2 (Growth) | `backend/src/modules/*` |
@@ -26,7 +26,7 @@ This backlog consolidates all architectural and engineering items across fronten
 ## 2. Upgrade Architecture Phases
 
 ### Phase 1: Hardening (Up to 5k MAU)
-- **Completed:** MMKV integration, React Query Server State caching, unified Cross-Platform Logging, cascading DB deletes, and account erasure compliance.
+- **Completed:** MMKV integration, unified Cross-Platform Logging, cascading DB deletes, and account erasure compliance.
 - **Completed:** WebSocket parallel connection locks, TTL event deduplication, and transaction double-click UI protections on maps and orders.
 - **Completed:** Strict server-side calendar date double-booking worker protection.
 

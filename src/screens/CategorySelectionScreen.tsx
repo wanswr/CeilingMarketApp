@@ -5,6 +5,7 @@ import { COLORS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/ApiService';
 import { usePendingAction } from '../context/PendingActionContext';
+import { mapEngine } from '../services/MapEngine';
 
 const CategorySelectionScreen = ({ navigation, route }: any) => {
   const [categories, setCategories] = useState<any[]>([]);
@@ -32,6 +33,7 @@ const CategorySelectionScreen = ({ navigation, route }: any) => {
     try {
       const res = await apiService.setActiveCategory(categoryId);
       updateUser(res.data);
+      mapEngine.onDirectionChanged(categoryId);
       if (route.params?.pendingAction) {
         resumePendingAction();
         navigation.goBack();

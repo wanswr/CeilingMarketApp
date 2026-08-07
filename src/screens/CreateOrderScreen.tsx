@@ -23,6 +23,7 @@ import { useRoute } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
 import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import MapView, { Marker, PROVIDER_GOOGLE
@@ -37,6 +38,7 @@ import { usePendingAction } from '../context/PendingActionContext'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { formatDate } from '../utils/date'
 import i18n from '../constants/i18n';
+import { CONFIG } from '../constants/config';
 
 const orderSchema = z.object({
   title: z.string().min(5, "Заголовок слишком короткий"),
@@ -64,6 +66,14 @@ export default function CreateOrderScreen({ navigation }: any) {
     );
   }
   const { requireRoleAndCategory } = usePendingAction();
+  const debounceTimerRef = useRef<any>(null);
+  const lastGeocodeRequestIdRef = useRef<number>(0);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
   const idempotencyKeyRef = useRef(Crypto.randomUUID());
   const route = useRoute<any>();
   const [form, setForm] = useState({
@@ -100,6 +110,28 @@ export default function CreateOrderScreen({ navigation }: any) {
   const [normalizedAddress, setNormalizedAddress] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [errors, setErrors] = useState<any>({});
+  const [userCity, setUserCity] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({});
+          const rev = await Location.reverseGeocodeAsync({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude
+          });
+          if (rev.length > 0 && rev[0].city) {
+            setUserCity(rev[0].city);
+            logger.info('[CreateOrder] Auto-resolved user current city:', { city: rev[0].city });
+          }
+        }
+      } catch (e) {
+        logger.error('RESOLVE_USER_CITY_ERROR', { error: e });
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (route.params?.latitude && route.params?.longitude) {
@@ -139,7 +171,35 @@ export default function CreateOrderScreen({ navigation }: any) {
       quality: 0.7 });
 
     if (!result.canceled) {
-      setImages([...images, result.assets[0].uri]);
+      try {
+        const asset = result.assets[0];
+        const longestSide = Math.max(asset.width || 1280, asset.height || 960);
+        const actions: any[] = [];
+        if (longestSide > 1280) {
+          const scale = 1280 / longestSide;
+          const newWidth = Math.round((asset.width || 1280) * scale);
+          const newHeight = Math.round((asset.height || 960) * scale);
+          actions.push({ resize: { width: newWidth, height: newHeight } });
+        }
+
+        const manipResult = await manipulateAsync(
+          asset.uri,
+          actions,
+          { compress: 0.8, format: SaveFormat.JPEG }
+        );
+
+        logger.info('[CreateOrder] Image compressed successfully:', {
+          original: `${asset.width}x${asset.height}`,
+          new: `${manipResult.width}x${manipResult.height}`,
+          uri: manipResult.uri
+        });
+
+        setImages([...images, manipResult.uri]);
+      } catch (err) {
+        logger.error('[CreateOrder] Failed to compress selected image:', { error: err });
+        // Fallback to original URI if manipulation fails
+        setImages([...images, result.assets[0].uri]);
+      }
     }
   };
 
@@ -151,34 +211,46 @@ export default function CreateOrderScreen({ navigation }: any) {
 
   const handleAddressChange = async (text: string) => {
     setForm({ ...form, address: text });
-    if (text.length > 2) {
-      try {
-        const queries = [
-          text,
-          `Москва, ${text}`,
-          `Московская область, ${text}`
-        ];
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
 
-        let foundSuggestions: string[] = [];
-        for (const q of queries) {
-          const results = await Location.geocodeAsync(q);
-          if (results.length > 0) {
-            const rev = await Location.reverseGeocodeAsync({
-              latitude: results[0].latitude,
-              longitude: results[0].longitude
-            });
-            if (rev.length > 0) {
-              const r = rev[0];
-              const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
-              if (formatted && !foundSuggestions.includes(formatted)) {
-                foundSuggestions.push(formatted);
+    if (text.length > 2) {
+      const requestId = ++lastGeocodeRequestIdRef.current;
+      debounceTimerRef.current = setTimeout(async () => {
+        try {
+          const queries = [text];
+          if (userCity) {
+            queries.push(`${userCity}, ${text}`);
+          }
+
+          let foundSuggestions: string[] = [];
+          for (const q of queries) {
+            const results = await Location.geocodeAsync(q);
+            if (results.length > 0) {
+              const rev = await Location.reverseGeocodeAsync({
+                latitude: results[0].latitude,
+                longitude: results[0].longitude
+              });
+              if (rev.length > 0) {
+                const r = rev[0];
+                const formatted = [r.city, r.street, r.name].filter(Boolean).join(', ');
+                if (formatted && !foundSuggestions.includes(formatted)) {
+                  foundSuggestions.push(formatted);
+                }
               }
             }
+            if (foundSuggestions.length > 2) break;
           }
-          if (foundSuggestions.length > 2) break;
-        }
-        setSuggestions(foundSuggestions);
-      } catch (e) {}
+
+          // Only apply results if this request is still the newest one
+          if (requestId === lastGeocodeRequestIdRef.current) {
+            setSuggestions(foundSuggestions);
+          } else {
+            logger.debug('[CreateOrder] Stale geocoding suggestions discarded', { requestId, current: lastGeocodeRequestIdRef.current });
+          }
+        } catch (e) {}
+      }, CONFIG.GEOCODE_DEBOUNCE_DELAY_MS);
     } else {
       setSuggestions([]);
     }
@@ -197,22 +269,18 @@ export default function CreateOrderScreen({ navigation }: any) {
     setIsGeocoding(true);
     try {
       const input = addrToUse.trim();
-      const queries = [
-        input,
-        `Москва, ${input}`,
-        `Московская область, ${input}`,
-      ];
+      const queries = [input];
+      if (userCity) {
+        queries.push(`${userCity}, ${input}`);
+      }
 
       let bestResult = null;
 
       for (const query of queries) {
         const results = await Location.geocodeAsync(query);
         if (results.length > 0) {
-          const res = results[0];
-          if (res.latitude > 54 && res.latitude < 57 && res.longitude > 35 && res.longitude < 40) {
-            bestResult = res;
-            break;
-          }
+          bestResult = results[0];
+          break;
         }
       }
 

@@ -13,6 +13,7 @@ class EntityStore {
   public currentUserId: string | null = null;
   public isInitialLoaded = false;
   public isMyOrdersLoaded = false;
+  private reconcileVersion = 0;
   public loadedBounds: { north: number, south: number, east: number, west: number } | null = null;
 
   public meta = {
@@ -23,10 +24,21 @@ class EntityStore {
 
   private isHydratedFlag = false;
 
+  getPersistenceKey() {
+    return this.currentUserId ? `entity_store_v11_${this.currentUserId}` : 'entity_store_v11_anonymous';
+  }
+
   setCurrentUserId(id: string) {
-    this.currentUserId = id;
-    this.recomputeMyOrders();
-    this.persist();
+    if (this.currentUserId !== id) {
+      logger.info('[EntityStore] User switched, re-initializing store...', { old: this.currentUserId, new: id });
+      this.currentUserId = id;
+      this.isHydratedFlag = false;
+      this.ordersById.clear();
+      this.myOrders.clear();
+      this.spatialGrid.clear();
+      this.seenEvents.clear();
+      this.hydrate();
+    }
   }
 
   private recomputeMyOrders() {
@@ -66,6 +78,22 @@ class EntityStore {
     if (!order?.id) return;
 
     const existing = this.ordersById.get(order.id);
+
+    if (existing) {
+        const isIdentical =
+          existing.status === order.status &&
+          Number(existing.price) === Number(order.price) &&
+          existing.title === order.title &&
+          existing.description === order.description &&
+          existing.workType === order.workType &&
+          existing.executorId === order.executorId &&
+          (existing.applications?.length || 0) === (order.applications?.length || 0);
+
+        if (isIdentical) {
+          logger.debug('DUPLICATE_ORDER_UPDATE_IGNORED', { orderId: order.id, status: order.status, source });
+          return;
+        }
+    }
 
     if (existing && order.status) {
         const currentPrio = this.STATUS_PRIORITY[existing.status] || 0;
@@ -166,13 +194,63 @@ class EntityStore {
       const incomingIds = new Set(orders.map(o => o.id));
 
       if (source === 'my') {
-          // Reconcile: remove local orders that I participate in but are missing from the "my orders" server response
+          const currentVersion = ++this.reconcileVersion;
           const currentMyOrders = Array.from(this.myOrders);
-          currentMyOrders.forEach(id => {
-              if (!incomingIds.has(id)) {
-                  this.removeOrder(id, 'reconcile_my_orders');
+
+          const SecureStore = require('expo-secure-store');
+          const { apiService } = require('./ApiService');
+
+          (async () => {
+              const token = await SecureStore.getItemAsync('userToken');
+              const tokenHash = token ? token.substring(0, 8) : 'none';
+              const myId = this.currentUserId || 'anonymous';
+
+              logger.info('RECONCILE_DEBUG', {
+                  userId: myId,
+                  tokenHash,
+                  timestamp: Date.now(),
+                  endpoint: 'orders/my',
+                  responseCount: orders.length,
+                  reconcileVersion: currentVersion,
+                  localCount: currentMyOrders.length
+              });
+
+              const idsBefore = [...currentMyOrders];
+              const deletedIds: string[] = [];
+              const addedIds = orders.map(o => o.id).filter(id => !idsBefore.includes(id));
+
+              for (const id of currentMyOrders) {
+                  if (!incomingIds.has(id)) {
+                      try {
+                          await apiService.getOrderDetails(id);
+                          logger.debug('[EntityStore] Reconcile bypass: order still exists on server', { id, version: currentVersion });
+                      } catch (err: any) {
+                          // Check if a newer reconcile has preempted us!
+                          if (currentVersion < this.reconcileVersion) {
+                              logger.info('[EntityStore] Reconcile preempted and discarded', { old: currentVersion, current: this.reconcileVersion });
+                              return;
+                          }
+
+                          if (err.response?.status === 404) {
+                              logger.warn('[EntityStore] Reconcile: order confirmed deleted by server (404), removing', { id, version: currentVersion });
+                              this.removeOrder(id, 'reconcile_my_orders');
+                              deletedIds.push(id);
+                          } else {
+                              logger.warn('[EntityStore] Reconcile: order fetch failed but not 404, keeping', { id, status: err.response?.status });
+                          }
+                      }
+                  }
               }
-          });
+
+              const idsAfter = Array.from(this.myOrders);
+              logger.info('RECONCILE_DIAGNOSTICS', {
+                  idsBefore,
+                  idsAfter,
+                  deletedIds,
+                  addedIds,
+                  reconcileVersion: currentVersion
+              });
+          })();
       }
 
       orders.forEach(o => this.setOrder(o, `sync_${source}`));
@@ -234,11 +312,12 @@ class EntityStore {
   hydrate = () => {
     if (this.isHydratedFlag) return true;
     try {
-      const data = storageService.get<any>(this.PERSISTENCE_KEY);
+      const key = this.getPersistenceKey();
+      const data = storageService.get<any>(key);
       if (!data) return false;
       const CACHE_TTL = 30 * 60 * 1000;
       if (!data.updatedAt || Date.now() - data.updatedAt > CACHE_TTL) {
-          storageService.delete(this.PERSISTENCE_KEY);
+          storageService.delete(key);
           return false;
       }
       if (data.currentUserId) this.currentUserId = data.currentUserId;
@@ -283,7 +362,8 @@ class EntityStore {
 
   persist = () => {
     try {
-      storageService.set(this.PERSISTENCE_KEY, {
+      const key = this.getPersistenceKey();
+      storageService.set(key, {
         orders: Array.from(this.ordersById.values()),
         currentUserId: this.currentUserId,
         updatedAt: Date.now(),
@@ -292,12 +372,29 @@ class EntityStore {
     } catch (e) {}
   }
 
+  clearSpatialOrders = () => {
+    const myOrderIds = new Set(this.myOrders);
+    for (const key of this.ordersById.keys()) {
+      if (!myOrderIds.has(key)) {
+        this.ordersById.delete(key);
+      }
+    }
+    this.spatialGrid.clear();
+    this.ordersById.forEach(order => {
+      this.updateOrderInGrid(order);
+    });
+    this.persist();
+  }
+
   clear = () => {
+    logger.info('[EntityStore] Clearing global session state and persistent storage...');
     this.ordersById.clear();
     this.myOrders.clear();
     this.spatialGrid.clear();
     this.seenEvents.clear();
-    storageService.delete(this.PERSISTENCE_KEY);
+    storageService.delete(this.getPersistenceKey());
+    this.currentUserId = null;
+    this.isHydratedFlag = false;
   }
 
   isEventSeen(eventId: string): boolean { return this.seenEvents.has(eventId); }

@@ -22,6 +22,7 @@ import { COLORS, SHADOWS } from '../constants/theme'
 import { mapEngine } from '../services/MapEngine'
 import { useFocusEffect } from '@react-navigation/native'
 import { apiService } from '../services/ApiService'
+import { useClientStore } from '../store/client.store'
 import { storageService } from '../services/StorageService'
 
 const ProfileScreen = ({ route, navigation }: any) => {
@@ -32,7 +33,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const [reviews, setReviews] = useState<any[]>([]);
   const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const { logout } = useAuth();
+  const { logout, updateUser } = useAuth();
   const currentUser = mapEngine.getCurrentUser();
   const isMe = !userId || userId === currentUser?.id || userId === currentUser?.uid;
 
@@ -61,6 +62,9 @@ const ProfileScreen = ({ route, navigation }: any) => {
       let userData;
       if (isMe) {
           userData = await mapEngine.syncUser(true);
+          if (userData?.role) {
+              useClientStore.getState().setActiveRole(userData.role);
+          }
       } else {
           userData = await mapEngine.getExternalUser(userId);
       }
@@ -106,11 +110,17 @@ const ProfileScreen = ({ route, navigation }: any) => {
     if (!user) return;
     const newRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
     try {
-        await mapEngine.updateProfile({ role: newRole });
+        const updatedUser = await mapEngine.setRole(newRole);
+        updateUser(updatedUser);
+        useClientStore.getState().setActiveRole(newRole);
         fetchProfile();
         Alert.alert("Роль изменена", `Теперь вы ${newRole === 'EMPLOYER' ? 'Заказчик' : 'Мастер'}`);
-    } catch (e) {
-        Alert.alert("Ошибка", "Не удалось сменить роль");
+    } catch (e: any) {
+        if (e.response?.status === 403) {
+            Alert.alert("Ошибка", "Роль нельзя сменить — у вас уже есть заказы, заявки или чаты, привязанные к текущей роли");
+        } else {
+            Alert.alert("Ошибка", "Не удалось сменить роль");
+        }
     }
   };
 

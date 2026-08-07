@@ -127,6 +127,11 @@ const getAdapter = (): StorageAdapter => {
 
     throw new Error('Failed to create native MMKV instance');
   } catch (e: any) {
+    const isProduction = process.env.NODE_ENV === 'production' || !(global as any).__DEV__;
+    if (isProduction) {
+        logger.error('[StorageService] FATAL: react-native-mmkv module not found or failed in production bundle!', { error: e.message });
+        throw new Error(`FATAL: react-native-mmkv module not found or failed in production bundle! Details: ${e.message}`);
+    }
     if (!_isNativeUnavailable) {
         logger.warn(`[StorageService] Native storage unavailable: ${e.message}. Using in-memory fallback.`);
     }

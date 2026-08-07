@@ -29,6 +29,7 @@ jest.mock('./MapViewportStore', () => {
 });
 
 import { mapEngine } from './MapEngine';
+import { CONFIG } from '../constants/config';
 import { apiService } from './ApiService';
 import { requestRouter } from './RequestRouter';
 
@@ -57,6 +58,7 @@ describe('MapEngine - syncMap pagination', () => {
     jest.clearAllMocks();
     requestRouter.clear();
     mapEngine.entityStore.clear();
+    mapEngine.entityStore.setUser({ id: 'test-user-123', name: 'Test User', role: 'WORKER', isMe: true } as any);
   });
 
   it('should bypass requestRouter on second and subsequent pages when cursorId is set', async () => {
@@ -111,26 +113,32 @@ describe('MapEngine - syncMap pagination', () => {
 
     // First call has no cursorId
     expect(getOrdersSpatialSpy.mock.calls[0][0]).toEqual({
-      lat: 55.75,
-      lng: 37.61,
-      radius: 100,
+      minLat: 55.690000000000005,
+      maxLat: 55.809999999999995,
+      minLng: 37.550000000000004,
+      maxLng: 37.669999999999995,
+      zoom: 12,
       limit: 250,
     });
 
     // Second call must have cursorId: 'order-250'
     expect(getOrdersSpatialSpy.mock.calls[1][0]).toEqual({
-      lat: 55.75,
-      lng: 37.61,
-      radius: 100,
+      minLat: 55.690000000000005,
+      maxLat: 55.809999999999995,
+      minLng: 37.550000000000004,
+      maxLng: 37.669999999999995,
+      zoom: 12,
       limit: 250,
       cursorId: 'order-250',
     });
 
     // Third call must have cursorId: 'order-500'
     expect(getOrdersSpatialSpy.mock.calls[2][0]).toEqual({
-      lat: 55.75,
-      lng: 37.61,
-      radius: 100,
+      minLat: 55.690000000000005,
+      maxLat: 55.809999999999995,
+      minLng: 37.550000000000004,
+      maxLng: 37.669999999999995,
+      zoom: 12,
       limit: 250,
       cursorId: 'order-500',
     });
@@ -138,7 +146,7 @@ describe('MapEngine - syncMap pagination', () => {
     // Verify requestRouter.request was called exactly ONCE (only for page 1)
     // because subsequent pages have cursorId and bypass it completely
     expect(requestRouterSpy).toHaveBeenCalledTimes(1);
-    expect(requestRouterSpy.mock.calls[0][0]).toBe('map:spatial');
+    expect(requestRouterSpy.mock.calls[0][0]).toContain('map:spatial');
 
     // Verify that entityStore.setOrders was called with the combined 500 orders
     expect(setOrdersSpy).toHaveBeenCalledTimes(1);

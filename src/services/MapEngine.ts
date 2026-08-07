@@ -6,6 +6,7 @@ import { GeoClusterService } from './GeoClusterService'
 import { spatialManager } from '../map/SpatialManager'
 import { mapViewportStore } from './MapViewportStore'
 import { logger } from './logger/LoggerService'
+import { CONFIG } from '../constants/config'
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -16,11 +17,30 @@ class MapEngine {
   private currentAbortController: AbortController | null = null;
   private requestCounter: number = 0;
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
-  private searchRadius: number = 100;
+  private searchRadius: number = CONFIG.INITIAL_SEARCH_RADIUS_KM;
   private lastGeoJoinKey: string | null = null;
 
   setSearchRadius = (radius: number) => {
     this.searchRadius = radius;
+  }
+
+  onDirectionChanged = (newCategoryId: string) => {
+    logger.info('[MapEngine] Direction/category changed, performing full invalidation...', { newCategoryId });
+    this.entityStore.clearSpatialOrders();
+    this.requestRouter.clear();
+    try {
+      const { queryClient } = require('./QueryClient');
+      queryClient.clear();
+      logger.info('[MapEngine] React Query cache cleared successfully.');
+    } catch (e: any) {
+      logger.warn('[MapEngine] Failed to clear React Query cache:', e.message);
+    }
+    this.lastSyncRegion = null;
+    this.forceRefresh();
+    const region = mapViewportStore.getRegion();
+    if (region) {
+      this.updateSocketRoom(region, true);
+    }
   }
   public spatialManager = spatialManager;
   public entityStore = entityStore;
@@ -38,8 +58,8 @@ class MapEngine {
       setTimeout(() => {
           // V9: Reactive architecture - Engine listens to Camera
           mapViewportStore.subscribe((region) => {
-              this.triggerMapUpdate(region);
               this.updateSocketRoom(region);
+              this.triggerMapUpdate(region);
           }, 'MapEngine_Core');
       }, 0);
   }
@@ -126,11 +146,34 @@ class MapEngine {
   }
 
   syncMap = async (force: boolean = false, region?: any) => {
+    const currentUser = this.getCurrentUser();
+    const SecureStore = require('expo-secure-store');
+    const token = await SecureStore.getItemAsync('userToken');
+    const tokenHash = token ? token.substring(0, 8) : 'none';
+    const authReady = !!(currentUser && token);
+
+    logger.info('[MapEngine] syncMap diagnostic check', {
+        userId: currentUser?.id || 'anonymous',
+        tokenHash,
+        authReady,
+        force,
+        reason: force ? 'force_initial_load' : 'camera_movement_viewport_sync'
+    });
+
+    if (!authReady) {
+      logger.info('[MapEngine] Bypassing syncMap because auth is not ready yet.', { userId: currentUser?.id, hasToken: !!token });
+      return;
+    }
+
     if (this.syncLock && !force) return;
     this.syncLock = true;
 
     try {
       const viewRegion = region || mapViewportStore.getRegion();
+      const latDelta = viewRegion.latitudeDelta;
+      const zoom = this.geoClusterService?.getZoomLevel ? this.geoClusterService.getZoomLevel(latDelta) : 12;
+      const activeCategoryId = currentUser?.activeCategoryId;
+
       const limit = 250;
       let cursorId: string | undefined = undefined;
       let allCreated: any[] = [];
@@ -139,18 +182,34 @@ class MapEngine {
 
       while (pagesFetched < maxPages) {
         const params: any = {
-          lat: viewRegion.latitude,
-          lng: viewRegion.longitude,
-          radius: 100,
           limit,
         };
+
+        if (activeCategoryId) {
+          params.categoryId = activeCategoryId;
+        }
+
+        const latPadding = viewRegion.latitudeDelta * 0.1;
+        const lngPadding = viewRegion.longitudeDelta * 0.1;
+        params.minLat = viewRegion.latitude - viewRegion.latitudeDelta / 2 - latPadding;
+        params.maxLat = viewRegion.latitude + viewRegion.latitudeDelta / 2 + latPadding;
+        params.minLng = viewRegion.longitude - viewRegion.longitudeDelta / 2 - lngPadding;
+        params.maxLng = viewRegion.longitude + viewRegion.longitudeDelta / 2 + lngPadding;
+        params.zoom = zoom;
+
         if (cursorId) {
           params.cursorId = cursorId;
         }
 
+        const keyParts = ['map:spatial'];
+        if (activeCategoryId) keyParts.push("dir:" + activeCategoryId);
+        keyParts.push("bounds:" + params.minLat.toFixed(3) + ":" + params.maxLat.toFixed(3) + ":" + params.minLng.toFixed(3) + ":" + params.maxLng.toFixed(3));
+        keyParts.push("zoom:" + zoom);
+        const routerKey = keyParts.join('_');
+
         const res = cursorId
           ? await this.apiService.getOrdersSpatial(params)
-          : await this.requestRouter.request('map:spatial', () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
+          : await this.requestRouter.request(routerKey, () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
 
         if (res && res.data) {
           const { created } = res.data;
@@ -167,7 +226,23 @@ class MapEngine {
       }
 
       if (allCreated.length > 0) {
-        this.entityStore.setOrders(allCreated, 'spatial');
+        const realOrders = allCreated.filter(o => !o.isCluster);
+        const clusters = allCreated.filter(o => o.isCluster);
+
+        if (realOrders.length > 0) {
+          this.entityStore.setOrders(realOrders, 'spatial');
+        }
+
+        if (clusters.length > 0) {
+          const clusteredOrders = this.recalculateClusteredOrders(viewRegion);
+          const seenIds = new Set(clusteredOrders.map(o => o.id));
+          clusters.forEach(c => {
+            if (!seenIds.has(c.id)) {
+              clusteredOrders.push(c);
+            }
+          });
+          this.lastClusteredOrders = clusteredOrders;
+        }
       }
 
       this.lastSyncRegion = {
@@ -206,7 +281,13 @@ class MapEngine {
     );
 
     const myId = this.entityStore.currentUserId;
+    const currentUser = this.getCurrentUser();
+    const activeCategoryId = currentUser?.activeCategoryId;
+
     const candidates = rawCandidates.filter((order: Order) => {
+        if (activeCategoryId && order.categoryId && order.categoryId !== activeCategoryId) {
+            return false;
+        }
         const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
         const isMine = !!myId && (
             order.employerId === myId ||

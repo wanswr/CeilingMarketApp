@@ -374,15 +374,19 @@ export class OrdersService {
       await this.broadcast('order.status.changed', result.order, executorId);
       return result.app;
     } catch (error: any) {
-      if (idempotencyKey && error.code === 'P2002') {
-        const duplicateApp = await this.prisma.application.findUnique({
-          where: { idempotencyKey }
-        });
-        if (duplicateApp) {
-          this.logger.info('ORDER_APPLY_IDEMPOTENT_RACE_HIT', 'Application created by parallel request, returning existing', { idempotencyKey });
-          const currentOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
-          return { app: duplicateApp, order: currentOrder };
+      if (error.code === 'P2002') {
+        const isIdempotencyKeyDuplicate = error.meta?.target?.includes('idempotencyKey');
+        if (idempotencyKey && isIdempotencyKeyDuplicate) {
+          const duplicateApp = await this.prisma.application.findUnique({
+            where: { idempotencyKey }
+          });
+          if (duplicateApp) {
+            this.logger.info('ORDER_APPLY_IDEMPOTENT_RACE_HIT', 'Application created by parallel request, returning existing', { idempotencyKey });
+            const currentOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+            return { app: duplicateApp, order: currentOrder };
+          }
         }
+        throw new ConflictException('Вы уже откликнулись на этот заказ');
       }
       throw error;
     }

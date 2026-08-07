@@ -20,6 +20,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur'
 import { COLORS, SHADOWS } from '../constants/theme'
+import { CONFIG } from '../constants/config'
 import { mapEngine } from '../services/MapEngine'
 import { mapViewportStore } from '../services/MapViewportStore'
 import { logger } from '../services/logger/LoggerService'
@@ -34,8 +35,9 @@ const MapScreen = ({ navigation }: any) => {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [statusState, setStatusState] = useState<'loading' | 'success' | 'error'>('loading');
   const [region, setRegion] = useState<Region>(mapViewportStore.getRegion());
-  const [radius, setRadius] = useState(100);
+  const [radius, setRadius] = useState(CONFIG.DEFAULT_SEARCH_RADIUS_KM);
   const [showFilters, setShowFilters] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [pendingLocation, setPendingLocation] = useState<{latitude: number, longitude: number} | null>(null);
@@ -74,6 +76,24 @@ const MapScreen = ({ navigation }: any) => {
     const unsubscribeOrders = mapEngine.subscribe((newOrders: any) => {
       setDisplayedOrders([...newOrders]);
       setLoading(false);
+
+      const curUser = mapEngine.getCurrentUser();
+      const currentRegion = mapViewportStore.getRegion();
+      logger.info('MAP_DEBUG', {
+          userId: curUser?.id || curUser?.uid || 'anonymous',
+          role: curUser?.role || 'none',
+          ordersCount: newOrders.filter((o: any) => !o.isCluster).length,
+          entitiesCount: mapEngine.entityStore.getAllOrders().length,
+          visibleMarkersCount: newOrders.length,
+          viewport: {
+              latitudeDelta: currentRegion?.latitudeDelta,
+              longitudeDelta: currentRegion?.longitudeDelta
+          },
+          coordinates: {
+              latitude: currentRegion?.latitude,
+              longitude: currentRegion?.longitude
+          }
+      });
     }, 'MapScreen');
 
     const unsubscribeViewport = mapViewportStore.subscribe((newRegion: any) => {
@@ -90,6 +110,50 @@ const MapScreen = ({ navigation }: any) => {
     };
   }, []);
 
+  const loadMapData = useCallback(async () => {
+    setStatusState('loading');
+    setLoading(true);
+    try {
+        let loc = null;
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          try {
+            loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            setLocation(loc);
+          } catch (locationError: any) {
+            logger.warn('[MapScreen] Failed to get GPS location, using fallback region:', { error: locationError.message });
+          }
+        }
+
+        if (loc) {
+          // Calculate precise latitude/longitude deltas for 50km radius coverage (100km total span)
+          const totalRangeKm = CONFIG.DEFAULT_SEARCH_RADIUS_KM * 2;
+          const latDelta = totalRangeKm / 111;
+          const lonDelta = totalRangeKm / (111 * Math.cos(loc.coords.latitude * Math.PI / 180));
+
+          const userRegion = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            latitudeDelta: latDelta,
+            longitudeDelta: lonDelta
+          };
+
+          mapViewportStore.setRegion(userRegion);
+          await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
+          mapRef.current?.animateToRegion(userRegion, 500);
+        } else {
+          const fallback = mapViewportStore.getRegion();
+          await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
+        }
+        setStatusState('success');
+    } catch (e) {
+        logger.error("UI_ERROR", { error: '[MapScreen] Init Error:', e });
+        setStatusState('error');
+    } finally {
+        setLoading(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
@@ -98,35 +162,16 @@ const MapScreen = ({ navigation }: any) => {
 
       const orders = mapEngine.getOrders();
       if (orders.length === 0) {
-          (async () => {
-            try {
-                const { status } = await Location.requestForegroundPermissionsAsync();
-                if (status === 'granted') {
-                  const loc = await Location.getCurrentPositionAsync({});
-                  setLocation(loc);
-                  const userRegion = {
-                    latitude: loc.coords.latitude,
-                    longitude: loc.coords.longitude,
-                    latitudeDelta: 0.9,
-                    longitudeDelta: 0.9
-                  };
-                  mapViewportStore.setRegion(userRegion);
-                  await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
-                  mapRef.current?.animateToRegion(userRegion, 500);
-                } else {
-                  const fallback = mapViewportStore.getRegion();
-                  await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
-                }
-            } catch (e) {
-                logger.error("UI_ERROR", { error: '[MapScreen] Init Error:', e });
-            }
-          })();
+          loadMapData();
+      } else {
+          setStatusState('success');
+          setLoading(false);
       }
 
       return () => {
         isFocusedRef.current = false;
       };
-    }, [])
+    }, [loadMapData])
   );
 
   const handleRegionChangeComplete = (newRegion: Region) => {
@@ -480,9 +525,20 @@ const MapScreen = ({ navigation }: any) => {
         </View>
       </Modal>
 
-        {loading && displayedOrders.length === 0 && (
-            <View style={styles.loaderOverlay} pointerEvents="none">
+        {statusState === 'loading' && (
+            <View style={styles.loaderOverlay}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        )}
+
+        {statusState === 'error' && (
+            <View style={styles.errorOverlay}>
+                <Ionicons name="cloud-offline-outline" size={48} color={COLORS.danger} style={{ marginBottom: 12 }} />
+                <Text style={styles.errorText}>Ошибка загрузки карты</Text>
+                <Text style={styles.errorSubtext}>Проверьте подключение к сети и геолокацию</Text>
+                <TouchableOpacity style={styles.retryBtn} onPress={loadMapData}>
+                    <Text style={styles.retryBtnText}>Повторить</Text>
+                </TouchableOpacity>
             </View>
         )}
       </View>
@@ -497,6 +553,11 @@ const mapStyle = [
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  errorOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.95)', justifyContent: 'center', alignItems: 'center', padding: 24, zIndex: 2000 },
+  errorText: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 8 },
+  errorSubtext: { fontSize: 14, color: COLORS.gray, textAlign: 'center', marginBottom: 20, paddingHorizontal: 20 },
+  retryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, ...SHADOWS.soft },
+  retryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   onboardingOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.5)' },
   onboardingContent: { backgroundColor: '#fff', borderRadius: 32, padding: 24, width: '100%', alignItems: 'center', ...SHADOWS.heavy },
   onboardingIconContainer: { width: 90, height: 90, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },

@@ -188,17 +188,18 @@ const OrdersListScreen = ({ navigation }: any) => {
 
     Alert.alert(
       'Удаление заказа',
-      'Заказ будет перенесен в корзину и окончательно удален через 10 дней. Продолжить?',
+      'Заказ будет удален навсегда. Продолжить?',
       [
         { text: 'Отмена', style: 'cancel' },
         {
-          text: 'В корзину',
+          text: 'Удалить',
           style: 'destructive',
           onPress: async () => {
             if (submitting) return;
             setSubmitting(orderId);
             try {
-              await mapEngine.updateOrder(orderId, { status: 'CANCELLED', deletedAt: new Date().toISOString() });
+              await mapEngine.deleteOrder(orderId);
+              setOrders(mapEngine.getOrders(true));
             } catch (e) {
               Alert.alert('Ошибка', 'Не удалось удалить заказ');
             } finally {
