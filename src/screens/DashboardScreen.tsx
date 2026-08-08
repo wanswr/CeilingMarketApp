@@ -7,11 +7,11 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  SafeAreaView,
   Image,
   Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiService } from '../services/ApiService';
 import { COLORS, SHADOWS, SPACING } from '../constants/theme';
 import { logger } from '../services/logger/LoggerService';
