@@ -187,24 +187,32 @@ class MapEngine {
     const tokenHash = token ? simpleHash(token) : 'none';
     const authReady = !!(currentUser && token);
 
-    logger.info('[MapEngine] syncMap diagnostic check', {
-        userId: currentUser?.id || 'anonymous',
-        tokenHash,
-        authReady,
-        force,
-        reason: force ? 'force_initial_load' : 'camera_movement_viewport_sync'
+    const requestId = Math.random().toString(36).substring(7);
+    const viewRegion = region || mapViewportStore.getRegion();
+    const viewportHash = viewRegion ? `${viewRegion.latitude.toFixed(4)}_${viewRegion.longitude.toFixed(4)}_${viewRegion.latitudeDelta.toFixed(4)}` : 'none';
+    const previousViewportHash = this.lastSyncRegion ? `${this.lastSyncRegion.latitude.toFixed(4)}_${this.lastSyncRegion.longitude.toFixed(4)}_${this.lastSyncRegion.latitudeDelta.toFixed(4)}` : 'none';
+
+    logger.info('SYNC_START', {
+        requestId,
+        reason: force ? 'force_initial_load' : 'camera_movement_viewport_sync',
+        viewportHash,
+        previousViewportHash,
+        force
     });
 
     if (!authReady) {
-      logger.info('[MapEngine] Bypassing syncMap because auth is not ready yet.', { userId: currentUser?.id, hasToken: !!token });
+      logger.info('SYNC_BYPASS', { requestId, reason: 'auth_not_ready' });
       return;
     }
 
-    if (this.syncLock && !force) return;
+    if (this.syncLock && !force) {
+      logger.info('SYNC_BYPASS', { requestId, reason: 'sync_locked' });
+      return;
+    }
     this.syncLock = true;
+    const syncStartTs = Date.now();
 
     try {
-      const viewRegion = region || mapViewportStore.getRegion();
       const latDelta = viewRegion.latitudeDelta;
       const zoom = this.geoClusterService?.getZoomLevel ? this.geoClusterService.getZoomLevel(latDelta) : 12;
       const activeCategoryId = currentUser?.activeCategoryId;
@@ -214,6 +222,7 @@ class MapEngine {
       let allCreated: any[] = [];
       let pagesFetched = 0;
       const maxPages = 4; // Max 1000 orders total
+      let source = 'cache';
 
       while (pagesFetched < maxPages) {
         const params: any = {
@@ -244,11 +253,32 @@ class MapEngine {
         if (activeCategoryId) keyParts.push("dir:" + activeCategoryId);
         keyParts.push("bounds:" + params.minLat.toFixed(3) + ":" + params.maxLat.toFixed(3) + ":" + params.minLng.toFixed(3) + ":" + params.maxLng.toFixed(3));
         keyParts.push("zoom:" + zoom);
+        if (params.dateFilter) keyParts.push("date:" + params.dateFilter);
         const routerKey = keyParts.join('_');
 
+        const isCached = requestRouter.cache.has(routerKey) && (Date.now() - (requestRouter.cache.get(routerKey)?.timestamp || 0)) < (force ? 0 : 30000);
+
+        if (!isCached && !cursorId) {
+          source = 'network';
+          logger.info('NETWORK_REQUEST', {
+              requestId,
+              endpoint: 'orders/spatial',
+              routerKey
+          });
+        }
+
+        const fetchStartTs = Date.now();
         const res = cursorId
           ? await this.apiService.getOrdersSpatial(params)
           : await this.requestRouter.request(routerKey, () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
+
+        if (!isCached && !cursorId) {
+          logger.info('NETWORK_RESPONSE', {
+              requestId,
+              duration: Date.now() - fetchStartTs,
+              count: res?.data?.created?.length || 0
+          });
+        }
 
         if (res && res.data) {
           const { created } = res.data;
@@ -291,6 +321,13 @@ class MapEngine {
       };
       this.triggerNotify();
       this.entityStore.persist();
+
+      logger.info('SYNC_END', {
+          requestId,
+          source,
+          duration: Date.now() - syncStartTs,
+          totalEntities: allCreated.length
+      });
     } catch (error: any) {
         if (error.name !== 'AbortError') logger.error('Map Sync Fail:', { error: error.message });
     } finally {
@@ -298,7 +335,7 @@ class MapEngine {
     }
   }
 
-  initialLoad = async (lat: number, lng: number) => {
+  initialLoad =  initialLoad = async (lat: number, lng: number) => {
       logger.info('[MapEngine] Performing initial server sync...');
       this.entityStore.isInitialLoaded = false;
       return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.9, longitudeDelta: 0.9 });
