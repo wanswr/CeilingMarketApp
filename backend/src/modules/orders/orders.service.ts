@@ -382,6 +382,9 @@ export class OrdersService {
             throw new ConflictException('Order is no longer open for applications');
         }
 
+        // Row-level lock on parent Order row to eliminate concurrent application race conditions
+        await tx.$executeRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+
         // Limit maximum applications to 10
         const appCount = await tx.application.count({
           where: { orderId }

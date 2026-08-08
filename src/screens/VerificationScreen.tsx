@@ -36,19 +36,10 @@ export default function VerificationScreen({ navigation }: any) {
   }, []);
 
   const handleVerify = async () => {
-    setSubmitting(true);
-    const aid = logger.startAction('VERIFY_PROFILE', {});
-    try {
-      const res = await apiService.verifyProfile();
-      setUser(res.data);
-      logger.endAction('VERIFY_PROFILE', { aid });
-      Alert.alert('Успех', 'Ваша личность успешно подтверждена! Индекс доверия повышен.');
-    } catch (e: any) {
-      logger.logNetworkError(aid, e);
-      Alert.alert('Ошибка', e.response?.data?.message || 'Не удалось пройти верификацию.');
-    } finally {
-      setSubmitting(false);
-    }
+    Alert.alert(
+      'Режим настройки',
+      'Верификация временно недоступна. Функция биометрического сканирования лиц (Liveness SDK) и распознавания паспортов находится в стадии интеграции нашими инженерами.\n\nПожалуйста, ожидайте официального обновления приложения!'
+    );
   };
 
   if (loading) {
@@ -87,25 +78,18 @@ export default function VerificationScreen({ navigation }: any) {
                 {user?.isVerified ? 'Профиль подтвержден' : 'Профиль не подтвержден'}
               </Text>
               <Text style={styles.statusSubtitle}>
-                {user?.isVerified ? 'Ваша личность успешно верифицирована.' : 'Подтвердите личность для повышения доверия заказчиков.'}
+                {user?.isVerified ? 'Ваша личность успешно верифицирована.' : 'Функция подтверждения личности в процессе настройки.'}
               </Text>
             </View>
           </View>
 
           {!user?.isVerified && (
             <TouchableOpacity
-              style={styles.verifyBtn}
+              style={[styles.verifyBtn, { backgroundColor: COLORS.gray }]}
               onPress={handleVerify}
-              disabled={submitting}
             >
-              {submitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.verifyBtnText}>Пройти верификацию</Text>
-                </>
-              )}
+              <Ionicons name="construct-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.verifyBtnText}>Верификация настраивается</Text>
             </TouchableOpacity>
           )}
         </View>

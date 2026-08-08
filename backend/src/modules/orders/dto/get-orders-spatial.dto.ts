@@ -64,6 +64,10 @@ export class GetOrdersSpatialDto {
   cursorId?: string;
 
   @IsOptional()
+  @IsString()
+  dateFilter?: string;
+
+  @IsOptional()
   @IsNumber()
   @Type(() => Number)
   zoom?: number;

@@ -224,6 +224,10 @@ class MapEngine {
           params.categoryId = activeCategoryId;
         }
 
+        if (this.dateFilter && this.dateFilter !== 'all') {
+          params.dateFilter = this.dateFilter;
+        }
+
         const latPadding = viewRegion.latitudeDelta * 0.1;
         const lngPadding = viewRegion.longitudeDelta * 0.1;
         params.minLat = viewRegion.latitude - viewRegion.latitudeDelta / 2 - latPadding;
@@ -332,7 +336,7 @@ class MapEngine {
           const diffDays = diffTime / (1000 * 60 * 60 * 24);
 
           if (this.dateFilter === 'today') {
-            const isToday = orderDate.toDateString() === now.toDateString() || (diffDays >= -1 && diffDays <= 1);
+            const isToday = orderDate.toDateString() === now.toDateString();
             if (!isToday) return false;
           } else if (this.dateFilter === '3days') {
             if (diffDays < -1 || diffDays > 3) return false;

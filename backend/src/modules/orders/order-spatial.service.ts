@@ -20,9 +20,10 @@ export class OrderSpatialService {
     requesterId?: string;
     cursorId?: string;
     limit?: number;
+    dateFilter?: string;
   }) {
     const startTime = Date.now();
-    const { lat, lng, radius: rawRadius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit } = params;
+    const { lat, lng, radius: rawRadius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit, dateFilter } = params;
     const radius = rawRadius !== undefined ? Math.min(rawRadius, 100) : undefined;
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
@@ -45,6 +46,33 @@ export class OrderSpatialService {
     if (!searchBounds) return { created: [], updated: [], deleted: [] };
 
     try {
+      let dateQuery: any = undefined;
+      if (dateFilter && dateFilter !== 'all') {
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        if (dateFilter === 'today') {
+          // Strictly current calendar day
+          dateQuery = {
+            gte: startOfToday,
+            lte: endOfToday
+          };
+        } else if (dateFilter === '3days') {
+          const threeDaysLater = new Date(startOfToday.getTime() + 3 * 24 * 60 * 60 * 1000);
+          dateQuery = {
+            gte: startOfToday,
+            lte: threeDaysLater
+          };
+        } else if (dateFilter === 'week') {
+          const weekLater = new Date(startOfToday.getTime() + 7 * 24 * 60 * 60 * 1000);
+          dateQuery = {
+            gte: startOfToday,
+            lte: weekLater
+          };
+        }
+      }
+
       const orders = await this.prisma.order.findMany({
         where: {
           status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES, OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
@@ -52,6 +80,7 @@ export class OrderSpatialService {
           longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
           updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
           categoryId: categoryId || undefined,
+          date: dateQuery,
         },
         take: Math.min(limit !== undefined ? Number(limit) : 250, 250),
         skip: cursorId ? 1 : undefined,

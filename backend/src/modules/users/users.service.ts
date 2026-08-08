@@ -30,6 +30,7 @@ export class UsersService {
         phone: true,
         name: true,
         role: true,
+        roles: true,
         avatar: true,
         rating: true,
         experience: true,
@@ -396,19 +397,8 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
 
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data: { isVerified: true },
-    });
-
-    return {
-      ...updated,
-      trustScore: this.calculateTrustScore({
-        completedOrders: updated.completedOrders,
-        rating: updated.rating,
-        experience: updated.experience,
-        isVerified: updated.isVerified
-      }),
-    };
+    // Real biometric identity/liveness provider is not yet integrated.
+    // Throwing ForbiddenException to provide a clean API contract explaining the status.
+    throw new ForbiddenException('Интеграция с биометрическим провайдером верификации (Liveness SDK) находится в процессе настройки. Моментальное подтверждение в клик отключено в целях безопасности.');
   }
 }
