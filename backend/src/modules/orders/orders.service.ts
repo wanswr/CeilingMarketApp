@@ -412,6 +412,9 @@ export class OrdersService {
           return { app: duplicateApp, order: currentOrder };
         }
       }
+      if (error.code === 'P2002') {
+        throw new ConflictException('Already applied');
+      }
       throw error;
     }
   }
