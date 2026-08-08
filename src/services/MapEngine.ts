@@ -45,6 +45,15 @@ class MapEngine {
   private requestCounter: number = 0;
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
   private searchRadius: number = CONFIG.INITIAL_SEARCH_RADIUS_KM;
+  private dateFilter: string = 'all';
+
+  setDateFilter = (filter: string) => {
+    this.dateFilter = filter;
+  }
+
+  getDateFilter = () => {
+    return this.dateFilter;
+  }
   private lastGeoJoinKey: string | null = null;
 
   setSearchRadius = (radius: number) => {
@@ -314,6 +323,24 @@ class MapEngine {
         if (activeCategoryId && order.categoryId && order.categoryId !== activeCategoryId) {
             return false;
         }
+
+        // Filter by date
+        if (this.dateFilter && this.dateFilter !== 'all') {
+          const orderDate = new Date(order.date);
+          const now = new Date();
+          const diffTime = orderDate.getTime() - now.getTime();
+          const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+          if (this.dateFilter === 'today') {
+            const isToday = orderDate.toDateString() === now.toDateString() || (diffDays >= -1 && diffDays <= 1);
+            if (!isToday) return false;
+          } else if (this.dateFilter === '3days') {
+            if (diffDays < -1 || diffDays > 3) return false;
+          } else if (this.dateFilter === 'week') {
+            if (diffDays < -1 || diffDays > 7) return false;
+          }
+        }
+
         const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
         const isMine = !!myId && (
             order.employerId === myId ||

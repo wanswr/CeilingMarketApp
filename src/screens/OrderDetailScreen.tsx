@@ -718,24 +718,38 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               )}
             </>
           ) : (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={[
-                styles.applyBtn,
-                hasApplied && { backgroundColor: '#FF4757' },
-                order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES' && !hasApplied && { backgroundColor: COLORS.gray }
-              ]}
-              onPress={hasApplied ? handleCancelApplication : handleApply}
-              disabled={submitting || (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES' && !hasApplied)}
-            >
-              {submitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.applyBtnText}>
-                  {hasApplied ? 'Отказаться' : (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES') ? 'Заказ занят' : 'Откликнуться'}
-                </Text>
-              )}
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.iconChatBtn}
+                onPress={async () => {
+                    logger.logClick('OpenChat', 'OrderDetail', { orderId, isExecutor: false });
+                    const res = await apiService.getOrCreateChat(order.id, myId!);
+                    navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.employer?.name });
+                }}
+              >
+                <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={[
+                  styles.applyBtn,
+                  { flex: 1 },
+                  hasApplied && { backgroundColor: '#FF4757' },
+                  ((order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES') || (order?.applications && order.applications.length >= 10)) && !hasApplied && { backgroundColor: COLORS.gray }
+                ]}
+                onPress={hasApplied ? handleCancelApplication : handleApply}
+                disabled={submitting || (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES' && !hasApplied) || (order?.applications && order.applications.length >= 10 && !hasApplied)}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.applyBtnText}>
+                    {hasApplied ? 'Отказаться' : (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES') ? 'Заказ занят' : (order?.applications && order.applications.length >= 10) ? 'Лимит откликов' : 'Откликнуться'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
           )}
         </SafeAreaView>
       </BlurView>

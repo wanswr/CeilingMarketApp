@@ -382,6 +382,14 @@ export class OrdersService {
             throw new ConflictException('Order is no longer open for applications');
         }
 
+        // Limit maximum applications to 10
+        const appCount = await tx.application.count({
+          where: { orderId }
+        });
+        if (appCount >= 10) {
+          throw new ConflictException('Maximum application limit reached');
+        }
+
         const app = await tx.application.create({
           data: { orderId, executorId, price, status: 'PENDING', idempotencyKey }
         });

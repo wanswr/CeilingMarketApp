@@ -98,8 +98,10 @@ class ApiService {
 
   // Users
   getProfile = () => this.api.get('users/profile');
+  getDashboard = () => this.api.get('users/profile/dashboard');
   getUserProfile = (id: string) => this.api.get(`users/${id}`);
   updateProfile = (data: any) => this.api.patch('users/profile', data);
+  verifyProfile = () => this.api.post('users/profile/verify');
   getCategories = () => this.api.get('categories');
   setActiveCategory = (categoryId: string) => this.api.patch('users/profile/category', { categoryId });
   setRole = (role: 'WORKER' | 'EMPLOYER') => this.api.patch('users/profile/role', { role });

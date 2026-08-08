@@ -38,6 +38,7 @@ const MapScreen = ({ navigation }: any) => {
   const [statusState, setStatusState] = useState<'loading' | 'success' | 'error'>('loading');
   const [region, setRegion] = useState<Region>(mapViewportStore.getRegion());
   const [radius, setRadius] = useState(CONFIG.DEFAULT_SEARCH_RADIUS_KM);
+  const [dateFilter, setDateFilter] = useState(mapEngine.getDateFilter?.() || 'all');
   const [showFilters, setShowFilters] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [pendingLocation, setPendingLocation] = useState<{latitude: number, longitude: number} | null>(null);
@@ -328,6 +329,29 @@ const MapScreen = ({ navigation }: any) => {
                       }}
                     >
                       <Text style={[styles.radiusText, radius === r && styles.radiusTextActive]}>{r}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.filterTitle}>Дата выполнения заказа</Text>
+                <View style={styles.radiusContainer}>
+                  {[
+                    { label: 'Все', value: 'all' },
+                    { label: 'Сегодня', value: 'today' },
+                    { label: '3 дня', value: '3days' },
+                    { label: 'Неделя', value: 'week' }
+                  ].map((d) => (
+                    <TouchableOpacity
+                      key={d.value}
+                      style={[styles.radiusBtn, dateFilter === d.value && styles.radiusBtnActive, { flex: 1, paddingHorizontal: 2 }]}
+                      onPress={() => {
+                        setDateFilter(d.value);
+                        // @ts-ignore
+                        mapEngine.setDateFilter?.(d.value);
+                        mapEngine.triggerNotify();
+                      }}
+                    >
+                      <Text style={[styles.radiusText, dateFilter === d.value && styles.radiusTextActive]}>{d.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>

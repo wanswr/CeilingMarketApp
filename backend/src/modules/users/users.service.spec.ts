@@ -98,6 +98,7 @@ describe('UsersService', () => {
       const updatedUser = { id: userId, role: 'WORKER' };
 
       mockPrismaService.user.findUnique.mockResolvedValue(currentUser);
+      (mockPrismaService.order.count as jest.Mock).mockResolvedValue(0);
       mockPrismaService.user.update.mockResolvedValue(updatedUser);
 
       const result = await service.setRole(userId, role as any);
@@ -110,12 +111,13 @@ describe('UsersService', () => {
       expect(result).toEqual(updatedUser);
     });
 
-    it('should reject changing role if role is already set', async () => {
+    it('should reject changing role if user has active orders', async () => {
       const userId = 'user-3';
       const role = 'EMPLOYER';
       const currentUser = { id: userId, role: 'WORKER' };
 
       mockPrismaService.user.findUnique.mockResolvedValue(currentUser);
+      (mockPrismaService.order.count as jest.Mock).mockResolvedValue(1);
 
       await expect(service.setRole(userId, role as any)).rejects.toThrow(ForbiddenException);
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({ where: { id: userId } });
@@ -238,6 +240,7 @@ describe('UsersService', () => {
         isVerified: true,
         portfolioItems: [],
         subscription: null,
+        trustScore: 100,
       });
       expect(result).not.toHaveProperty('phone');
       expect(result).not.toHaveProperty('instagram');

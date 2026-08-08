@@ -16,6 +16,18 @@ export class UsersController {
     return this.usersService.findOne(req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('profile/dashboard')
+  getDashboard(@Req() req) {
+    return this.usersService.getDashboard(req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('profile/verify')
+  verifyProfile(@Req() req) {
+    return this.usersService.verifyProfile(req.user.id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.usersService.findPublicProfile(id);

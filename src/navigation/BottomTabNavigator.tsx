@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
 
+import DashboardScreen from '../screens/DashboardScreen';
 import MapScreen from '../screens/MapScreen';
 import OrdersListScreen from '../screens/OrdersListScreen';
 import CreateOrderScreen from '../screens/CreateOrderScreen';
@@ -51,7 +52,8 @@ const BottomTabNavigator = () => {
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: any;
 
-          if (route.name === 'Map') iconName = focused ? 'map' : 'map-outline';
+          if (route.name === 'Dashboard') iconName = focused ? 'grid' : 'grid-outline';
+          else if (route.name === 'Map') iconName = focused ? 'map' : 'map-outline';
           else if (route.name === 'Orders') iconName = focused ? 'list' : 'list-outline';
           else if (route.name === 'Add') iconName = focused ? 'add-circle' : 'add-circle-outline';
           else if (route.name === 'Chats') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
@@ -63,6 +65,7 @@ const BottomTabNavigator = () => {
         tabBarInactiveTintColor: 'gray',
         headerShown: true })}
     >
+      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Главная' }} />
       <Tab.Screen name="Map" component={MapScreen} options={{ title: 'Карта' }} />
       <Tab.Screen name="Orders" component={OrdersListScreen} options={{ title: 'Мои Заказы' }} />
       {isEmployer && (

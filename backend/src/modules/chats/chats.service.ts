@@ -15,7 +15,7 @@ export class ChatsService {
     this.logger.setService('ChatsService');
   }
 
-  async getOrCreateChat(orderId: string, executorId: string, employerId: string, tx?: Prisma.TransactionClient) {
+  async getOrCreateChat(orderId: string, executorId: string, userId: string, tx?: Prisma.TransactionClient) {
     const db = tx ?? this.prisma;
     const order = await db.order.findUnique({
       where: { id: orderId },
@@ -26,14 +26,12 @@ export class ChatsService {
       throw new NotFoundException('Order not found');
     }
 
-    if (order.employerId !== employerId) {
-      throw new ForbiddenException('You are not the owner of this order');
+    // Caller must be either the employer or the executor
+    if (order.employerId !== userId && executorId !== userId) {
+      throw new ForbiddenException('You are not authorized to start this chat');
     }
 
-    const hasApplied = order.applications.some(app => app.executorId === executorId);
-    if (!hasApplied) {
-      throw new ConflictException('Executor has not applied to this order');
-    }
+    // Chat before apply is permitted, so the application check (hasApplied) is removed.
 
     const chat = await db.chat.upsert({
       where: {
@@ -43,7 +41,7 @@ export class ChatsService {
       create: {
         orderId,
         executorId,
-        employerId,
+        employerId: order.employerId, // Always use the order's actual employer
       },
       include: {
         messages: { orderBy: { createdAt: 'asc' }, take: 50 },
@@ -53,11 +51,11 @@ export class ChatsService {
       }
     });
 
-    if (chat.employerId !== employerId && chat.executorId !== employerId) {
+    if (chat.employerId !== userId && chat.executorId !== userId) {
       chat.messages = [];
     }
 
-    this.logger.info('CHAT_CREATED', `Chat initialized for order ${orderId}`, { orderId, userId: employerId });
+    this.logger.info('CHAT_CREATED', `Chat initialized for order ${orderId}`, { orderId, userId });
     return chat;
   }
 
@@ -65,6 +63,23 @@ export class ChatsService {
     if (!text) return '';
     const trimmed = text.trim();
     return trimmed.length > maxLen ? trimmed.substring(0, maxLen) : trimmed;
+  }
+
+  detectContacts(text: string): boolean {
+    if (!text) return false;
+
+    // Normalize: lowercase and strip spaces, dashes, parentheses and pluses to detect hidden phone numbers
+    const normalized = text.toLowerCase().replace(/[\s\-\(\)\+]/g, '');
+
+    // Pattern for phone numbers (7 to 11 contiguous digits)
+    const phoneRegex = /\d{7,11}/;
+    if (phoneRegex.test(normalized)) return true;
+
+    // Pattern for keywords / URLs / social platforms
+    const contactKeywords = /(https?:\/\/[^\s]+|wa\.me|t\.me|instagram\.com|vk\.com|telegram|whatsapp|телеграм|ватсап|viber|вайбер|телефон|номер|связь)/i;
+    if (contactKeywords.test(text)) return true;
+
+    return false;
   }
 
   async sendMessage(chatId: string, senderId: string, text: string) {
@@ -99,20 +114,23 @@ export class ChatsService {
       })
     ]);
 
+    const hasContacts = this.detectContacts(sanitizedText);
+    const messageWithContacts = { ...message, hasContacts };
+
     this.gateway.server.to(`chat:${chatId}`).emit('message.new', {
         event: 'message.new',
         eventId: randomUUID(),
-        data: message
+        data: messageWithContacts
     });
 
     const recipientId = chat.employerId === senderId ? chat.executorId : chat.employerId;
     this.gateway.server.to(`user:${recipientId}`).emit('chat.update', {
         event: 'chat.update',
         eventId: randomUUID(),
-        data: { chatId, lastMessage: message }
+        data: { chatId, lastMessage: messageWithContacts }
     });
 
-    return message;
+    return messageWithContacts;
   }
 
   async getMyChats(userId: string, params?: { skip?: number; take?: number }) {
@@ -182,9 +200,13 @@ export class ChatsService {
     }
 
     const reversedMessages = [...slicedMessages].reverse();
+    const mappedMessages = reversedMessages.map(msg => ({
+      ...msg,
+      hasContacts: this.detectContacts(msg.text)
+    }));
 
     return {
-      messages: reversedMessages,
+      messages: mappedMessages,
       nextCursor,
     };
   }

@@ -266,6 +266,28 @@ const ProfileScreen = ({ route, navigation }: any) => {
             </View>
         )}
 
+        {/* Trust Score & Verification Card */}
+        <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => isMe && navigation.navigate('Verification')}
+            style={styles.trustCard}
+        >
+            <View style={styles.trustHeader}>
+                <Ionicons
+                    name={user?.isVerified ? "shield-checkmark" : "shield-outline"}
+                    size={18}
+                    color={user?.isVerified ? '#10B981' : COLORS.warning}
+                />
+                <Text style={styles.trustCardLabel}>Индекс доверия:</Text>
+                <Text style={[styles.trustCardVal, { color: (user?.trustScore || 50) >= 80 ? '#10B981' : COLORS.warning }]}>
+                    {user?.trustScore || 50}/100
+                </Text>
+            </View>
+            <Text style={styles.trustCardDesc}>
+                {user?.isVerified ? "Профиль верифицирован (аккаунт подтвержден)" : "Профиль не верифицирован. Нажмите, чтобы подтвердить личность."}
+            </Text>
+        </TouchableOpacity>
+
         {/* Stats Row */}
         <View style={styles.statsRow}>
             <View style={styles.statItem}>
@@ -378,6 +400,16 @@ const ProfileScreen = ({ route, navigation }: any) => {
                             <Ionicons name="ribbon-outline" size={20} color={COLORS.warning} />
                         </View>
                         <Text style={styles.settingLabel}>Подписка и PRO</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Verification')}>
+                    <View style={styles.settingLeft}>
+                        <View style={[styles.settingIcon, { backgroundColor: '#10B981' + '15' }]}>
+                            <Ionicons name="checkmark-circle-outline" size={20} color="#10B981" />
+                        </View>
+                        <Text style={styles.settingLabel}>Верификация личности</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
                 </TouchableOpacity>
@@ -545,7 +577,39 @@ const styles = StyleSheet.create({
   dangerBtn: { backgroundColor: COLORS.danger, padding: 15, borderRadius: 15, justifyContent: 'center', marginTop: 15, borderBottomWidth: 0 },
   dangerBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   modalFooter: { alignItems: 'center', marginTop: 10, paddingBottom: 10 },
-  versionText: { fontSize: 12, color: COLORS.gray, fontWeight: '600' }
+  versionText: { fontSize: 12, color: COLORS.gray, fontWeight: '600' },
+  trustCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    ...SHADOWS.soft,
+    borderWidth: 1,
+    borderColor: 'rgba(226, 232, 240, 0.4)'
+  },
+  trustHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  trustCardLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.dark,
+    marginLeft: 6,
+    flex: 1
+  },
+  trustCardVal: {
+    fontSize: 15,
+    fontWeight: '900'
+  },
+  trustCardDesc: {
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 16,
+    fontWeight: '500'
+  }
 });
 
 export default ProfileScreen;
