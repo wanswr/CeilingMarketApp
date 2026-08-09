@@ -29,6 +29,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
   const { userId } = route.params || {};
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
@@ -107,7 +108,8 @@ const ProfileScreen = ({ route, navigation }: any) => {
   );
 
   const toggleRole = async () => {
-    if (!user) return;
+    if (!user || isSubmitting) return;
+    setIsSubmitting(true);
     const newRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
     try {
         const updatedUser = await mapEngine.setRole(newRole);
@@ -121,6 +123,8 @@ const ProfileScreen = ({ route, navigation }: any) => {
         } else {
             Alert.alert("Ошибка", "Не удалось сменить роль");
         }
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
@@ -378,6 +382,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     <Switch
                         value={user?.role === 'WORKER'}
                         onValueChange={toggleRole}
+                        disabled={isSubmitting}
                         trackColor={{ false: '#767577', true: COLORS.primary }}
                     />
                 </View>

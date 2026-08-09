@@ -382,13 +382,21 @@ class MapEngine {
           }
         }
 
-        const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
-        const isMine = !!myId && (
-            order.employerId === myId ||
+        const activeRole = currentUser?.role || 'WORKER';
+        const isMineAsEmployer = !!myId && order.employerId === myId;
+        const isMineAsWorker = !!myId && (
             order.executorId === myId ||
             order.applications?.some((a: any) => a.executorId === myId)
         );
-        return isPublic || (isMine && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
+
+        if (activeRole === 'EMPLOYER') {
+            // Employer mode: only show my own orders as employer
+            return isMineAsEmployer;
+        } else {
+            // Worker mode: show public orders OR my own orders as executor
+            const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
+            return isPublic || (isMineAsWorker && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
+        }
     });
 
     const result = this.clusterOrders(candidates, region.latitudeDelta);
@@ -465,8 +473,37 @@ class MapEngine {
 
   setRole = async (role: 'WORKER' | 'EMPLOYER') => {
     const res = await this.apiService.setRole(role);
-    this.requestRouter.invalidate('user:profile');
-    this.entityStore?.setUser({ ...res.data, isMe: true });
+
+    // Invalidate request router cache
+    this.requestRouter.clear();
+
+    // Clean up cached spatial/other role orders from EntityStore
+    this.entityStore.clearSpatialOrders();
+
+    // Update local user with new role/profile details
+    this.entityStore.setUser({ ...res.data, isMe: true });
+
+    // Force socket room update depending on the new role
+    const region = mapViewportStore.getRegion();
+    if (role === 'EMPLOYER') {
+        const { socketService } = require('./SocketService');
+        const socket = socketService.getSocket();
+        if (socket?.connected) {
+            socket.emit('geo.join', {
+                lat: 0,
+                lng: 0,
+                clear: true
+            });
+            this.lastGeoJoinKey = 'employer_clear';
+        }
+    } else if (region) {
+        this.updateSocketRoom(region, true);
+    }
+
+    // Force a fresh sync of the map using the new role's context
+    this.lastSyncRegion = null;
+    this.syncMap(true);
+
     return res.data;
   }
 

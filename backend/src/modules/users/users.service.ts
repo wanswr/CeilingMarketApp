@@ -130,19 +130,11 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
 
-    // Only block if user has active orders in CLAIMED or IN_PROGRESS statuses
-    const activeOrdersCount = await this.prisma.order.count({
-      where: {
-        OR: [
-          { employerId: userId },
-          { executorId: userId }
-        ],
-        status: { in: ['CLAIMED', 'IN_PROGRESS'] }
-      }
-    });
-
-    if (activeOrdersCount > 0) {
-      throw new ForbiddenException('Cannot change role while having active orders in progress');
+    // Restrict role switching strictly to roles in user's roles array.
+    // Fall back to ['WORKER', 'EMPLOYER'] for older entries or mock users.
+    const allowedRoles = user.roles && user.roles.length > 0 ? user.roles : ['WORKER', 'EMPLOYER'];
+    if (!allowedRoles.includes(role)) {
+      throw new ForbiddenException(`User does not possess the ${role} role`);
     }
 
     return this.prisma.user.update({
@@ -197,7 +189,8 @@ export class UsersService {
   async setActiveCategory(userId: string, categoryId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
-    if (user.role !== 'WORKER') {
+    const userRoles = user.roles && user.roles.length > 0 ? user.roles : [user.role].filter(Boolean);
+    if (!userRoles.includes('WORKER') || user.role !== 'WORKER') {
       throw new ForbiddenException('Only workers can select a direction');
     }
 
