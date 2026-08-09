@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
 
 import DashboardScreen from '../screens/DashboardScreen';
+import CreateOrderScreen from '../screens/CreateOrderScreen';
 import MapScreen from '../screens/MapScreen';
 import OrdersListScreen from '../screens/OrdersListScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -53,6 +54,7 @@ const BottomTabNavigator = () => {
           let iconName: any;
 
           if (route.name === 'Dashboard') return null; // Rendered via custom tabBarButton
+          else if (route.name === 'Create') iconName = focused ? 'add-circle' : 'add-circle-outline';
           else if (route.name === 'Map') iconName = focused ? 'map' : 'map-outline';
           else if (route.name === 'Orders') iconName = focused ? 'list' : 'list-outline';
           else if (route.name === 'Chats') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
@@ -66,6 +68,9 @@ const BottomTabNavigator = () => {
     >
       <Tab.Screen name="Map" component={MapScreen} options={{ title: 'Карта' }} />
       <Tab.Screen name="Orders" component={OrdersListScreen} options={{ title: 'Мои Заказы' }} />
+      {isEmployer && (
+        <Tab.Screen name="Create" component={CreateOrderScreen} options={{ title: 'Создать' }} />
+      )}
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
