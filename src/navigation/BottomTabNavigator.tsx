@@ -14,6 +14,9 @@ import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/ApiService';
 import { socketService } from '../services/SocketService';
 import { useState, useEffect } from 'react';
+import * as Haptics from 'expo-haptics';
+import { Alert } from 'react-native';
+import { useRoleSwitch } from '../hooks/useRoleSwitch';
 
 const Tab = createBottomTabNavigator();
 
@@ -21,6 +24,11 @@ const BottomTabNavigator = () => {
   const { user } = useAuth();
   const isEmployer = user?.role === 'EMPLOYER';
   const [unreadCount, setUnreadCount] = useState(0);
+  const { switchRole, isSwitching } = useRoleSwitch();
+
+  let profileTitle = 'Профиль';
+  if (user?.role === 'EMPLOYER') profileTitle = 'Заказчик';
+  else if (user?.role === 'WORKER') profileTitle = 'Мастер';
 
   const fetchUnreadCount = async () => {
     try {
@@ -58,7 +66,15 @@ const BottomTabNavigator = () => {
           else if (route.name === 'Map') iconName = focused ? 'map' : 'map-outline';
           else if (route.name === 'Orders') iconName = focused ? 'list' : 'list-outline';
           else if (route.name === 'Chats') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-          else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
+          else if (route.name === 'Profile') {
+            if (user?.role === 'EMPLOYER') {
+              iconName = focused ? 'briefcase' : 'briefcase-outline';
+            } else if (user?.role === 'WORKER') {
+              iconName = focused ? 'construct' : 'construct-outline';
+            } else {
+              iconName = focused ? 'person' : 'person-outline';
+            }
+          }
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -101,7 +117,50 @@ const BottomTabNavigator = () => {
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined
         }}
       />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Профиль' }} />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: profileTitle,
+          tabBarButton: (props) => (
+            <TouchableOpacity
+              {...props}
+              activeOpacity={0.8}
+              onPress={(e) => {
+                if (props.onPress) {
+                  props.onPress(e);
+                }
+              }}
+              onLongPress={async () => {
+                if (!user?.role || isSwitching) return;
+
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                const targetRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
+                const targetRoleLabel = targetRole === 'EMPLOYER' ? 'Заказчика' : 'Мастера';
+
+                Alert.alert(
+                  `Переключиться на ${targetRoleLabel}?`,
+                  `Вы перейдете в режим ${targetRole === 'EMPLOYER' ? 'заказчика' : 'исполнителя'}.`,
+                  [
+                    { text: 'Отмена', style: 'cancel' },
+                    {
+                      text: 'Переключить',
+                      onPress: async () => {
+                        try {
+                          await switchRole(targetRole);
+                          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        } catch (err) {
+                          // error is already alerted inside useRoleSwitch
+                        }
+                      }
+                    }
+                  ]
+                );
+              }}
+            />
+          )
+        }}
+      />
     </Tab.Navigator>
   );
 };

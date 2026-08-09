@@ -23,13 +23,14 @@ import { mapEngine } from '../services/MapEngine'
 import { useFocusEffect } from '@react-navigation/native'
 import { apiService } from '../services/ApiService'
 import { useClientStore } from '../store/client.store'
+import { useRoleSwitch } from '../hooks/useRoleSwitch';
 import { storageService } from '../services/StorageService'
 
 const ProfileScreen = ({ route, navigation }: any) => {
   const { userId } = route.params || {};
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { switchRole, isSwitching } = useRoleSwitch();
   const [error, setError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
@@ -108,23 +109,14 @@ const ProfileScreen = ({ route, navigation }: any) => {
   );
 
   const toggleRole = async () => {
-    if (!user || isSubmitting) return;
-    setIsSubmitting(true);
+    if (!user || isSwitching) return;
     const newRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
     try {
-        const updatedUser = await mapEngine.setRole(newRole);
-        updateUser(updatedUser);
-        useClientStore.getState().setActiveRole(newRole);
-        fetchProfile();
-        Alert.alert("Роль изменена", `Теперь вы ${newRole === 'EMPLOYER' ? 'Заказчик' : 'Мастер'}`);
-    } catch (e: any) {
-        if (e.response?.status === 403) {
-            Alert.alert("Ошибка", "Нельзя сменить режим при наличии активных заказов в работе (со статусом Принят или В процессе)");
-        } else {
-            Alert.alert("Ошибка", "Не удалось сменить роль");
-        }
-    } finally {
-        setIsSubmitting(false);
+        await switchRole(newRole, () => {
+            fetchProfile();
+        });
+    } catch (e) {
+        // Handled inside switchRole hook
     }
   };
 
@@ -382,7 +374,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     <Switch
                         value={user?.role === 'WORKER'}
                         onValueChange={toggleRole}
-                        disabled={isSubmitting}
+                        disabled={isSwitching}
                         trackColor={{ false: '#767577', true: COLORS.primary }}
                     />
                 </View>
