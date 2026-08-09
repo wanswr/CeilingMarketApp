@@ -335,7 +335,7 @@ class MapEngine {
     }
   }
 
-  initialLoad =  initialLoad = async (lat: number, lng: number) => {
+  initialLoad = async (lat: number, lng: number) => {
       logger.info('[MapEngine] Performing initial server sync...');
       this.entityStore.isInitialLoaded = false;
       return this.syncMap(true, { latitude: lat, longitude: lng, latitudeDelta: 0.9, longitudeDelta: 0.9 });
@@ -382,7 +382,7 @@ class MapEngine {
           }
         }
 
-        const activeRole = currentUser?.role || 'WORKER';
+        const activeRole = (currentUser?.role || 'WORKER').toUpperCase();
         const isMineAsEmployer = !!myId && order.employerId === myId;
         const isMineAsWorker = !!myId && (
             order.executorId === myId ||
