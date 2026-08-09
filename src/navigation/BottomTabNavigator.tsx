@@ -13,7 +13,9 @@ import { COLORS } from '../constants/theme'
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/ApiService';
 import { socketService } from '../services/SocketService';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import RoleTabIcon from '../components/RoleTabIcon';
+import RoleSwitchMenu from '../components/RoleSwitchMenu';
 import * as Haptics from 'expo-haptics';
 import { Alert } from 'react-native';
 import { useRoleSwitch } from '../hooks/useRoleSwitch';
@@ -25,6 +27,10 @@ const BottomTabNavigator = () => {
   const isEmployer = user?.role === 'EMPLOYER';
   const [unreadCount, setUnreadCount] = useState(0);
   const { switchRole, isSwitching } = useRoleSwitch();
+
+  const profileTabRef = useRef<any>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   let profileTitle = 'Профиль';
   if (user?.role === 'EMPLOYER') profileTitle = 'Заказчик';
@@ -56,6 +62,7 @@ const BottomTabNavigator = () => {
   }, [user]);
 
   return (
+    <>
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
@@ -67,13 +74,7 @@ const BottomTabNavigator = () => {
           else if (route.name === 'Orders') iconName = focused ? 'list' : 'list-outline';
           else if (route.name === 'Chats') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
           else if (route.name === 'Profile') {
-            if (user?.role === 'EMPLOYER') {
-              iconName = focused ? 'briefcase' : 'briefcase-outline';
-            } else if (user?.role === 'WORKER') {
-              iconName = focused ? 'construct' : 'construct-outline';
-            } else {
-              iconName = focused ? 'person' : 'person-outline';
-            }
+            return <RoleTabIcon role={user?.role} focused={focused} size={size} color={color} />;
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -125,43 +126,42 @@ const BottomTabNavigator = () => {
           tabBarButton: (props) => (
             <TouchableOpacity
               {...props}
+              ref={profileTabRef}
               activeOpacity={0.8}
               onPress={(e) => {
                 if (props.onPress) {
                   props.onPress(e);
                 }
               }}
-              onLongPress={async () => {
+              onLongPress={() => {
                 if (!user?.role || isSwitching) return;
 
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                const targetRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
-                const targetRoleLabel = targetRole === 'EMPLOYER' ? 'Заказчика' : 'Мастера';
-
-                Alert.alert(
-                  `Переключиться на ${targetRoleLabel}?`,
-                  `Вы перейдете в режим ${targetRole === 'EMPLOYER' ? 'заказчика' : 'исполнителя'}.`,
-                  [
-                    { text: 'Отмена', style: 'cancel' },
-                    {
-                      text: 'Переключить',
-                      onPress: async () => {
-                        try {
-                          await switchRole(targetRole);
-                          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        } catch (err) {
-                          // error is already alerted inside useRoleSwitch
-                        }
-                      }
-                    }
-                  ]
-                );
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                profileTabRef.current?.measureInWindow((x: number, y: number, width: number, height: number) => {
+                  setAnchor({ x, y, width, height });
+                  setMenuVisible(true);
+                });
               }}
             />
           )
         }}
       />
     </Tab.Navigator>
+      <RoleSwitchMenu
+        visible={menuVisible}
+        anchor={anchor}
+        currentRole={user?.role}
+        onClose={() => setMenuVisible(false)}
+        onSelect={async (role) => {
+          try {
+            await switchRole(role);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } catch (err) {
+            // error alert is already shown inside useRoleSwitch
+          }
+        }}
+      />
+    </>
   );
 };
 
