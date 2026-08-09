@@ -150,7 +150,7 @@ const BottomTabNavigator = () => {
       <RoleSwitchMenu
         visible={menuVisible}
         anchor={anchor}
-        currentRole={user?.role}
+        currentRole={user?.role ? (user.role.toUpperCase() as any) : null}
         onClose={() => setMenuVisible(false)}
         onSelect={async (role) => {
           try {
