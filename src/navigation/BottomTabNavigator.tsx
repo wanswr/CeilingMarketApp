@@ -18,12 +18,14 @@ import RoleSwitchMenu from '../components/RoleSwitchMenu';
 import * as Haptics from 'expo-haptics';
 import { Alert } from 'react-native';
 import { useRoleSwitch } from '../hooks/useRoleSwitch';
+import { useClientStore } from '../store/client.store';
 
 const Tab = createBottomTabNavigator();
 
 const BottomTabNavigator = () => {
   const { user } = useAuth();
-  const isEmployer = user?.role === 'EMPLOYER';
+  const activeRole = useClientStore(state => state.activeRole);
+  const isEmployer = activeRole === 'EMPLOYER';
   const [unreadCount, setUnreadCount] = useState(0);
   const { switchRole, isSwitching } = useRoleSwitch();
 
@@ -32,8 +34,8 @@ const BottomTabNavigator = () => {
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   let profileTitle = 'Профиль';
-  if (user?.role === 'EMPLOYER') profileTitle = 'Заказчик';
-  else if (user?.role === 'WORKER') profileTitle = 'Мастер';
+  if (activeRole === 'EMPLOYER') profileTitle = 'Заказчик';
+  else if (activeRole === 'WORKER') profileTitle = 'Мастер';
 
   const fetchUnreadCount = async () => {
     try {
@@ -73,7 +75,7 @@ const BottomTabNavigator = () => {
           else if (route.name === 'Orders') iconName = 'tab-orders';
           else if (route.name === 'Chats') iconName = 'tab-chats';
           else if (route.name === 'Profile') {
-            return <RoleTabIcon role={user?.role ? (user.role.toUpperCase() as any) : null} focused={focused} size={size} color={color} />;
+            return <RoleTabIcon role={activeRole} focused={focused} size={size} color={color} />;
           }
 
           return <AppIcon name={iconName} size={size} color={color} focused={focused} />;
@@ -148,7 +150,7 @@ const BottomTabNavigator = () => {
       <RoleSwitchMenu
         visible={menuVisible}
         anchor={anchor}
-        currentRole={user?.role ? (user.role.toUpperCase() as any) : null}
+        currentRole={activeRole}
         onClose={() => setMenuVisible(false)}
         onSelect={async (role) => {
           try {

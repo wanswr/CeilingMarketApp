@@ -1,3 +1,4 @@
+import { useClientStore } from '../store/client.store';
 import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
@@ -30,6 +31,7 @@ import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
+  const activeRole = useClientStore(state => state.activeRole);
   const isFocusedRef = useRef(true);
   const [displayedOrders, setDisplayedOrders] = useState<any[]>(mapEngine.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
@@ -510,16 +512,16 @@ const MapScreen = ({ navigation }: any) => {
           </BlurView>
           <View style={styles.onboardingContent}>
             <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.onboardingIconContainer}>
-              <AppIcon name={currentUser?.role === 'WORKER' ? "role-worker" : "role-employer"}
+              <AppIcon name={activeRole === 'WORKER' ? "role-worker" : "role-employer"}
                 size={48}
-                color={currentUser?.role === 'WORKER' ? "#00C897" : "#ff9067"}
+                color={activeRole === 'WORKER' ? "#00C897" : "#ff9067"}
               />
             </LinearGradient>
 
             <Text style={styles.onboardingTitle}>Добро пожаловать!</Text>
 
             <Text style={styles.onboardingMessage}>
-              {currentUser?.role === 'WORKER'
+              {activeRole === 'WORKER'
                 ? "Заполните ваш профиль, чтобы начать получать предложения о работе!"
                 : "Создайте ваш первый заказ, чтобы найти лучших мастеров по потолкам!"}
             </Text>
@@ -529,7 +531,7 @@ const MapScreen = ({ navigation }: any) => {
               style={styles.onboardingCtaBtn}
               onPress={() => {
                 handleCloseOnboarding();
-                if (currentUser?.role === 'WORKER') {
+                if (activeRole === 'WORKER') {
                   navigation.navigate('EditProfile');
                 } else {
                   navigation.navigate('MainTabs', { screen: 'Add' });
@@ -537,7 +539,7 @@ const MapScreen = ({ navigation }: any) => {
               }}
             >
               <Text style={styles.onboardingCtaText}>
-                {currentUser?.role === 'WORKER' ? "Заполнить профиль" : "Создать заказ"}
+                {activeRole === 'WORKER' ? "Заполнить профиль" : "Создать заказ"}
               </Text>
             </TouchableOpacity>
 

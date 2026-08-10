@@ -7,6 +7,7 @@ import { spatialManager } from '../map/SpatialManager'
 import { mapViewportStore } from './MapViewportStore'
 import { logger } from './logger/LoggerService'
 import { CONFIG } from '../constants/config'
+import { useClientStore } from '../store/client.store'
 
 type OrderCallback = (orders: Order[]) => void;
 
@@ -102,6 +103,11 @@ class MapEngine {
 
   updateSocketRoom(region: any, force: boolean = false) {
       if (!region) return;
+      const activeRole = useClientStore.getState().activeRole;
+      if (!activeRole) {
+          logger.info('[MapEngine] updateSocketRoom bypassed - no active role');
+          return;
+      }
 
       // Grid is 0.1 degree (approx 10km)
       const lat = Math.floor(region.latitude * 10) / 10;
@@ -185,7 +191,8 @@ class MapEngine {
     const currentUser = this.getCurrentUser();
     const token = await this.getCachedToken();
     const tokenHash = token ? simpleHash(token) : 'none';
-    const authReady = !!(currentUser && token);
+    const activeRole = useClientStore.getState().activeRole;
+    const activeRoleReady = !!(currentUser && activeRole && token);
 
     const requestId = Math.random().toString(36).substring(7);
     const viewRegion = region || mapViewportStore.getRegion();
@@ -200,8 +207,8 @@ class MapEngine {
         force
     });
 
-    if (!authReady) {
-      logger.info('SYNC_BYPASS', { requestId, reason: 'auth_not_ready' });
+    if (!activeRoleReady) {
+      logger.info('SYNC_BYPASS', { requestId, reason: 'active_role_not_ready' });
       return;
     }
 
@@ -382,7 +389,7 @@ class MapEngine {
           }
         }
 
-        const activeRole = (currentUser?.role || 'WORKER').toUpperCase();
+        const activeRole = useClientStore.getState().activeRole || 'WORKER';
         const isMineAsEmployer = !!myId && order.employerId === myId;
         const isMineAsWorker = !!myId && (
             order.executorId === myId ||
@@ -410,6 +417,11 @@ class MapEngine {
   }
 
   triggerMapUpdate = (region: any) => {
+    const activeRole = useClientStore.getState().activeRole;
+    if (!activeRole) {
+        logger.info('[MapEngine] triggerMapUpdate bypassed - no active role');
+        return;
+    }
     if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
     }

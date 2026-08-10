@@ -29,6 +29,7 @@ import { storageService } from '../services/StorageService'
 const ProfileScreen = ({ route, navigation }: any) => {
   const { userId } = route.params || {};
   const [user, setUser] = useState<any>(null);
+  const activeRole = useClientStore(state => state.activeRole);
   const [loading, setLoading] = useState(true);
   const { switchRole, isSwitching } = useRoleSwitch();
   const [error, setError] = useState<string | null>(null);
@@ -64,8 +65,11 @@ const ProfileScreen = ({ route, navigation }: any) => {
       let userData;
       if (isMe) {
           userData = await mapEngine.syncUser(true);
-          if (userData?.role) {
-              useClientStore.getState().setActiveRole(userData.role);
+          if (userData) {
+              updateUser(userData);
+              if (userData.role) {
+                  useClientStore.getState().setActiveRole(userData.role);
+              }
           }
       } else {
           userData = await mapEngine.getExternalUser(userId);
@@ -110,7 +114,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
 
   const toggleRole = async () => {
     if (!user || isSwitching) return;
-    const newRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
+    const newRole = activeRole === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
     try {
         await switchRole(newRole, () => {
             fetchProfile();
@@ -217,11 +221,11 @@ const ProfileScreen = ({ route, navigation }: any) => {
             </View>
             <Text style={styles.name}>{user?.name || 'Пользователь'}</Text>
             <View style={styles.roleBadge}>
-                <Text style={styles.roleText}>{user?.role === 'EMPLOYER' ? 'Заказчик' : 'Мастер'}</Text>
+                <Text style={styles.roleText}>{activeRole === 'EMPLOYER' ? 'Заказчик' : 'Мастер'}</Text>
             </View>
 
             {/* Profile Completion Indicator (WORKER only) */}
-            {user?.role === 'WORKER' && (
+            {activeRole === 'WORKER' && (
                 <View style={styles.completionContainer}>
                     <Text style={styles.completionLabel}>Профиль заполнен на {completionPercentage}%</Text>
                     <View style={styles.progressBarBg}>
@@ -305,7 +309,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
         </View>
 
         {/* Portfolio Section (Workers only) */}
-        {user?.role === 'WORKER' && (
+        {activeRole === 'WORKER' && (
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Портфолио</Text>
                 {portfolioItems.length > 0 ? (
@@ -371,14 +375,14 @@ const ProfileScreen = ({ route, navigation }: any) => {
                         <Text style={styles.settingLabel}>Режим мастера</Text>
                     </View>
                     <Switch
-                        value={user?.role === 'WORKER'}
+                        value={activeRole === 'WORKER'}
                         onValueChange={toggleRole}
                         disabled={isSwitching}
                         trackColor={{ false: '#767577', true: COLORS.primary }}
                     />
                 </View>
 
-                {user?.role === 'WORKER' && (
+                {activeRole === 'WORKER' && (
                     <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('CategorySelection')}>
                         <View style={styles.settingLeft}>
                             <View style={[styles.settingIcon, { backgroundColor: COLORS.primary + '15' }]}>

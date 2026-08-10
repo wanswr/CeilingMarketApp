@@ -7,6 +7,7 @@ import { requestRouter } from '../services/RequestRouter';
 import { socketService } from '../services/SocketService';
 import { UserProfile } from '../types';
 import { logger } from '../services/logger/LoggerService';
+import { useClientStore } from '../store/client.store';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -24,6 +25,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    if (user?.role) {
+      const activeRole = user.role.toUpperCase() as 'WORKER' | 'EMPLOYER';
+      useClientStore.getState().setActiveRole(activeRole);
+      socketService.connect(apiService.getBaseUrl(), 'auth_user_change');
+    } else {
+      useClientStore.setState({ activeRole: null });
+      socketService.disconnect();
+    }
+  }, [user]);
 
   useEffect(() => {
     checkAuth();
@@ -60,8 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (profile) {
             setUser(profile);
             logger.info('[AuthContext] Profile synced successfully');
-            // V11: Ensure socket is active
-            socketService.connect(apiService.getBaseUrl(), 'auth_sync');
+            // Connect handled by useEffect
           }
         } catch (syncError: any) {
           logger.warn('[AuthContext] Profile sync failed', { error: syncError.message });
@@ -74,8 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (cachedUser) {
                 setUser(cachedUser);
                 logger.info('[AuthContext] Using cached user data');
-                // Even if offline, try to connect socket (it will auto-retry)
-                socketService.connect(apiService.getBaseUrl(), 'auth_offline_fallback');
+                // Connect handled by useEffect
               }
           }
         }
@@ -124,10 +134,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mapEngine.entityStore.setUser({ ...user, isMe: true });
       setUser(user);
 
-      // 6. connect websocket
-      await socketService.connect(apiService.getBaseUrl(), 'auth_login');
+      // Connect handled by useEffect
 
-      logger.endAction('AUTH_LOGIN', { aid, userId: user.id });
+      logger.endAction('AUTH_LOGIN', { aid, userId: (user as any).id });
     } catch (error: any) {
       logger.logNetworkError(aid, error);
       throw error;
@@ -135,12 +144,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    logger.info('AUTH_LOGOUT', { userId: user?.id });
+    logger.info('AUTH_LOGOUT', { userId: (user as any)?.id });
     await SecureStore.deleteItemAsync('userToken');
     mapEngine.setCachedToken(null);
     setToken(null);
     setUser(null);
-    socketService.disconnect();
     mapEngine.entityStore.clear();
     requestRouter.clear();
   };

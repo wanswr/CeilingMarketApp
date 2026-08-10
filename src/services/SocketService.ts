@@ -1,3 +1,4 @@
+import { useClientStore } from '../store/client.store';
 import { io, Socket } from 'socket.io-client'
 import * as SecureStore from 'expo-secure-store';
 import { entityStore } from './EntityStore'
@@ -31,7 +32,7 @@ class SocketService {
     this.on('connect', () => {
       const currentUser = entityStore.getCurrentUser();
       const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
-      const activeRole = currentUser?.role || 'none';
+      const activeRole = useClientStore.getState().activeRole || 'none';
       const socketId = this.socket?.id || 'none';
 
       logger.info('WEBSOCKET_CONNECTED', {
@@ -93,7 +94,7 @@ class SocketService {
     }
     const currentUser = entityStore.getCurrentUser();
     const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
-    const activeRole = currentUser?.role || 'none';
+    const activeRole = useClientStore.getState().activeRole || 'none';
     const socketId = this.socket?.id || 'none';
 
     logger.info('[WebSocket] connect() called', {
@@ -202,7 +203,7 @@ class SocketService {
   private joinPrivateRoom() {
       const currentUser = entityStore.getCurrentUser();
       const myId = (currentUser as any)?.id || currentUser?.uid;
-      const activeRole = currentUser?.role || 'none';
+      const activeRole = useClientStore.getState().activeRole || 'none';
       const socketId = this.socket?.id || 'none';
 
       if (myId && this.socket?.connected) {

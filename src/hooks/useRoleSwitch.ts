@@ -10,7 +10,8 @@ export const useRoleSwitch = () => {
 
   const switchRole = async (targetRole?: 'WORKER' | 'EMPLOYER', onSuccess?: () => void) => {
     if (!user || isSwitching) return;
-    const newRole = targetRole || (user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER');
+    const activeRole = useClientStore.getState().activeRole;
+    const newRole = targetRole || (activeRole === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER');
     setIsSwitching(true);
     try {
         const updatedUser = await mapEngine.setRole(newRole);

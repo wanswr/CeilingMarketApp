@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useNavigation } from '@react-navigation/native';
+import { useClientStore } from '../store/client.store';
 
 interface PendingActionContextType {
   requireRoleAndCategory: (action: () => void | Promise<void>) => void;
@@ -16,13 +17,14 @@ export const PendingActionProvider: React.FC<{ children: React.ReactNode }> = ({
   const pendingActionRef = useRef<(() => void | Promise<void>) | null>(null);
 
   const requireRoleAndCategory = (action: () => void | Promise<void>) => {
-    if (user && user.role && (user.role !== 'WORKER' || user.activeCategoryId)) {
+    const activeRole = useClientStore.getState().activeRole;
+    if (user && activeRole && (activeRole !== 'WORKER' || (user as any).activeCategoryId)) {
       action();
     } else {
       pendingActionRef.current = action;
-      if (!user?.role) {
+      if (!activeRole) {
         navigation.navigate('RoleSelection', { pendingAction: true });
-      } else if (user.role === 'WORKER' && !user.activeCategoryId) {
+      } else if (activeRole === 'WORKER' && !(user as any).activeCategoryId) {
         navigation.navigate('CategorySelection', { pendingAction: true });
       }
     }
