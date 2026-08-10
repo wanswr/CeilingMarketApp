@@ -42,6 +42,7 @@ class MapEngine {
   private subscribers: Map<string, OrderCallback> = new Map();
   private debounceTimer: NodeJS.Timeout | null = null;
   private syncLock: boolean = false;
+  private queuedSync: { force: boolean, region: any } | null = null;
   private currentAbortController: AbortController | null = null;
   private requestCounter: number = 0;
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
@@ -212,8 +213,9 @@ class MapEngine {
       return;
     }
 
-    if (this.syncLock && !force) {
-      logger.info('SYNC_BYPASS', { requestId, reason: 'sync_locked' });
+    if (this.syncLock) {
+      this.queuedSync = { force: force || (this.queuedSync?.force || false), region };
+      logger.info('SYNC_QUEUED', { requestId, reason: 'sync_in_progress' });
       return;
     }
     this.syncLock = true;
@@ -339,6 +341,12 @@ class MapEngine {
         if (error.name !== 'AbortError') logger.error('Map Sync Fail:', { error: error.message });
     } finally {
         this.syncLock = false;
+        if (this.queuedSync) {
+            const next = this.queuedSync;
+            this.queuedSync = null;
+            logger.info('SYNC_DEQUEUE', { reason: 'executing_queued_sync' });
+            this.syncMap(next.force, next.region);
+        }
     }
   }
 

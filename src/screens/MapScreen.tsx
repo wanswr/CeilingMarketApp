@@ -128,7 +128,18 @@ const MapScreen = ({ navigation }: any) => {
           }
         }
 
+        let isSimulatorFallback = false;
         if (loc) {
+          const lat = loc.coords.latitude;
+          const lon = loc.coords.longitude;
+          // Check if coordinates represent the default US/San Francisco simulator coordinates
+          if (lat >= 37.0 && lat <= 38.0 && lon >= -123.0 && lon <= -122.0) {
+            isSimulatorFallback = true;
+            logger.info('[MapScreen] Detected default San Francisco simulator location, falling back to Moscow');
+          }
+        }
+
+        if (loc && !isSimulatorFallback) {
           // Calculate precise latitude/longitude deltas for 50km radius coverage (100km total span)
           const totalRangeKm = CONFIG.DEFAULT_SEARCH_RADIUS_KM * 2;
           const latDelta = totalRangeKm / 111;
