@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useCallback } from 'react';
 import { logger } from '../services/logger/LoggerService';
 
@@ -16,7 +17,6 @@ import {
   Modal
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { mapEngine } from '../services/MapEngine'
@@ -171,7 +171,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
   if (error || !user) {
     return (
       <SafeAreaView style={styles.center} edges={['top']}>
-        <Ionicons name="alert-circle-outline" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
+        <AppIcon name="status-warning" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
         <Text style={[styles.name, { marginBottom: 20, textAlign: 'center', paddingHorizontal: 30 }]}>{error || "Профиль не найден"}</Text>
         <TouchableOpacity
           style={[styles.mainActionBtn, { paddingHorizontal: 30 }]}
@@ -193,7 +193,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
           <Text style={styles.topHeaderTitle}>Профиль</Text>
           {isMe && (
               <TouchableOpacity onPress={() => setShowSettingsModal(true)} style={styles.settingsIconBtn}>
-                  <Ionicons name="settings-outline" size={24} color={COLORS.dark} />
+                  <AppIcon name="settings-outline" size={24} color={COLORS.dark} />
               </TouchableOpacity>
           )}
       </View>
@@ -211,7 +211,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                 )}
                 {isMe && (
                     <TouchableOpacity style={styles.editBadge} onPress={() => navigation.navigate('EditProfile')}>
-                        <Ionicons name="pencil" size={14} color="#fff" />
+                        <AppIcon name="action-edit" size={14} color="#fff" />
                     </TouchableOpacity>
                 )}
             </View>
@@ -238,7 +238,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                             style={styles.socialIconBtn}
                             onPress={() => Linking.openURL(`https://t.me/${user.telegram.replace('@', '')}`)}
                         >
-                            <Ionicons name="paper-plane" size={18} color="#0088cc" />
+                            <AppIcon name="action-send" size={18} color="#0088cc" />
                             <Text style={styles.socialText}>Telegram</Text>
                         </TouchableOpacity>
                     )}
@@ -247,7 +247,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                             style={styles.socialIconBtn}
                             onPress={() => Linking.openURL(user.instagram.startsWith('http') ? user.instagram : `https://instagram.com/${user.instagram}`)}
                         >
-                            <Ionicons name="logo-instagram" size={18} color="#e1306c" />
+                            <AppIcon name="logo-instagram" size={18} color="#e1306c" />
                             <Text style={styles.socialText}>Instagram</Text>
                         </TouchableOpacity>
                     )}
@@ -269,8 +269,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
             style={styles.trustCard}
         >
             <View style={styles.trustHeader}>
-                <Ionicons
-                    name={user?.isVerified ? "shield-checkmark" : "shield-outline"}
+                <AppIcon name={user?.isVerified ? "sys-verified" : "sys-shield"}
                     size={18}
                     color={user?.isVerified ? '#10B981' : COLORS.warning}
                 />
@@ -289,7 +288,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
             <View style={styles.statItem}>
                 <Text style={styles.statValue}>{user?.rating?.toFixed(1) || '5.0'}</Text>
                 <View style={styles.ratingStars}>
-                    <Ionicons name="star" size={12} color={COLORS.warning} />
+                    <AppIcon name="sys-rating" size={12} color={COLORS.warning} />
                     <Text style={styles.statLabel}>Рейтинг</Text>
                 </View>
             </View>
@@ -335,7 +334,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                         <View style={styles.reviewHeader}>
                             <Text style={styles.reviewAuthor}>{rev.author?.name}</Text>
                             <View style={styles.reviewStars}>
-                                {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= rev.rating ? "star" : "star-outline"} size={12} color={COLORS.warning} />)}
+                                {[1,2,3,4,5].map(s => <AppIcon key={s} name={s <= rev.rating ? "sys-rating" : "sys-rating"} size={12} color={COLORS.warning} />)}
                             </View>
                         </View>
                         <Text style={styles.reviewOrder}>{rev.order?.title}</Text>
@@ -355,7 +354,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     style={styles.mainActionBtn}
                     onPress={() => navigation.navigate('EditProfile')}
                 >
-                    <Ionicons name="create-outline" size={20} color="#fff" />
+                    <AppIcon name="action-edit" size={20} color="#fff" />
                     <Text style={styles.mainActionText}>Редактировать профиль</Text>
                 </TouchableOpacity>
             </View>
@@ -367,7 +366,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                 <View style={styles.settingItem}>
                     <View style={styles.settingLeft}>
                         <View style={[styles.settingIcon, { backgroundColor: COLORS.primary + '15' }]}>
-                            <Ionicons name="briefcase-outline" size={20} color={COLORS.primary} />
+                            <AppIcon name="role-employer" size={20} color={COLORS.primary} />
                         </View>
                         <Text style={styles.settingLabel}>Режим мастера</Text>
                     </View>
@@ -383,36 +382,36 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('CategorySelection')}>
                         <View style={styles.settingLeft}>
                             <View style={[styles.settingIcon, { backgroundColor: COLORS.primary + '15' }]}>
-                                <Ionicons name="compass-outline" size={20} color={COLORS.primary} />
+                                <AppIcon name="sys-compass" size={20} color={COLORS.primary} />
                             </View>
                             <Text style={styles.settingLabel}>Сменить направление</Text>
                         </View>
-                        <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
+                        <AppIcon name="nav-forward" size={20} color={COLORS.gray} />
                     </TouchableOpacity>
                 )}
 
                 <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Subscription')}>
                     <View style={styles.settingLeft}>
                         <View style={[styles.settingIcon, { backgroundColor: COLORS.warning + '15' }]}>
-                            <Ionicons name="ribbon-outline" size={20} color={COLORS.warning} />
+                            <AppIcon name="sys-premium" size={20} color={COLORS.warning} />
                         </View>
                         <Text style={styles.settingLabel}>Подписка и PRO</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
+                    <AppIcon name="nav-forward" size={20} color={COLORS.gray} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Verification')}>
                     <View style={styles.settingLeft}>
                         <View style={[styles.settingIcon, { backgroundColor: '#10B981' + '15' }]}>
-                            <Ionicons name="checkmark-circle-outline" size={20} color="#10B981" />
+                            <AppIcon name="status-done" size={20} color="#10B981" />
                         </View>
                         <Text style={styles.settingLabel}>Верификация личности</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
+                    <AppIcon name="nav-forward" size={20} color={COLORS.gray} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-                    <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
+                    <AppIcon name="sys-logout" size={20} color={COLORS.danger} />
                     <Text style={styles.logoutText}>Выйти из профиля</Text>
                 </TouchableOpacity>
             </View>
@@ -424,7 +423,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                         Alert.alert("Чат", "Перейдите в заказ, чтобы начать чат с этим пользователем.");
                     }}
                 >
-                    <Ionicons name="chatbubble-outline" size={20} color="#fff" />
+                    <AppIcon name="action-chat" size={20} color="#fff" />
                     <Text style={styles.messageBtnText}>Написать сообщение</Text>
                 </TouchableOpacity>
             </View>
@@ -443,7 +442,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                 <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>Настройки приложения</Text>
                     <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
-                        <Ionicons name="close-circle" size={28} color={COLORS.gray} />
+                        <AppIcon name="nav-close" size={28} color={COLORS.gray} />
                     </TouchableOpacity>
                 </View>
 
@@ -481,14 +480,14 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     <Text style={styles.modalSectionTitle}>Обслуживание</Text>
 
                     <TouchableOpacity style={styles.modalBtn} onPress={handleClearCache}>
-                        <Ionicons name="trash-outline" size={20} color={COLORS.dark} style={{ marginRight: 10 }} />
+                        <AppIcon name="action-delete" size={20} color={COLORS.dark} style={{ marginRight: 10 }} />
                         <Text style={styles.modalBtnText}>Очистить локальный кэш</Text>
                     </TouchableOpacity>
 
                     <Text style={styles.modalSectionTitle}>Опасная зона</Text>
 
                     <TouchableOpacity style={[styles.modalBtn, styles.dangerBtn]} onPress={handleDeleteAccount}>
-                        <Ionicons name="trash-outline" size={20} color="#fff" style={{ marginRight: 10 }} />
+                        <AppIcon name="action-delete" size={20} color="#fff" style={{ marginRight: 10 }} />
                         <Text style={styles.dangerBtnText}>УДАЛИТЬ АККАУНТ</Text>
                     </TouchableOpacity>
                 </ScrollView>

@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useRef } from 'react';
 import * as Crypto from 'expo-crypto';
 import { logger } from '../services/logger/LoggerService';
@@ -20,7 +21,6 @@ import {
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRoute } from '@react-navigation/native'
-import { Ionicons } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
@@ -55,7 +55,7 @@ export default function CreateOrderScreen({ navigation }: any) {
   if (currentUser?.role === 'WORKER') {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-        <Ionicons name="lock-closed" size={64} color={COLORS.gray} style={{ marginBottom: 16 }} />
+        <AppIcon name="sys-locked" size={64} color={COLORS.gray} style={{ marginBottom: 16 }} />
         <Text style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.dark, textAlign: 'center', marginBottom: 8 }}>
           Доступ ограничен
         </Text>
@@ -397,7 +397,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                     style={styles.magicBtn}
                     onPress={() => setIsImportModalVisible(true)}
                 >
-                    <Ionicons name="sparkles" size={18} color="#fff" />
+                    <AppIcon name="sys-premium" size={18} color="#fff" />
                     <Text style={styles.magicBtnText}>Импорт</Text>
                 </TouchableOpacity>
             </View>
@@ -431,7 +431,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                         setNormalizedAddress(null);
                     }}
                   >
-                    <Ionicons name="close-circle" size={20} color={COLORS.gray} />
+                    <AppIcon name="nav-close" size={20} color={COLORS.gray} />
                   </TouchableOpacity>
                 )}
             </View>
@@ -444,7 +444,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                     style={styles.suggestionItem}
                     onPress={() => selectSuggestion(s)}
                   >
-                    <Ionicons name="location-sharp" size={16} color={COLORS.primary} />
+                    <AppIcon name="sys-location" size={16} color={COLORS.primary} />
                     <Text style={styles.suggestionText} numberOfLines={1}>{s}</Text>
                   </TouchableOpacity>
                 ))}
@@ -456,7 +456,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                     <ActivityIndicator size="small" color={COLORS.primary} />
                 ) : coordinates && (
                     <View style={styles.locationBtn}>
-                        <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />
+                        <AppIcon name="status-done" size={18} color={COLORS.primary} />
                         <Text style={styles.locationBtnText}>Точка установлена</Text>
                     </View>
                 )}
@@ -542,7 +542,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                   style={styles.dateButton}
                   onPress={() => setShowDatePicker(true)}
                 >
-                  <Ionicons name="calendar-outline" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+                  <AppIcon name="sys-calendar" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
                   <Text style={styles.dateText}>{formatDate(form.date)}</Text>
                 </TouchableOpacity>
               </View>
@@ -606,11 +606,11 @@ export default function CreateOrderScreen({ navigation }: any) {
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <View style={styles.modalIconContainer}>
-                                <Ionicons name="sparkles" size={24} color={COLORS.primary} />
+                                <AppIcon name="sys-premium" size={24} color={COLORS.primary} />
                             </View>
                             <Text style={styles.modalTitle}>Магический импорт</Text>
                             <TouchableOpacity onPress={() => setIsImportModalVisible(false)}>
-                                <Ionicons name="close" size={28} color={COLORS.gray} />
+                                <AppIcon name="nav-close" size={28} color={COLORS.gray} />
                             </TouchableOpacity>
                         </View>
 
@@ -636,7 +636,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                                         <ActivityIndicator color="#fff" />
                                     ) : (
                                         <>
-                                            <Ionicons name="flash" size={20} color="#fff" />
+                                            <AppIcon name="sys-premium" size={20} color="#fff" />
                                             <Text style={styles.importSubmitText}>Распознать текст</Text>
                                         </>
                                     )}
@@ -647,7 +647,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                                 <Text style={styles.previewHeading}>Вот что я нашел:</Text>
                                 <View style={styles.previewItem}>
                                         <View style={styles.previewIconWrapper}>
-                                            <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+                                            <AppIcon name="sys-document" size={18} color={COLORS.primary} />
                                         </View>
                                         <View style={styles.previewTextColumn}>
                                             <Text style={styles.previewLabel}>Заголовок</Text>
@@ -656,7 +656,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                                 </View>
                                 <View style={styles.previewItem}>
                                         <View style={styles.previewIconWrapper}>
-                                            <Ionicons name="location-outline" size={18} color={COLORS.primary} />
+                                            <AppIcon name="sys-location" size={18} color={COLORS.primary} />
                                         </View>
                                         <View style={styles.previewTextColumn}>
                                             <Text style={styles.previewLabel}>Адрес</Text>
@@ -665,7 +665,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                                 </View>
                                 <View style={styles.previewItem}>
                                         <View style={styles.previewIconWrapper}>
-                                            <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
+                                            <AppIcon name="sys-price" size={18} color={COLORS.primary} />
                                         </View>
                                         <View style={styles.previewTextColumn}>
                                             <Text style={styles.previewLabel}>Бюджет</Text>
@@ -674,7 +674,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                                 </View>
                                 <View style={styles.previewItem}>
                                         <View style={styles.previewIconWrapper}>
-                                            <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
+                                            <AppIcon name="sys-calendar" size={18} color={COLORS.primary} />
                                         </View>
                                         <View style={styles.previewTextColumn}>
                                             <Text style={styles.previewLabel}>Дата</Text>

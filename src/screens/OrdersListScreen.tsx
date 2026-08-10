@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useMemo } from 'react';
 
 import {
@@ -13,7 +14,6 @@ import {
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
-import { Ionicons } from '@expo/vector-icons'
 import { mapEngine } from '../services/MapEngine'
 import { logger } from '../services/logger/LoggerService'
 import { Order, OrderStatus, WorkType } from '../types'
@@ -270,7 +270,7 @@ const OrdersListScreen = ({ navigation }: any) => {
   if (error && filteredOrders.length === 0) {
     return (
       <SafeAreaView style={styles.center} edges={['top']}>
-        <Ionicons name="alert-circle-outline" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
+        <AppIcon name="status-warning" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
         <Text style={[styles.headerTitle, { fontSize: 18, marginBottom: 20, textAlign: 'center', paddingHorizontal: 30 }]}>{error}</Text>
         <TouchableOpacity
           style={[styles.sortButton, { paddingHorizontal: 20, paddingVertical: 12 }]}
@@ -324,8 +324,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             style={styles.sortButton}
             onPress={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
           >
-            <Ionicons
-              name={FILTERS.SORT.find(s => s.id === sortOrder)?.icon as any}
+            <AppIcon name={FILTERS.SORT.find(s => s.id === sortOrder)?.icon as any}
               size={16}
               color={COLORS.primary}
             />
@@ -388,7 +387,7 @@ const OrdersListScreen = ({ navigation }: any) => {
         }}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="documents-outline" size={64} color={COLORS.border} />
+            <AppIcon name="sys-document" size={64} color={COLORS.border} />
             <Text style={styles.emptyText}>Заказов не найдено</Text>
             <Text style={styles.emptySubtext}>Попробуйте изменить фильтры или вкладку</Text>
           </View>

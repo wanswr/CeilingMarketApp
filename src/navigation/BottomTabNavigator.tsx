@@ -1,8 +1,7 @@
+import AppIcon from '../components/AppIcon';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
-import { Ionicons } from '@expo/vector-icons'
-
 import DashboardScreen from '../screens/DashboardScreen';
 import CreateOrderScreen from '../screens/CreateOrderScreen';
 import MapScreen from '../screens/MapScreen';
@@ -69,15 +68,15 @@ const BottomTabNavigator = () => {
           let iconName: any;
 
           if (route.name === 'Dashboard') return null; // Rendered via custom tabBarButton
-          else if (route.name === 'Create') iconName = focused ? 'add-circle' : 'add-circle-outline';
-          else if (route.name === 'Map') iconName = focused ? 'map' : 'map-outline';
-          else if (route.name === 'Orders') iconName = focused ? 'list' : 'list-outline';
-          else if (route.name === 'Chats') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+          else if (route.name === 'Create') iconName = 'tab-create';
+          else if (route.name === 'Map') iconName = 'tab-map';
+          else if (route.name === 'Orders') iconName = 'tab-orders';
+          else if (route.name === 'Chats') iconName = 'tab-chats';
           else if (route.name === 'Profile') {
-            return <RoleTabIcon role={user?.role} focused={focused} size={size} color={color} />;
+            return <RoleTabIcon role={user?.role ? (user.role.toUpperCase() as any) : null} focused={focused} size={size} color={color} />;
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return <AppIcon name={iconName} size={size} color={color} focused={focused} />;
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: 'gray',
@@ -100,8 +99,7 @@ const BottomTabNavigator = () => {
               activeOpacity={0.8}
             >
               <View style={[styles.centralTabButtonInner, props.accessibilityState?.selected && styles.centralTabButtonInnerActive]}>
-                <Ionicons
-                  name={props.accessibilityState?.selected ? "grid" : "grid-outline"}
+                <AppIcon name={props.accessibilityState?.selected ? "tab-dashboard" : "tab-dashboard"}
                   size={24}
                   color={props.accessibilityState?.selected ? "#fff" : COLORS.primary}
                 />

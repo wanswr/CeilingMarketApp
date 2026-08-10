@@ -7,18 +7,19 @@ export type IconName =
   | 'role-worker' | 'role-employer'
   | 'status-done' | 'sys-read' | 'status-incomplete' | 'status-pending' | 'status-active' | 'status-warning' | 'status-offline'
   | 'sys-hammer' | 'sys-help'
-  | 'action-edit' | 'action-delete' | 'action-send' | 'action-attach' | 'action-chat'
+  | 'action-edit' | 'action-delete' | 'action-send' | 'action-attach' | 'action-chat' | 'action-filter' | 'action-search'
   | 'action-sort-down' | 'action-sort-up' | 'action-locate'
-  | 'sys-calendar' | 'sys-phone' | 'sys-price' | 'sys-compass' | 'sys-verified' | 'sys-shield' | 'sys-premium' | 'sys-rating' | 'sys-locked' | 'sys-logout' | 'sys-friends' | 'sys-document' | 'sys-check' | 'sys-key' | 'sys-info' | 'sys-location';
+  | 'sys-calendar' | 'sys-phone' | 'sys-price' | 'sys-compass' | 'sys-verified' | 'sys-shield' | 'sys-premium' | 'sys-rating' | 'sys-locked' | 'sys-logout' | 'sys-friends' | 'sys-document' | 'sys-check' | 'sys-key' | 'sys-info' | 'sys-location' | 'notifications-outline' | 'settings-outline' | 'logo-instagram';
 
 interface AppIconProps {
   name: IconName;
   size?: number;
   color?: string;
   focused?: boolean;
+  style?: any;
 }
 
-export default function AppIcon({ name, size = 24, color = '#64748B', focused = false }: AppIconProps) {
+export default function AppIcon({ name, size = 24, color = '#64748B', focused = false, style }: AppIconProps) {
   const p = {
     size,
     color,
@@ -324,6 +325,28 @@ export default function AppIcon({ name, size = 24, color = '#64748B', focused = 
             <Circle cx="12" cy="10" r="3" />
           </>
         );
+      case 'notifications-outline':
+        return (
+          <>
+            <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <Path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </>
+        );
+      case 'settings-outline':
+        return (
+          <>
+            <Circle cx="12" cy="12" r="3" />
+            <Path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </>
+        );
+      case 'logo-instagram':
+        return (
+          <>
+            <Rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+            <Path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+            <Line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+          </>
+        );
       default:
         return null;
     }
@@ -339,6 +362,7 @@ export default function AppIcon({ name, size = 24, color = '#64748B', focused = 
       strokeWidth={p.strokeWidth}
       strokeLinecap={p.strokeLinecap}
       strokeLinejoin={p.strokeLinejoin}
+      style={style}
     >
       {getGeometry()}
     </Svg>

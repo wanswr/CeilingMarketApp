@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect } from 'react';
 import { logger } from '../services/logger/LoggerService';
 
@@ -20,7 +21,6 @@ import { BlurView } from 'expo-blur'
 import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/Button'
 import { COLORS, SHADOWS } from '../constants/theme'
-import { Ionicons } from '@expo/vector-icons'
 import { apiService } from '../services/ApiService'
 
 export default function VerifyCodeScreen({ route, navigation }: any) {
@@ -83,7 +83,7 @@ export default function VerifyCodeScreen({ route, navigation }: any) {
               style={styles.content}
             >
               <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-                  <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
+                  <AppIcon name="nav-back" size={24} color={COLORS.dark} />
               </TouchableOpacity>
 
               <View style={styles.header}>

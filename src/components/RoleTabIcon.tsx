@@ -1,6 +1,6 @@
+import AppIcon from './AppIcon';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 
 interface RoleTabIconProps {
@@ -14,18 +14,18 @@ export default function RoleTabIcon({ role, focused, size, color }: RoleTabIconP
   const baseIcon = focused ? 'person' : 'person-outline';
 
   if (!role) {
-    return <Ionicons name={baseIcon} size={size} color={color} />;
+    return <AppIcon name={baseIcon} size={size} color={color} />;
   }
 
   const isWorker = role === 'WORKER';
-  const badgeBg = isWorker ? COLORS.success : COLORS.secondary;
+  const badgeBg = isWorker ? '#00C897' : '#ff9067';
   const badgeIcon = isWorker ? 'construct' : 'briefcase';
 
   return (
     <View style={styles.container}>
-      <Ionicons name={baseIcon} size={size} color={color} />
+      <AppIcon name={baseIcon} size={size} color={color} />
       <View style={[styles.badge, { backgroundColor: badgeBg }]}>
-        <Ionicons name={badgeIcon} size={8} color="#fff" />
+        <AppIcon name={badgeIcon} size={8} color="#fff" />
       </View>
     </View>
   );

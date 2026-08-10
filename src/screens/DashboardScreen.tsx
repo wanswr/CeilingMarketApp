@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -10,7 +11,6 @@ import {
   Image,
   Alert
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiService } from '../services/ApiService';
 import { COLORS, SHADOWS, SPACING } from '../constants/theme';
@@ -61,7 +61,7 @@ export default function DashboardScreen({ navigation }: any) {
   if (error && !data) {
     return (
       <View style={[styles.center, { backgroundColor: COLORS.background, padding: 30 }]}>
-        <Ionicons name="cloud-offline-outline" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
+        <AppIcon name="status-offline" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={() => { setLoading(true); fetchDashboard(); }}>
           <Text style={styles.retryText}>Повторить попытку</Text>
@@ -93,7 +93,7 @@ export default function DashboardScreen({ navigation }: any) {
               <Text style={styles.subGreeting}>Рады видеть тебя снова</Text>
             </View>
             <TouchableOpacity style={styles.bellBtn} onPress={() => Alert.alert('Уведомления', 'У вас нет новых системных уведомлений.')}>
-              <Ionicons name="notifications-outline" size={22} color={COLORS.dark} />
+              <AppIcon name="notifications-outline" size={22} color={COLORS.dark} />
               {unreadNotificationsCount > 0 && <View style={styles.badge} />}
             </TouchableOpacity>
           </View>
@@ -102,7 +102,7 @@ export default function DashboardScreen({ navigation }: any) {
 
           {/* Trust Index Info */}
           <View style={styles.trustRow}>
-            <Ionicons name="shield-checkmark" size={24} color="#10B981" />
+            <AppIcon name="sys-verified" size={24} color="#10B981" />
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.trustLabel}>Индекс доверия профиля</Text>
               <Text style={styles.trustDesc}>На основе верификации и отзывов</Text>
@@ -119,11 +119,11 @@ export default function DashboardScreen({ navigation }: any) {
             style={[styles.card, styles.chatWarningCard]}
             onPress={() => navigation.navigate('Chats')}
           >
-            <Ionicons name="chatbubbles-outline" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
+            <AppIcon name="tab-chats" size={20} color={COLORS.primary} style={{ marginRight: 10 }} />
             <Text style={styles.chatWarningText}>
               У вас {unreadChatsCount} {unreadChatsCount === 1 ? 'непрочитанное сообщение' : unreadChatsCount < 5 ? 'непрочитанных сообщения' : 'непрочитанных сообщений'}
             </Text>
-            <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+            <AppIcon name="nav-forward" size={16} color={COLORS.primary} />
           </TouchableOpacity>
         )}
 
@@ -176,7 +176,7 @@ export default function DashboardScreen({ navigation }: any) {
                   <Text style={styles.actionCardSubtitle}>Новые заявки от мастеров ждут вашего решения.</Text>
                   <View style={styles.actionCardFooter}>
                     <Text style={styles.actionCardFooterText}>{ord.applications.length} {ord.applications.length === 1 ? 'отклик' : 'отклика'}</Text>
-                    <Ionicons name="arrow-forward-outline" size={16} color={COLORS.primary} />
+                    <AppIcon name="nav-forward" size={16} color={COLORS.primary} />
                   </View>
                 </TouchableOpacity>
               ))
@@ -199,7 +199,7 @@ export default function DashboardScreen({ navigation }: any) {
                   <Text style={styles.actionCardSubtitle}>Заказ завершен. Пожалуйста, оставьте отзыв об исполнителе.</Text>
                   <View style={styles.actionCardFooter}>
                     <Text style={[styles.actionCardFooterText, { color: COLORS.warning }]}>Написать отзыв</Text>
-                    <Ionicons name="star" size={16} color={COLORS.warning} />
+                    <AppIcon name="sys-rating" size={16} color={COLORS.warning} />
                   </View>
                 </TouchableOpacity>
               ))
@@ -224,7 +224,7 @@ export default function DashboardScreen({ navigation }: any) {
                   <Text style={styles.actionCardSubtitle}>Исполнитель: {ord.executor?.name || 'Мастер'}</Text>
                   <View style={styles.actionCardFooter}>
                     <Text style={[styles.actionCardFooterText, { color: COLORS.success }]}>Открыть детали заказа</Text>
-                    <Ionicons name="arrow-forward-outline" size={16} color={COLORS.success} />
+                    <AppIcon name="nav-forward" size={16} color={COLORS.success} />
                   </View>
                 </TouchableOpacity>
               ))
@@ -232,7 +232,7 @@ export default function DashboardScreen({ navigation }: any) {
 
             {(!actionRequired?.ordersWithResponses?.length && !actionRequired?.ordersPendingReview?.length && !actionRequired?.activeOrders?.length) && (
               <View style={[styles.card, styles.emptyCard]}>
-                <Ionicons name="sparkles-outline" size={32} color={COLORS.gray} style={{ marginBottom: 10 }} />
+                <AppIcon name="sys-premium" size={32} color={COLORS.gray} style={{ marginBottom: 10 }} />
                 <Text style={styles.emptyCardText}>На данный момент активных задач нет.</Text>
               </View>
             )}
@@ -260,7 +260,7 @@ export default function DashboardScreen({ navigation }: any) {
                     <Text style={[styles.actionCardFooterText, { color: COLORS.primary }]}>
                       {ord.status === 'IN_PROGRESS' ? 'Завершить выполнение' : 'Начать работу'}
                     </Text>
-                    <Ionicons name="play-outline" size={16} color={COLORS.primary} />
+                    <AppIcon name="status-active" size={16} color={COLORS.primary} />
                   </View>
                 </TouchableOpacity>
               ))
@@ -283,7 +283,7 @@ export default function DashboardScreen({ navigation }: any) {
                   <Text style={styles.actionCardSubtitle}>Вы успешно завершили работу. Пожалуйста, оцените заказчика.</Text>
                   <View style={styles.actionCardFooter}>
                     <Text style={[styles.actionCardFooterText, { color: COLORS.warning }]}>Оставить отзыв</Text>
-                    <Ionicons name="star" size={16} color={COLORS.warning} />
+                    <AppIcon name="sys-rating" size={16} color={COLORS.warning} />
                   </View>
                 </TouchableOpacity>
               ))
@@ -291,7 +291,7 @@ export default function DashboardScreen({ navigation }: any) {
 
             {(!actionRequired?.activeJobs?.length && !actionRequired?.jobsPendingReview?.length) && (
               <View style={[styles.card, styles.emptyCard]}>
-                <Ionicons name="sparkles-outline" size={32} color={COLORS.gray} style={{ marginBottom: 10 }} />
+                <AppIcon name="sys-premium" size={32} color={COLORS.gray} style={{ marginBottom: 10 }} />
                 <Text style={styles.emptyCardText}>На данный момент нет активных задач.</Text>
               </View>
             )}
@@ -318,14 +318,14 @@ export default function DashboardScreen({ navigation }: any) {
                     <Text style={styles.relevantDate}>{formatDate(ord.date)}</Text>
                     <View style={styles.relevantActionBtn}>
                       <Text style={styles.relevantActionText}>Подробнее</Text>
-                      <Ionicons name="arrow-forward-outline" size={14} color="#fff" />
+                      <AppIcon name="nav-forward" size={14} color="#fff" />
                     </View>
                   </View>
                 </TouchableOpacity>
               ))
             ) : (
               <View style={[styles.card, styles.emptyCard]}>
-                <Ionicons name="compass-outline" size={32} color={COLORS.gray} style={{ marginBottom: 10 }} />
+                <AppIcon name="sys-compass" size={32} color={COLORS.gray} style={{ marginBottom: 10 }} />
                 <Text style={styles.emptyCardText}>В вашей категории пока нет свободных заказов.</Text>
               </View>
             )}

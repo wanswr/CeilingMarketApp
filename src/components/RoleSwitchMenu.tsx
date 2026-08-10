@@ -1,3 +1,4 @@
+import AppIcon from './AppIcon';
 import React, { useEffect, useRef } from 'react';
 import {
   StyleSheet,
@@ -9,7 +10,6 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 
 interface RoleSwitchMenuProps {
@@ -108,7 +108,7 @@ export default function RoleSwitchMenu({
               </Text>
             </View>
             {currentRole === 'WORKER' && (
-              <Ionicons name="checkmark" size={18} color={COLORS.primary} />
+              <AppIcon name="sys-check" size={18} color={COLORS.primary} />
             )}
           </TouchableOpacity>
 
@@ -133,7 +133,7 @@ export default function RoleSwitchMenu({
               </Text>
             </View>
             {currentRole === 'EMPLOYER' && (
-              <Ionicons name="checkmark" size={18} color={COLORS.primary} />
+              <AppIcon name="sys-check" size={18} color={COLORS.primary} />
             )}
           </TouchableOpacity>
         </Animated.View>

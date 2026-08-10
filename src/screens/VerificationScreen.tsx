@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,7 +11,6 @@ import {
 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { apiService } from '../services/ApiService';
 import { COLORS, SHADOWS, SPACING } from '../constants/theme';
 import { logger } from '../services/logger/LoggerService';
@@ -69,8 +69,7 @@ export default function VerificationScreen({ navigation }: any) {
         {/* Status Header */}
         <View style={[styles.card, styles.statusCard, user?.isVerified && styles.statusCardVerified]}>
           <View style={styles.statusRow}>
-            <Ionicons
-              name={user?.isVerified ? "shield-checkmark-sharp" : "alert-circle-outline"}
+            <AppIcon name={user?.isVerified ? "sys-verified" : "status-warning"}
               size={48}
               color={user?.isVerified ? '#10B981' : COLORS.warning}
             />
@@ -89,7 +88,7 @@ export default function VerificationScreen({ navigation }: any) {
               style={[styles.verifyBtn, { backgroundColor: COLORS.gray }]}
               onPress={handleVerify}
             >
-              <Ionicons name="construct-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <AppIcon name="role-worker" size={20} color="#fff" style={{ marginRight: 8 }} />
               <Text style={styles.verifyBtnText}>Верификация настраивается</Text>
             </TouchableOpacity>
           )}
@@ -113,14 +112,13 @@ export default function VerificationScreen({ navigation }: any) {
 
           {/* Breakdown Items */}
           <View style={styles.factorRow}>
-            <Ionicons name="key-outline" size={18} color={COLORS.gray} style={styles.factorIcon} />
+            <AppIcon name="sys-key" size={18} color={COLORS.gray} style={styles.factorIcon} />
             <Text style={styles.factorLabel}>Базовый уровень:</Text>
             <Text style={styles.factorValue}>+{basePoints} баллов</Text>
           </View>
 
           <View style={styles.factorRow}>
-            <Ionicons
-              name={user?.isVerified ? "checkmark-circle-outline" : "ellipse-outline"}
+            <AppIcon name={user?.isVerified ? "status-done" : "status-incomplete"}
               size={18}
               color={user?.isVerified ? '#10B981' : COLORS.gray}
               style={styles.factorIcon}
@@ -132,19 +130,19 @@ export default function VerificationScreen({ navigation }: any) {
           </View>
 
           <View style={styles.factorRow}>
-            <Ionicons name="briefcase-outline" size={18} color={COLORS.primary} style={styles.factorIcon} />
+            <AppIcon name="role-employer" size={18} color={COLORS.primary} style={styles.factorIcon} />
             <Text style={styles.factorLabel}>Профессиональный стаж ({user?.experience || 0}г.):</Text>
             <Text style={styles.factorValue}>+{expPoints} баллов</Text>
           </View>
 
           <View style={styles.factorRow}>
-            <Ionicons name="checkmark-done-circle-outline" size={18} color="#10B981" style={styles.factorIcon} />
+            <AppIcon name="status-done" size={18} color="#10B981" style={styles.factorIcon} />
             <Text style={styles.factorLabel}>Выполнено заказов ({user?.completedOrders || 0}):</Text>
             <Text style={styles.factorValue}>+{ordersPoints} баллов</Text>
           </View>
 
           <View style={styles.factorRow}>
-            <Ionicons name="star-outline" size={18} color={COLORS.warning} style={styles.factorIcon} />
+            <AppIcon name="sys-rating" size={18} color={COLORS.warning} style={styles.factorIcon} />
             <Text style={styles.factorLabel}>Средний рейтинг ({user?.rating?.toFixed(1) || '5.0'}):</Text>
             <Text style={[styles.factorValue, ratingPoints < 0 && { color: COLORS.danger }]}>
               {ratingPoints >= 0 ? `+${ratingPoints}` : ratingPoints} баллов
@@ -154,7 +152,7 @@ export default function VerificationScreen({ navigation }: any) {
 
         {/* Info Box */}
         <View style={styles.infoBox}>
-          <Ionicons name="information-circle-outline" size={20} color={COLORS.primary} style={{ marginRight: 8, marginTop: 2 }} />
+          <AppIcon name="sys-info" size={20} color={COLORS.primary} style={{ marginRight: 8, marginTop: 2 }} />
           <Text style={styles.infoBoxText}>
             Индекс доверия напрямую влияет на отображение ваших откликов у работодателей. Пользователи с высоким индексом верификации отображаются вверху списка претендентов.
           </Text>

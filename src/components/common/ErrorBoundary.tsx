@@ -1,7 +1,7 @@
+import AppIcon from '../../components/AppIcon';
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { COLORS } from '../../constants/theme';
-import { Ionicons } from '@expo/vector-icons';
 import { logger } from '../../services/logger/LoggerService';
 
 interface Props {
@@ -34,7 +34,7 @@ class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <View style={styles.container}>
-          <Ionicons name="alert-circle" size={64} color={COLORS.danger} />
+          <AppIcon name="status-warning" size={64} color={COLORS.danger} />
           <Text style={styles.title}>Упс! Что-то пошло не так.</Text>
           <Text style={styles.subtitle}>Произошла непредвиденная ошибка в приложении.</Text>
           <TouchableOpacity
