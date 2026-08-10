@@ -1,3 +1,4 @@
+import { useClientStore } from '../store/client.store';
 import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useRef } from 'react';
 import * as Crypto from 'expo-crypto';
@@ -52,7 +53,8 @@ const orderSchema = z.object({
 export default function CreateOrderScreen({ navigation }: any) {
   const currentUser = mapEngine.getCurrentUser();
 
-  if (currentUser?.role === 'WORKER') {
+  const activeRole = useClientStore.getState().activeRole;
+  if (activeRole === 'WORKER') {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <AppIcon name="sys-locked" size={64} color={COLORS.gray} style={{ marginBottom: 16 }} />

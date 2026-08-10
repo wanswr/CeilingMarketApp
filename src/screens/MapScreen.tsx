@@ -1,3 +1,4 @@
+import { useClientStore } from '../store/client.store';
 import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
@@ -30,6 +31,7 @@ import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
+  const activeRole = useClientStore(state => state.activeRole);
   const isFocusedRef = useRef(true);
   const [displayedOrders, setDisplayedOrders] = useState<any[]>(mapEngine.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
@@ -126,7 +128,18 @@ const MapScreen = ({ navigation }: any) => {
           }
         }
 
+        let isSimulatorFallback = false;
         if (loc) {
+          const lat = loc.coords.latitude;
+          const lon = loc.coords.longitude;
+          // Check if coordinates represent the default US/San Francisco simulator coordinates
+          if (lat >= 37.0 && lat <= 38.0 && lon >= -123.0 && lon <= -122.0) {
+            isSimulatorFallback = true;
+            logger.info('[MapScreen] Detected default San Francisco simulator location, falling back to Moscow');
+          }
+        }
+
+        if (loc && !isSimulatorFallback) {
           // Calculate precise latitude/longitude deltas for 50km radius coverage (100km total span)
           const totalRangeKm = CONFIG.DEFAULT_SEARCH_RADIUS_KM * 2;
           const latDelta = totalRangeKm / 111;
@@ -510,16 +523,16 @@ const MapScreen = ({ navigation }: any) => {
           </BlurView>
           <View style={styles.onboardingContent}>
             <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.onboardingIconContainer}>
-              <AppIcon name={currentUser?.role === 'WORKER' ? "role-worker" : "role-employer"}
+              <AppIcon name={activeRole === 'WORKER' ? "role-worker" : "role-employer"}
                 size={48}
-                color={currentUser?.role === 'WORKER' ? "#00C897" : "#ff9067"}
+                color={activeRole === 'WORKER' ? "#00C897" : "#ff9067"}
               />
             </LinearGradient>
 
             <Text style={styles.onboardingTitle}>Добро пожаловать!</Text>
 
             <Text style={styles.onboardingMessage}>
-              {currentUser?.role === 'WORKER'
+              {activeRole === 'WORKER'
                 ? "Заполните ваш профиль, чтобы начать получать предложения о работе!"
                 : "Создайте ваш первый заказ, чтобы найти лучших мастеров по потолкам!"}
             </Text>
@@ -529,7 +542,7 @@ const MapScreen = ({ navigation }: any) => {
               style={styles.onboardingCtaBtn}
               onPress={() => {
                 handleCloseOnboarding();
-                if (currentUser?.role === 'WORKER') {
+                if (activeRole === 'WORKER') {
                   navigation.navigate('EditProfile');
                 } else {
                   navigation.navigate('MainTabs', { screen: 'Add' });
@@ -537,7 +550,7 @@ const MapScreen = ({ navigation }: any) => {
               }}
             >
               <Text style={styles.onboardingCtaText}>
-                {currentUser?.role === 'WORKER' ? "Заполнить профиль" : "Создать заказ"}
+                {activeRole === 'WORKER' ? "Заполнить профиль" : "Создать заказ"}
               </Text>
             </TouchableOpacity>
 

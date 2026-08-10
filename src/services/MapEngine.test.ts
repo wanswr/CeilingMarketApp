@@ -31,6 +31,7 @@ jest.mock('./MapViewportStore', () => {
 import { mapEngine } from './MapEngine';
 import { CONFIG } from '../constants/config';
 import { apiService } from './ApiService';
+import { useClientStore } from '../store/client.store';
 import { requestRouter } from './RequestRouter';
 
 jest.mock('expo-secure-store', () => ({
@@ -59,6 +60,7 @@ describe('MapEngine - syncMap pagination', () => {
     requestRouter.clear();
     mapEngine.entityStore.clear();
     mapEngine.entityStore.setUser({ id: 'test-user-123', name: 'Test User', role: 'WORKER', isMe: true } as any);
+    useClientStore.getState().setActiveRole('WORKER');
   });
 
   it('should bypass requestRouter on second and subsequent pages when cursorId is set', async () => {

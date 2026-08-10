@@ -1,4 +1,4 @@
-import AppIcon from '../components/AppIcon';
+import AppIcon, { IconName } from '../components/AppIcon';
 import React, { useState, useEffect, useMemo } from 'react';
 
 import {
@@ -20,7 +20,12 @@ import { Order, OrderStatus, WorkType } from '../types'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { OrderCard } from '../components/OrderCard'
 
-const FILTERS = {
+const FILTERS: {
+  STATUS: { id: string; label: string }[];
+  WORK_TYPE: { id: string; label: string }[];
+  SORT: { id: string; label: string; icon: IconName }[];
+  DATE: { id: string; label: string }[];
+} = {
   STATUS: [
     { id: 'all', label: 'Все' },
     { id: 'PUBLISHED', label: 'Ожидает' },
@@ -37,8 +42,8 @@ const FILTERS = {
     { id: 'OTHER', label: 'Другое' },
   ],
   SORT: [
-    { id: 'newest', label: 'Сначала новые', icon: 'arrow-down' },
-    { id: 'oldest', label: 'Сначала старые', icon: 'arrow-up' },
+    { id: 'newest', label: 'Сначала новые', icon: 'action-sort-down' },
+    { id: 'oldest', label: 'Сначала старые', icon: 'action-sort-up' },
   ],
   DATE: [
     { id: 'all', label: 'Все даты' },
@@ -113,7 +118,7 @@ const OrdersListScreen = ({ navigation }: any) => {
   };
 
   const filteredOrders = useMemo(() => {
-    const myId = currentUser?.uid || currentUser?.id;
+    const myId = currentUser?.uid || (currentUser as any)?.id;
     let result = orders.filter(order => {
       if (order.status === 'CANCELLED') return false;
 
@@ -324,7 +329,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             style={styles.sortButton}
             onPress={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
           >
-            <AppIcon name={FILTERS.SORT.find(s => s.id === sortOrder)?.icon as any}
+            <AppIcon name={FILTERS.SORT.find(s => s.id === sortOrder)?.icon ?? 'action-sort-down'}
               size={16}
               color={COLORS.primary}
             />
@@ -352,9 +357,9 @@ const OrdersListScreen = ({ navigation }: any) => {
         renderItem={({ item }) => (
           <OrderCard
             order={item}
-            isEmployer={item.employerId === (currentUser?.uid || currentUser?.id)}
-            currentUserId={currentUser?.uid || currentUser?.id}
-            hasApplied={item.applications?.some(a => a.executorId === (currentUser?.uid || currentUser?.id))}
+            isEmployer={item.employerId === (currentUser?.uid || (currentUser as any)?.id)}
+            currentUserId={currentUser?.uid || (currentUser as any)?.id}
+            hasApplied={item.applications?.some(a => a.executorId === (currentUser?.uid || (currentUser as any)?.id))}
             submitting={submitting === item.id}
             onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
             onDelete={() => handleDelete(item.id)}
@@ -398,6 +403,7 @@ const OrdersListScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: '#fff' },
   headerTitle: { fontSize: 28, fontWeight: '900', color: COLORS.dark, marginBottom: 15, letterSpacing: -0.5 },

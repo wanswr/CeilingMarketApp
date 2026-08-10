@@ -33,12 +33,19 @@ export default function Navigation() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} />
         </>
+      ) : !user.name ? (
+        <>
+          <Stack.Screen name="RegisterDetails" component={RegisterDetailsScreen} />
+          <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
+        </>
+      ) : !user.role ? (
+        <>
+          <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
+          <Stack.Screen name="CategorySelection" component={CategorySelectionScreen} />
+        </>
       ) : (
         <>
           <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
-          <Stack.Screen name="RegisterDetails" component={RegisterDetailsScreen} />
-          <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
-          <Stack.Screen name="CategorySelection" component={CategorySelectionScreen} />
           <Stack.Screen name="CreateOrder" component={CreateOrderScreen} options={{headerShown: true, title: 'Создать заказ'}} />
           <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{headerShown: true, title: 'Заказ'}} />
           <Stack.Screen name="EditOrder" component={EditOrderScreen} options={{headerShown: true, title: 'Редактирование'}} />
@@ -48,6 +55,7 @@ export default function Navigation() {
           <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{headerShown: true, title: 'Редактировать профиль'}} />
           <Stack.Screen name="ChatDetail" component={ChatDetailScreen} options={{headerShown: false}} />
           <Stack.Screen name="Profile" component={ProfileScreen} options={{headerShown: true, title: 'Профиль'}} />
+          <Stack.Screen name="CategorySelection" component={CategorySelectionScreen} />
         </>
       )}
     </Stack.Navigator>

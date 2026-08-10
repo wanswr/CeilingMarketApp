@@ -11,21 +11,21 @@ interface RoleTabIconProps {
 }
 
 export default function RoleTabIcon({ role, focused, size, color }: RoleTabIconProps) {
-  const baseIcon = focused ? 'person' : 'person-outline';
+  const baseIcon = 'tab-profile';
 
   if (!role) {
-    return <AppIcon name={baseIcon} size={size} color={color} />;
+    return <AppIcon name={baseIcon} size={size} color={color} focused={focused} />;
   }
 
   const isWorker = role === 'WORKER';
   const badgeBg = isWorker ? '#00C897' : '#ff9067';
-  const badgeIcon = isWorker ? 'construct' : 'briefcase';
+  const badgeIcon = isWorker ? 'role-worker' : 'role-employer';
 
   return (
     <View style={styles.container}>
-      <AppIcon name={baseIcon} size={size} color={color} />
+      <AppIcon name={baseIcon} size={size} color={color} focused={focused} />
       <View style={[styles.badge, { backgroundColor: badgeBg }]}>
-        <AppIcon name={badgeIcon} size={8} color="#fff" />
+        <AppIcon name={badgeIcon} size={8} color="#fff" focused={focused} />
       </View>
     </View>
   );

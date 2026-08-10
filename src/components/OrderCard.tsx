@@ -1,4 +1,4 @@
-import AppIcon from './AppIcon';
+import AppIcon, { IconName } from './AppIcon';
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet, ActivityIndicator } from 'react-native'
 import { Swipeable } from 'react-native-gesture-handler'
@@ -17,24 +17,24 @@ interface OrderCardProps {
   onChat?: () => void;
 }
 
-const getStatusDetails = (status: OrderStatus) => {
+const getStatusDetails = (status: OrderStatus): { label: string; color: string; icon: IconName } => {
   switch (status) {
     case 'PUBLISHED':
-      return { label: 'Ожидает исполнителя', color: '#EF4444', icon: 'time-outline' };
+      return { label: 'Ожидает исполнителя', color: '#EF4444', icon: 'status-pending' };
     case 'HAS_RESPONSES':
-      return { label: 'Есть отклики', color: '#F59E0B', icon: 'people-outline' };
+      return { label: 'Есть отклики', color: '#F59E0B', icon: 'sys-friends' };
     case 'CLAIMED':
-      return { label: 'Исполнитель выбран', color: '#3B82F6', icon: 'checkmark-circle-outline' };
+      return { label: 'Исполнитель выбран', color: '#3B82F6', icon: 'status-done' };
     case 'IN_PROGRESS':
-      return { label: 'В работе', color: '#8B5CF6', icon: 'hammer-outline' };
+      return { label: 'В работе', color: '#8B5CF6', icon: 'sys-hammer' };
     case 'COMPLETED':
-      return { label: 'Выполнено', color: '#10B981', icon: 'ribbon-outline' };
+      return { label: 'Выполнено', color: '#10B981', icon: 'sys-premium' };
     // case 'REVIEWED': // Deprecated
-      return { label: 'Оставлен отзыв', color: '#059669', icon: 'star-outline' };
+      return { label: 'Оставлен отзыв', color: '#059669', icon: 'sys-rating' };
     case 'CANCELLED':
-      return { label: 'Отменен', color: COLORS.gray, icon: 'close-circle-outline' };
+      return { label: 'Отменен', color: COLORS.gray, icon: 'nav-close' };
     default:
-      return { label: status, color: COLORS.gray, icon: 'help-circle-outline' };
+      return { label: status, color: COLORS.gray, icon: 'sys-help' };
   }
 };
 
@@ -133,7 +133,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
       >
         <View style={styles.header}>
           <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '15' }]}>
-            <AppIcon name={statusInfo.icon as any} size={14} color={statusInfo.color} />
+            <AppIcon name={statusInfo.icon} size={14} color={statusInfo.color} />
             <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
           </View>
           <View style={styles.priceContainer}>
@@ -163,7 +163,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
             {hasApplied && !isEmployer && (
                 <View style={[styles.metaItem, styles.appliedBadge]}>
                     <Text style={styles.appliedText}>
-                        {myApplication?.status === 'VIEWED' ? 'Просмотрено' : 'Отклик отправлен'}
+                        {(myApplication?.status as any) === 'VIEWED' ? 'Просмотрено' : 'Отклик отправлен'}
                     </Text>
                 </View>
             )}
