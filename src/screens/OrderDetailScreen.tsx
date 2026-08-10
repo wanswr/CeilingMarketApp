@@ -1,9 +1,9 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useRef } from 'react';
 import * as Crypto from 'expo-crypto';
 import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Image, Modal, TextInput, FlatList, RefreshControl } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
-import { Ionicons } from '@expo/vector-icons'
 import { Order } from '../types'
 import { mapEngine } from '../services/MapEngine'
 import { Button } from '../components/Button'
@@ -355,13 +355,13 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             <Image source={{ uri: order.images[0] }} style={styles.mainImage} />
           ) : (
             <View style={styles.imagePlaceholder}>
-               <Ionicons name="image-outline" size={64} color={COLORS.border} />
+               <AppIcon name="action-attach" size={64} color={COLORS.border} />
                <Text style={{ color: COLORS.placeholder, marginTop: 10, fontWeight: '600' }}>Фото не добавлено</Text>
             </View>
           )}
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
              <BlurView intensity={80} tint="light" style={styles.backBtnBlur}>
-                <Ionicons name="chevron-back" size={24} color={COLORS.dark} />
+                <AppIcon name="nav-back" size={24} color={COLORS.dark} />
              </BlurView>
           </TouchableOpacity>
         </View>
@@ -405,7 +405,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           <View style={styles.infoGrid}>
             <View style={styles.infoItem}>
                <View style={styles.iconContainer}>
-                 <Ionicons name="location" size={22} color={COLORS.primary} />
+                 <AppIcon name="sys-location" size={22} color={COLORS.primary} />
                </View>
                <View style={styles.infoTextWrapper}>
                  <Text style={styles.infoLabel}>Адрес</Text>
@@ -415,7 +415,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
             <View style={styles.infoItem}>
                <View style={styles.iconContainer}>
-                 <Ionicons name="calendar" size={22} color={COLORS.primary} />
+                 <AppIcon name="sys-calendar" size={22} color={COLORS.primary} />
                </View>
                <View style={styles.infoTextWrapper}>
                  <Text style={styles.infoLabel}>Дата выполнения</Text>
@@ -467,8 +467,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 <View style={styles.milestonesContainer}>
                   {/* Milestone 1: CLAIMED */}
                   <View style={styles.milestoneRow}>
-                    <Ionicons
-                      name={isClaimed ? "checkmark-circle" : "ellipse-outline"}
+                    <AppIcon name={isClaimed ? "status-done" : "status-incomplete"}
                       size={22}
                       color={isClaimed ? '#10B981' : COLORS.gray}
                     />
@@ -486,8 +485,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
                   {/* Milestone 2: IN_PROGRESS */}
                   <View style={styles.milestoneRow}>
-                    <Ionicons
-                      name={isInProgress ? "checkmark-circle" : "ellipse-outline"}
+                    <AppIcon name={isInProgress ? "status-done" : "status-incomplete"}
                       size={22}
                       color={isInProgress ? '#10B981' : COLORS.gray}
                     />
@@ -505,8 +503,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
                   {/* Milestone 3: COMPLETED */}
                   <View style={styles.milestoneRow}>
-                    <Ionicons
-                      name={isCompleted ? "checkmark-circle" : "ellipse-outline"}
+                    <AppIcon name={isCompleted ? "status-done" : "status-incomplete"}
                       size={22}
                       color={isCompleted ? '#10B981' : COLORS.gray}
                     />
@@ -539,7 +536,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   <View style={styles.reviewContent}>
                       <Text style={[styles.infoLabel, { marginBottom: 8 }]}>Ваш отзыв:</Text>
                       <View style={styles.starsRowLeft}>
-                          {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= myReview.rating ? "star" : "star-outline"} size={16} color={COLORS.warning} />)}
+                          {[1,2,3,4,5].map(s => <AppIcon key={s} name={s <= myReview.rating ? "sys-rating" : "sys-rating"} size={16} color={COLORS.warning} />)}
                       </View>
                       {myReview.comment ? <Text style={styles.reviewComment}>{myReview.comment}</Text> : null}
 
@@ -554,7 +551,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                           <View style={[styles.divider, { marginVertical: 12, opacity: 0.5 }]} />
                           <Text style={[styles.infoLabel, { marginBottom: 8 }]}>Отзыв от участника:</Text>
                           <View style={styles.starsRowLeft}>
-                              {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= otherReview.rating ? "star" : "star-outline"} size={16} color={COLORS.warning} />)}
+                              {[1,2,3,4,5].map(s => <AppIcon key={s} name={s <= otherReview.rating ? "sys-rating" : "sys-rating"} size={16} color={COLORS.warning} />)}
                           </View>
                           {otherReview.comment ? <Text style={styles.reviewComment}>{otherReview.comment}</Text> : null}
                         </>
@@ -575,12 +572,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               }}
             >
               <View style={styles.applicationsBannerContent}>
-                <Ionicons name="people" size={24} color={COLORS.primary} />
+                <AppIcon name="sys-friends" size={24} color={COLORS.primary} />
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.bannerTitle}>{order.applications.length} откликов</Text>
                   <Text style={styles.bannerSubtitle}>Нажмите, чтобы выбрать исполнителя</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
+                <AppIcon name="nav-forward" size={20} color={COLORS.primary} />
               </View>
             </TouchableOpacity>
           )}
@@ -601,12 +598,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 <View style={{ flex: 1 }}>
                    <Text style={styles.employerName}>{order.executor?.name || 'Мастер'}</Text>
                    <View style={styles.ratingRow}>
-                      <Ionicons name="star" size={14} color={COLORS.warning} />
+                      <AppIcon name="sys-rating" size={14} color={COLORS.warning} />
                       <Text style={styles.ratingText}>{order.executor?.rating?.toFixed(1) || '5.0'}</Text>
                       <Text style={styles.ordersCount}>• {order.executor?.completedOrders || 0} завершено</Text>
                    </View>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={COLORS.placeholder} />
+                <AppIcon name="nav-forward" size={20} color={COLORS.placeholder} />
               </TouchableOpacity>
           ) : (
               <TouchableOpacity
@@ -623,12 +620,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 <View style={{ flex: 1 }}>
                    <Text style={styles.employerName}>{order.employer?.name || 'Заказчик'}</Text>
                    <View style={styles.ratingRow}>
-                      <Ionicons name="star" size={14} color={COLORS.warning} />
+                      <AppIcon name="sys-rating" size={14} color={COLORS.warning} />
                       <Text style={styles.ratingText}>{order.employer?.rating?.toFixed(1) || '5.0'}</Text>
                       <Text style={styles.ordersCount}>• {order.employer?.completedOrders || 0} завершено</Text>
                    </View>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={COLORS.placeholder} />
+                <AppIcon name="nav-forward" size={20} color={COLORS.placeholder} />
               </TouchableOpacity>
           )}
         </View>
@@ -660,7 +657,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                       }
                   }}
                 >
-                  <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+                  <AppIcon name="tab-chats" size={24} color={COLORS.primary} />
                   <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
                 </TouchableOpacity>
               )
@@ -674,7 +671,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.employer?.name });
                 }}
               >
-                <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+                <AppIcon name="tab-chats" size={24} color={COLORS.primary} />
               </TouchableOpacity>
 
               {order.status === 'CLAIMED' && (
@@ -718,24 +715,38 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               )}
             </>
           ) : (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={[
-                styles.applyBtn,
-                hasApplied && { backgroundColor: '#FF4757' },
-                order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES' && !hasApplied && { backgroundColor: COLORS.gray }
-              ]}
-              onPress={hasApplied ? handleCancelApplication : handleApply}
-              disabled={submitting || (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES' && !hasApplied)}
-            >
-              {submitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.applyBtnText}>
-                  {hasApplied ? 'Отказаться' : (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES') ? 'Заказ занят' : 'Откликнуться'}
-                </Text>
-              )}
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.iconChatBtn}
+                onPress={async () => {
+                    logger.logClick('OpenChat', 'OrderDetail', { orderId, isExecutor: false });
+                    const res = await apiService.getOrCreateChat(order.id, myId!);
+                    navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.employer?.name });
+                }}
+              >
+                <AppIcon name="tab-chats" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={[
+                  styles.applyBtn,
+                  { flex: 1 },
+                  hasApplied && { backgroundColor: '#FF4757' },
+                  ((order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES') || (order?.applications && order.applications.length >= 10)) && !hasApplied && { backgroundColor: COLORS.gray }
+                ]}
+                onPress={hasApplied ? handleCancelApplication : handleApply}
+                disabled={submitting || (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES' && !hasApplied) || (order?.applications && order.applications.length >= 10 && !hasApplied)}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.applyBtnText}>
+                    {hasApplied ? 'Отказаться' : (order.status !== 'PUBLISHED' && order.status !== 'HAS_RESPONSES') ? 'Заказ занят' : (order?.applications && order.applications.length >= 10) ? 'Лимит откликов' : 'Откликнуться'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
           )}
         </SafeAreaView>
       </BlurView>
@@ -786,7 +797,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   <View style={styles.starsRow}>
                       {[1, 2, 3, 4, 5].map(s => (
                           <TouchableOpacity key={s} onPress={() => setRating(s)}>
-                              <Ionicons name={s <= rating ? "star" : "star-outline"} size={32} color={COLORS.warning} />
+                              <AppIcon name={s <= rating ? "sys-rating" : "sys-rating"} size={32} color={COLORS.warning} />
                           </TouchableOpacity>
                       ))}
                   </View>
@@ -822,7 +833,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   logger.logClick('CloseApplications', 'OrderDetail');
                   setShowApplications(false);
               }}>
-                <Ionicons name="close-circle" size={32} color={COLORS.gray} />
+                <AppIcon name="nav-close" size={32} color={COLORS.gray} />
               </TouchableOpacity>
             </View>
 
@@ -846,7 +857,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                         {app.status === 'PENDING' && <View style={styles.newBadge} />}
                       </View>
                       <View style={styles.ratingRow}>
-                        <Ionicons name="star" size={14} color={COLORS.warning} />
+                        <AppIcon name="sys-rating" size={14} color={COLORS.warning} />
                         <Text style={styles.ratingText}>{app.executor?.rating?.toFixed(1) || '5.0'}</Text>
                         <Text style={styles.ordersCount}>• {app.executor?.completedOrders || 0} заказов</Text>
                       </View>
@@ -864,7 +875,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                         navigation.navigate('ChatDetail', { chatId: res.data.id, name: app.executor?.name });
                       }}
                      >
-                       <Ionicons name="chatbubble-outline" size={20} color={COLORS.primary} />
+                       <AppIcon name="action-chat" size={20} color={COLORS.primary} />
                        <Text style={styles.appChatText}>Чат</Text>
                      </TouchableOpacity>
 

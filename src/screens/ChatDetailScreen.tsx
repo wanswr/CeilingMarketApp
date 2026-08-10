@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useRef, useEffect } from 'react';
 import { logger } from '../services/logger/LoggerService';
 
@@ -14,7 +15,6 @@ import {
   ActivityIndicator
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Ionicons } from '@expo/vector-icons'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { socketService } from '../services/SocketService'
 import { apiService } from '../services/ApiService'
@@ -29,6 +29,7 @@ interface Message {
   isRead: boolean;
   pending?: boolean;
   failed?: boolean;
+  hasContacts?: boolean;
 }
 
 const ChatDetailScreen = ({ route, navigation }: any) => {
@@ -194,27 +195,40 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     const time = new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     return (
-      <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.otherMessageWrapper]}>
-        <TouchableOpacity
-          disabled={!item.failed}
-          onPress={() => retryMessage(item)}
-          activeOpacity={0.7}
-          style={[styles.messageBubble, isMe ? styles.myBubble : styles.otherBubble]}
-        >
-          <Text style={styles.messageText}>{item.text}</Text>
-          <View style={styles.messageFooter}>
-            <Text style={styles.timestamp}>{time}</Text>
-            {isMe && (
-              item.failed ? (
-                <Ionicons name="alert-circle" size={16} color={COLORS.danger} style={{ marginLeft: 4 }} />
-              ) : item.pending ? (
-                <Ionicons name="time-outline" size={14} color="#888" style={{ marginLeft: 4 }} />
-              ) : (
-                <Ionicons name={item.isRead ? "checkmark-done" : "checkmark"} size={16} color={item.isRead ? "#34B7F1" : "#A7E5FF"} style={{ marginLeft: 4 }} />
-              )
-            )}
+      <View style={{ flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', width: '100%' }}>
+        <View style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.otherMessageWrapper]}>
+          <TouchableOpacity
+            disabled={!item.failed}
+            onPress={() => retryMessage(item)}
+            activeOpacity={0.7}
+            style={[styles.messageBubble, isMe ? styles.myBubble : styles.otherBubble]}
+          >
+            <Text style={styles.messageText}>{item.text}</Text>
+            <View style={styles.messageFooter}>
+              <Text style={styles.timestamp}>{time}</Text>
+              {isMe && (
+                item.failed ? (
+                  <AppIcon name="status-warning" size={16} color={COLORS.danger} style={{ marginLeft: 4 }} />
+                ) : item.pending ? (
+                  <AppIcon name="status-pending" size={14} color="#888" style={{ marginLeft: 4 }} />
+                ) : (
+                  <AppIcon name={item.isRead ? "sys-read" : "sys-check"} size={16} color={item.isRead ? "#34B7F1" : "#A7E5FF"} style={{ marginLeft: 4 }} />
+                )
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+        {item.hasContacts && (
+          <View style={[
+            styles.contactWarningContainer,
+            isMe ? { marginRight: 20, alignSelf: 'flex-end' } : { marginLeft: 20, alignSelf: 'flex-start' }
+          ]}>
+            <AppIcon name="status-warning" size={13} color="#D97706" style={{ marginRight: 4 }} />
+            <Text style={styles.contactWarningText}>
+              Внимание! Передача контактов вне платформы лишает вас защиты сделки и снижает рейтинг доверия.
+            </Text>
           </View>
-        </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -223,7 +237,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#e5ddd5' }} edges={['bottom']}>
       <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={24} color={COLORS.dark} />
+              <AppIcon name="nav-back" size={24} color={COLORS.dark} />
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
               <Text style={styles.headerTitle} numberOfLines={1}>{name || 'Чат'}</Text>
@@ -262,7 +276,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
             />
           )}
           <View style={styles.inputContainer}>
-            <TouchableOpacity style={styles.iconBtn}><Ionicons name="add" size={28} color={COLORS.primary} /></TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtn}><AppIcon name="tab-create" size={28} color={COLORS.primary} /></TouchableOpacity>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
@@ -277,7 +291,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
                 onPress={sendMessage}
                 disabled={!inputText.trim()}
             >
-              <Ionicons name="send" size={20} color="#fff" />
+              <AppIcon name="action-send" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         </ImageBackground>
@@ -316,7 +330,26 @@ const styles = StyleSheet.create({
   inputWrapper: { flex: 1, backgroundColor: '#fff', borderRadius: 25, marginHorizontal: 8, paddingHorizontal: 15, minHeight: 40, justifyContent: 'center' },
   input: { fontSize: 16, paddingTop: 8, paddingBottom: 8, color: COLORS.dark },
   sendBtn: { backgroundColor: COLORS.primary, width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center', ...SHADOWS.soft },
-  iconBtn: { paddingBottom: 8 }
+  iconBtn: { paddingBottom: 8 },
+  contactWarningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 2,
+    marginBottom: 8,
+    maxWidth: '80%',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  contactWarningText: {
+    color: '#B45309',
+    fontSize: 10,
+    fontWeight: '600',
+    flexShrink: 1,
+  }
 });
 
 export default ChatDetailScreen;

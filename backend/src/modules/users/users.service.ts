@@ -5,6 +5,18 @@ import { SubscriptionService } from '../subscription/subscription.service';
 
 @Injectable()
 export class UsersService {
+  calculateTrustScore(user: { completedOrders: number; rating: number | null; experience: number | null; isVerified: boolean }): number {
+    let score = 50; // Base score
+    if (user.isVerified) score += 20;
+    score += Math.min(user.experience || 0, 5) * 2; // Up to 10 points
+    score += Math.min(user.completedOrders || 0, 10) * 2; // Up to 20 points
+    if (user.rating !== null && user.rating !== undefined) {
+      const ratingDiff = user.rating - 3;
+      score += Math.round(ratingDiff * 10); // rating of 5.0 adds 20. rating of 3.0 adds 0. rating below 3.0 subtracts.
+    }
+    return Math.max(0, Math.min(100, score));
+  }
+
   constructor(
     private prisma: PrismaService,
     private readonly subscriptionService: SubscriptionService,
@@ -18,6 +30,7 @@ export class UsersService {
         phone: true,
         name: true,
         role: true,
+        roles: true,
         avatar: true,
         rating: true,
         experience: true,
@@ -46,6 +59,12 @@ export class UsersService {
     return {
       ...user,
       categoryLocked,
+      trustScore: this.calculateTrustScore({
+        completedOrders: user.completedOrders,
+        rating: user.rating,
+        experience: user.experience,
+        isVerified: user.isVerified
+      }),
     };
   }
 
@@ -68,7 +87,15 @@ export class UsersService {
     });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
     const { deletedAt, ...publicProfile } = user;
-    return publicProfile;
+    return {
+      ...publicProfile,
+      trustScore: this.calculateTrustScore({
+        completedOrders: user.completedOrders,
+        rating: user.rating,
+        experience: user.experience,
+        isVerified: user.isVerified
+      }),
+    };
   }
 
   async update(id: string, dto: UpdateUserDto) {
@@ -102,22 +129,12 @@ export class UsersService {
   async setRole(userId: string, role: 'WORKER' | 'EMPLOYER') {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
-    if (user.role) {
-      const employerOrdersCount = await this.prisma.order.count({ where: { employerId: userId } });
-      const executorOrdersCount = await this.prisma.order.count({ where: { executorId: userId } });
-      const executorAppsCount = await this.prisma.application.count({ where: { executorId: userId } });
-      const chatsCount = await this.prisma.chat.count({
-        where: {
-          OR: [
-            { employerId: userId },
-            { executorId: userId }
-          ]
-        }
-      });
 
-      if (employerOrdersCount !== 0 || executorOrdersCount !== 0 || executorAppsCount !== 0 || chatsCount !== 0) {
-        throw new ForbiddenException('Role is already set and cannot be changed');
-      }
+    // Restrict role switching strictly to roles in user's roles array.
+    // Fall back to ['WORKER', 'EMPLOYER'] for older entries or mock users.
+    const allowedRoles = user.roles && user.roles.length > 0 ? user.roles : ['WORKER', 'EMPLOYER'];
+    if (!allowedRoles.includes(role)) {
+      throw new ForbiddenException(`User does not possess the ${role} role`);
     }
 
     return this.prisma.user.update({
@@ -172,7 +189,8 @@ export class UsersService {
   async setActiveCategory(userId: string, categoryId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
-    if (user.role !== 'WORKER') {
+    const userRoles = user.roles && user.roles.length > 0 ? user.roles : [user.role].filter(Boolean);
+    if (!userRoles.includes('WORKER') || user.role !== 'WORKER') {
       throw new ForbiddenException('Only workers can select a direction');
     }
 
@@ -233,5 +251,147 @@ export class UsersService {
       },
     });
     return { success: true };
+  }
+
+  async getDashboard(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { activeCategory: true, subscription: true }
+    });
+    if (!user || user.deletedAt) throw new NotFoundException('User not found');
+
+    const trustScore = this.calculateTrustScore({
+      completedOrders: user.completedOrders,
+      rating: user.rating,
+      experience: user.experience,
+      isVerified: user.isVerified
+    });
+
+    // Get unread chats count
+    const unreadChatsCount = await this.prisma.message.count({
+      where: {
+        chat: {
+          OR: [{ employerId: userId }, { executorId: userId }]
+        },
+        senderId: { not: userId },
+        isRead: false
+      }
+    });
+
+    // Get unread notifications count
+    const unreadNotificationsCount = await this.prisma.notification.count({
+      where: { userId, read: false }
+    });
+
+    if (user.role === 'EMPLOYER') {
+      // 1. Orders requiring action
+      const ordersWithResponses = await this.prisma.order.findMany({
+        where: {
+          employerId: userId,
+          status: { in: ['PUBLISHED', 'HAS_RESPONSES'] },
+          applications: { some: { status: 'PENDING' } }
+        },
+        include: {
+          applications: { where: { status: 'PENDING' }, include: { executor: { select: { name: true, avatar: true } } } }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      const ordersPendingReview = await this.prisma.order.findMany({
+        where: {
+          employerId: userId,
+          status: 'COMPLETED',
+          reviews: { none: { authorId: userId } }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      const activeOrders = await this.prisma.order.findMany({
+        where: {
+          employerId: userId,
+          status: { in: ['CLAIMED', 'IN_PROGRESS'] }
+        },
+        include: {
+          executor: { select: { name: true, avatar: true } }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      return {
+        role: 'EMPLOYER',
+        user: { name: user.name, rating: user.rating, avatar: user.avatar, trustScore },
+        stats: {
+          activeOrders: activeOrders.length,
+          totalCreated: user.ordersCount
+        },
+        actionRequired: {
+          ordersWithResponses,
+          ordersPendingReview,
+          activeOrders
+        },
+        unreadChatsCount,
+        unreadNotificationsCount
+      };
+    } else {
+      // WORKER dashboard
+      // 1. My active work (Claimed or In Progress)
+      const activeJobs = await this.prisma.order.findMany({
+        where: {
+          executorId: userId,
+          status: { in: ['CLAIMED', 'IN_PROGRESS'] }
+        },
+        include: {
+          employer: { select: { name: true, avatar: true } }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      // 2. Jobs pending review
+      const jobsPendingReview = await this.prisma.order.findMany({
+        where: {
+          executorId: userId,
+          status: 'COMPLETED',
+          reviews: { none: { authorId: userId } }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      // 3. Hot/Relevant orders in my category
+      const relevantOrders = await this.prisma.order.findMany({
+        where: {
+          status: { in: ['PUBLISHED', 'HAS_RESPONSES'] },
+          categoryId: user.activeCategoryId || undefined,
+          applications: { none: { executorId: userId } }
+        },
+        take: 5,
+        orderBy: { createdAt: 'desc' }
+      });
+
+      return {
+        role: 'WORKER',
+        user: { name: user.name, rating: user.rating, avatar: user.avatar, trustScore, activeCategory: user.activeCategory?.name },
+        stats: {
+          completedOrders: user.completedOrders,
+          experience: user.experience,
+          subscriptionActive: user.subscription?.isActive && user.subscription.activeUntil > new Date()
+        },
+        actionRequired: {
+          activeJobs,
+          jobsPendingReview
+        },
+        relevantOrders,
+        unreadChatsCount,
+        unreadNotificationsCount
+      };
+    }
+  }
+
+  async verifyProfile(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
+
+    // Real biometric identity/liveness provider is not yet integrated.
+    // Throwing ForbiddenException to provide a clean API contract explaining the status.
+    throw new ForbiddenException('Интеграция с биометрическим провайдером верификации (Liveness SDK) находится в процессе настройки. Моментальное подтверждение в клик отключено в целях безопасности.');
   }
 }

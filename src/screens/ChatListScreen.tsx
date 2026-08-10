@@ -1,7 +1,7 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect } from 'react';
 import { logger } from '../services/logger/LoggerService';
 import { TouchableOpacity, View, Text, StyleSheet, FlatList, TextInput, ActivityIndicator, RefreshControl } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
 import { COLORS } from '../constants/theme'
 import { apiService } from '../services/ApiService'
 import { socketService } from '../services/SocketService'
@@ -87,7 +87,7 @@ const ChatListScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <View style={styles.searchBar}>
-        <Ionicons name="search" size={20} color={COLORS.gray} />
+        <AppIcon name="action-search" size={20} color={COLORS.gray} />
         <TextInput placeholder="Поиск чатов..." style={styles.searchInput} />
       </View>
       <FlatList
@@ -97,7 +97,7 @@ const ChatListScreen = ({ navigation }: any) => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchChats(); }} />}
         ListEmptyComponent={
             <View style={styles.emptyContainer}>
-                <Ionicons name="chatbubbles-outline" size={64} color={COLORS.border} />
+                <AppIcon name="tab-chats" size={64} color={COLORS.border} />
                 <Text style={styles.emptyText}>У вас пока нет активных чатов</Text>
             </View>
         }

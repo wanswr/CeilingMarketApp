@@ -45,6 +45,15 @@ class MapEngine {
   private requestCounter: number = 0;
   private lastSyncRegion: { latitude: number, longitude: number, latitudeDelta: number } | null = null;
   private searchRadius: number = CONFIG.INITIAL_SEARCH_RADIUS_KM;
+  private dateFilter: string = 'all';
+
+  setDateFilter = (filter: string) => {
+    this.dateFilter = filter;
+  }
+
+  getDateFilter = () => {
+    return this.dateFilter;
+  }
   private lastGeoJoinKey: string | null = null;
 
   setSearchRadius = (radius: number) => {
@@ -178,24 +187,32 @@ class MapEngine {
     const tokenHash = token ? simpleHash(token) : 'none';
     const authReady = !!(currentUser && token);
 
-    logger.info('[MapEngine] syncMap diagnostic check', {
-        userId: currentUser?.id || 'anonymous',
-        tokenHash,
-        authReady,
-        force,
-        reason: force ? 'force_initial_load' : 'camera_movement_viewport_sync'
+    const requestId = Math.random().toString(36).substring(7);
+    const viewRegion = region || mapViewportStore.getRegion();
+    const viewportHash = viewRegion ? `${viewRegion.latitude.toFixed(4)}_${viewRegion.longitude.toFixed(4)}_${viewRegion.latitudeDelta.toFixed(4)}` : 'none';
+    const previousViewportHash = this.lastSyncRegion ? `${this.lastSyncRegion.latitude.toFixed(4)}_${this.lastSyncRegion.longitude.toFixed(4)}_${this.lastSyncRegion.latitudeDelta.toFixed(4)}` : 'none';
+
+    logger.info('SYNC_START', {
+        requestId,
+        reason: force ? 'force_initial_load' : 'camera_movement_viewport_sync',
+        viewportHash,
+        previousViewportHash,
+        force
     });
 
     if (!authReady) {
-      logger.info('[MapEngine] Bypassing syncMap because auth is not ready yet.', { userId: currentUser?.id, hasToken: !!token });
+      logger.info('SYNC_BYPASS', { requestId, reason: 'auth_not_ready' });
       return;
     }
 
-    if (this.syncLock && !force) return;
+    if (this.syncLock && !force) {
+      logger.info('SYNC_BYPASS', { requestId, reason: 'sync_locked' });
+      return;
+    }
     this.syncLock = true;
+    const syncStartTs = Date.now();
 
     try {
-      const viewRegion = region || mapViewportStore.getRegion();
       const latDelta = viewRegion.latitudeDelta;
       const zoom = this.geoClusterService?.getZoomLevel ? this.geoClusterService.getZoomLevel(latDelta) : 12;
       const activeCategoryId = currentUser?.activeCategoryId;
@@ -205,6 +222,7 @@ class MapEngine {
       let allCreated: any[] = [];
       let pagesFetched = 0;
       const maxPages = 4; // Max 1000 orders total
+      let source = 'cache';
 
       while (pagesFetched < maxPages) {
         const params: any = {
@@ -213,6 +231,10 @@ class MapEngine {
 
         if (activeCategoryId) {
           params.categoryId = activeCategoryId;
+        }
+
+        if (this.dateFilter && this.dateFilter !== 'all') {
+          params.dateFilter = this.dateFilter;
         }
 
         const latPadding = viewRegion.latitudeDelta * 0.1;
@@ -231,11 +253,32 @@ class MapEngine {
         if (activeCategoryId) keyParts.push("dir:" + activeCategoryId);
         keyParts.push("bounds:" + params.minLat.toFixed(3) + ":" + params.maxLat.toFixed(3) + ":" + params.minLng.toFixed(3) + ":" + params.maxLng.toFixed(3));
         keyParts.push("zoom:" + zoom);
+        if (params.dateFilter) keyParts.push("date:" + params.dateFilter);
         const routerKey = keyParts.join('_');
 
+        const isCached = requestRouter.cache.has(routerKey) && (Date.now() - (requestRouter.cache.get(routerKey)?.timestamp || 0)) < (force ? 0 : 30000);
+
+        if (!isCached && !cursorId) {
+          source = 'network';
+          logger.info('NETWORK_REQUEST', {
+              requestId,
+              endpoint: 'orders/spatial',
+              routerKey
+          });
+        }
+
+        const fetchStartTs = Date.now();
         const res = cursorId
           ? await this.apiService.getOrdersSpatial(params)
           : await this.requestRouter.request(routerKey, () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
+
+        if (!isCached && !cursorId) {
+          logger.info('NETWORK_RESPONSE', {
+              requestId,
+              duration: Date.now() - fetchStartTs,
+              count: res?.data?.created?.length || 0
+          });
+        }
 
         if (res && res.data) {
           const { created } = res.data;
@@ -278,6 +321,13 @@ class MapEngine {
       };
       this.triggerNotify();
       this.entityStore.persist();
+
+      logger.info('SYNC_END', {
+          requestId,
+          source,
+          duration: Date.now() - syncStartTs,
+          totalEntities: allCreated.length
+      });
     } catch (error: any) {
         if (error.name !== 'AbortError') logger.error('Map Sync Fail:', { error: error.message });
     } finally {
@@ -314,13 +364,39 @@ class MapEngine {
         if (activeCategoryId && order.categoryId && order.categoryId !== activeCategoryId) {
             return false;
         }
-        const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
-        const isMine = !!myId && (
-            order.employerId === myId ||
+
+        // Filter by date
+        if (this.dateFilter && this.dateFilter !== 'all') {
+          const orderDate = new Date(order.date);
+          const now = new Date();
+          const diffTime = orderDate.getTime() - now.getTime();
+          const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+          if (this.dateFilter === 'today') {
+            const isToday = orderDate.toDateString() === now.toDateString();
+            if (!isToday) return false;
+          } else if (this.dateFilter === '3days') {
+            if (diffDays < -1 || diffDays > 3) return false;
+          } else if (this.dateFilter === 'week') {
+            if (diffDays < -1 || diffDays > 7) return false;
+          }
+        }
+
+        const activeRole = (currentUser?.role || 'WORKER').toUpperCase();
+        const isMineAsEmployer = !!myId && order.employerId === myId;
+        const isMineAsWorker = !!myId && (
             order.executorId === myId ||
             order.applications?.some((a: any) => a.executorId === myId)
         );
-        return isPublic || (isMine && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
+
+        if (activeRole === 'EMPLOYER') {
+            // Employer mode: only show my own orders as employer
+            return isMineAsEmployer;
+        } else {
+            // Worker mode: show public orders OR my own orders as executor
+            const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
+            return isPublic || (isMineAsWorker && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
+        }
     });
 
     const result = this.clusterOrders(candidates, region.latitudeDelta);
@@ -397,8 +473,37 @@ class MapEngine {
 
   setRole = async (role: 'WORKER' | 'EMPLOYER') => {
     const res = await this.apiService.setRole(role);
-    this.requestRouter.invalidate('user:profile');
-    this.entityStore?.setUser({ ...res.data, isMe: true });
+
+    // Invalidate request router cache
+    this.requestRouter.clear();
+
+    // Clean up cached spatial/other role orders from EntityStore
+    this.entityStore.clearSpatialOrders();
+
+    // Update local user with new role/profile details
+    this.entityStore.setUser({ ...res.data, isMe: true });
+
+    // Force socket room update depending on the new role
+    const region = mapViewportStore.getRegion();
+    if (role === 'EMPLOYER') {
+        const { socketService } = require('./SocketService');
+        const socket = socketService.getSocket();
+        if (socket?.connected) {
+            socket.emit('geo.join', {
+                lat: 0,
+                lng: 0,
+                clear: true
+            });
+            this.lastGeoJoinKey = 'employer_clear';
+        }
+    } else if (region) {
+        this.updateSocketRoom(region, true);
+    }
+
+    // Force a fresh sync of the map using the new role's context
+    this.lastSyncRegion = null;
+    this.syncMap(true);
+
     return res.data;
   }
 

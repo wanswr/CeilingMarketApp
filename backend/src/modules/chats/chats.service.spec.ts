@@ -175,7 +175,7 @@ describe('ChatsService', () => {
         { query: 'createMessage' },
         { query: 'updateChat' }
       ]);
-      expect(result).toEqual(message);
+      expect(result).toEqual({ ...message, hasContacts: false });
     });
 
     it('should block sendMessage if sender is soft-deleted and throw ForbiddenException', async () => {
@@ -186,6 +186,26 @@ describe('ChatsService', () => {
       await expect(service.sendMessage(chatId, userId, 'Hello')).rejects.toThrow(
         new ForbiddenException('User account is deleted')
       );
+    });
+  });
+
+  describe('detectContacts', () => {
+    it('should return false for regular messages', () => {
+      expect(service.detectContacts('Привет, как дела?')).toBe(false);
+      expect(service.detectContacts('Работа по монтажу потолка.')).toBe(false);
+    });
+
+    it('should return true if message contains potential phone numbers', () => {
+      expect(service.detectContacts('Мой номер 89123456789')).toBe(true);
+      expect(service.detectContacts('Звони: +7 (912) 345-67-89')).toBe(true);
+      expect(service.detectContacts('8 9 1 2 3 4 5 6 7 8 9')).toBe(true);
+    });
+
+    it('should return true if message contains social links or keywords', () => {
+      expect(service.detectContacts('Пиши в телеграм')).toBe(true);
+      expect(service.detectContacts('Напиши в ватсап wa.me/79123456789')).toBe(true);
+      expect(service.detectContacts('Ссылка на вк vk.com/profile')).toBe(true);
+      expect(service.detectContacts('Мой инстаграм instagram.com/ceiling')).toBe(true);
     });
   });
 });

@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import {
@@ -14,7 +15,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
@@ -38,6 +38,7 @@ const MapScreen = ({ navigation }: any) => {
   const [statusState, setStatusState] = useState<'loading' | 'success' | 'error'>('loading');
   const [region, setRegion] = useState<Region>(mapViewportStore.getRegion());
   const [radius, setRadius] = useState(CONFIG.DEFAULT_SEARCH_RADIUS_KM);
+  const [dateFilter, setDateFilter] = useState(mapEngine.getDateFilter?.() || 'all');
   const [showFilters, setShowFilters] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [pendingLocation, setPendingLocation] = useState<{latitude: number, longitude: number} | null>(null);
@@ -292,7 +293,7 @@ const MapScreen = ({ navigation }: any) => {
           {pendingLocation && (
               <Marker coordinate={pendingLocation} pinColor={COLORS.primary}>
                   <View style={styles.pendingMarker}>
-                      <Ionicons name="add-circle" size={32} color={COLORS.primary} />
+                      <AppIcon name="tab-create" size={32} color={COLORS.primary} />
                   </View>
               </Marker>
           )}
@@ -301,14 +302,14 @@ const MapScreen = ({ navigation }: any) => {
         <SafeAreaView style={styles.headerOverlay} pointerEvents="box-none">
           <View style={styles.topContainer}>
             <BlurView intensity={80} tint="light" style={styles.searchBar}>
-              <Ionicons name="search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
+              <AppIcon name="action-search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
               <TextInput
                 placeholder="Поиск заказов..."
                 style={styles.searchInput}
                 placeholderTextColor={COLORS.gray}
               />
               <TouchableOpacity style={styles.filterBtn} onPress={() => setShowFilters(!showFilters)}>
-                <Ionicons name="options-outline" size={22} color={COLORS.primary} />
+                <AppIcon name="action-filter" size={22} color={COLORS.primary} />
               </TouchableOpacity>
             </BlurView>
 
@@ -328,6 +329,29 @@ const MapScreen = ({ navigation }: any) => {
                       }}
                     >
                       <Text style={[styles.radiusText, radius === r && styles.radiusTextActive]}>{r}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.filterTitle}>Дата выполнения заказа</Text>
+                <View style={styles.radiusContainer}>
+                  {[
+                    { label: 'Все', value: 'all' },
+                    { label: 'Сегодня', value: 'today' },
+                    { label: '3 дня', value: '3days' },
+                    { label: 'Неделя', value: 'week' }
+                  ].map((d) => (
+                    <TouchableOpacity
+                      key={d.value}
+                      style={[styles.radiusBtn, dateFilter === d.value && styles.radiusBtnActive, { flex: 1, paddingHorizontal: 2 }]}
+                      onPress={() => {
+                        setDateFilter(d.value);
+                        // @ts-ignore
+                        mapEngine.setDateFilter?.(d.value);
+                        mapEngine.triggerNotify();
+                      }}
+                    >
+                      <Text style={[styles.radiusText, dateFilter === d.value && styles.radiusTextActive]}>{d.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -365,7 +389,7 @@ const MapScreen = ({ navigation }: any) => {
         </SafeAreaView>
 
         <TouchableOpacity style={styles.myLocationBtn} onPress={centerToUser}>
-           <Ionicons name="locate" size={24} color={COLORS.primary} />
+           <AppIcon name="action-locate" size={24} color={COLORS.primary} />
         </TouchableOpacity>
 
         {selectedOrder && (
@@ -381,7 +405,7 @@ const MapScreen = ({ navigation }: any) => {
                       <Text style={styles.previewTitle} numberOfLines={1}>{selectedOrder.title || selectedOrder.address}</Text>
                       <View style={styles.previewInfoRow}>
                         <View style={styles.infoBadge}>
-                          <Ionicons name="calendar-outline" size={12} color={COLORS.gray} />
+                          <AppIcon name="sys-calendar" size={12} color={COLORS.gray} />
                           <Text style={styles.infoBadgeText}>{formatDate(selectedOrder.date)}</Text>
                         </View>
                       </View>
@@ -405,7 +429,7 @@ const MapScreen = ({ navigation }: any) => {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.employerNameSmall}>{selectedOrder.employer?.name || 'Заказчик'}</Text>
                         <View style={styles.ratingRowSmall}>
-                          <Ionicons name="star" size={10} color={COLORS.warning} />
+                          <AppIcon name="sys-rating" size={10} color={COLORS.warning} />
                           <Text style={styles.ratingTextSmall}>{selectedOrder.employer?.rating?.toFixed(1) || '5.0'}</Text>
                         </View>
                       </View>
@@ -419,7 +443,7 @@ const MapScreen = ({ navigation }: any) => {
                           navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: selectedOrder.id } });
                         }}
                       >
-                        <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
+                        <AppIcon name="action-chat" size={20} color={COLORS.primary} />
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -486,10 +510,9 @@ const MapScreen = ({ navigation }: any) => {
           </BlurView>
           <View style={styles.onboardingContent}>
             <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.onboardingIconContainer}>
-              <Ionicons
-                name={currentUser?.role === 'WORKER' ? "person-circle" : "construct"}
+              <AppIcon name={currentUser?.role === 'WORKER' ? "role-worker" : "role-employer"}
                 size={48}
-                color="#fff"
+                color={currentUser?.role === 'WORKER' ? "#00C897" : "#ff9067"}
               />
             </LinearGradient>
 
@@ -533,7 +556,7 @@ const MapScreen = ({ navigation }: any) => {
 
         {statusState === 'error' && (
             <View style={styles.errorOverlay}>
-                <Ionicons name="cloud-offline-outline" size={48} color={COLORS.danger} style={{ marginBottom: 12 }} />
+                <AppIcon name="status-offline" size={48} color={COLORS.danger} style={{ marginBottom: 12 }} />
                 <Text style={styles.errorText}>Ошибка загрузки карты</Text>
                 <Text style={styles.errorSubtext}>Проверьте подключение к сети и геолокацию</Text>
                 <TouchableOpacity style={styles.retryBtn} onPress={loadMapData}>

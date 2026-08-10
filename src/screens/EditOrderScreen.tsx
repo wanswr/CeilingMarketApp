@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect } from 'react';
 import { logger } from '../services/logger/LoggerService';
 import { TouchableOpacity, View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native'
@@ -5,7 +6,6 @@ import { AppInput } from '../components/Input'
 import { mapEngine } from '../services/MapEngine'
 import { COLORS } from '../constants/theme'
 
-import { Ionicons } from '@expo/vector-icons'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 export default function EditOrderScreen({ navigation, route }: any) {
@@ -60,7 +60,7 @@ export default function EditOrderScreen({ navigation, route }: any) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Ionicons name="chevron-back" size={28} color={COLORS.dark} />
+              <AppIcon name="nav-back" size={28} color={COLORS.dark} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Редактировать</Text>
           <View style={{ width: 28 }} />

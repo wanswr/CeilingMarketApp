@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect } from 'react';
 
 import {
@@ -17,7 +18,6 @@ import { z } from 'zod'
 import { COLORS } from '../constants/theme'
 import { mapEngine } from '../services/MapEngine'
 import { apiService } from '../services/ApiService'
-import { Ionicons } from '@expo/vector-icons'
 import { storageService } from '../services/StorageService'
 import { useAuth } from '../context/AuthContext'
 
@@ -252,7 +252,7 @@ export default function EditProfileScreen({ navigation }: any) {
                                     </Text>
                                 </View>
                                 <TouchableOpacity onPress={() => handleDeletePortfolioItem(item.id)} style={styles.deletePortBtn}>
-                                    <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
+                                    <AppIcon name="action-delete" size={20} color={COLORS.danger} />
                                 </TouchableOpacity>
                             </View>
                         ))}

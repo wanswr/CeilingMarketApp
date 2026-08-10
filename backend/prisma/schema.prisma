@@ -44,6 +44,7 @@ model User {
   phone            String    @unique
   name             String?
   role             Role?
+  roles            Role[]    @default([WORKER, EMPLOYER])
   avatar           String?
   rating           Float?
   experience       Int?      @default(0)

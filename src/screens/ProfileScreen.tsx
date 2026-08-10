@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useCallback } from 'react';
 import { logger } from '../services/logger/LoggerService';
 
@@ -16,19 +17,20 @@ import {
   Modal
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { mapEngine } from '../services/MapEngine'
 import { useFocusEffect } from '@react-navigation/native'
 import { apiService } from '../services/ApiService'
 import { useClientStore } from '../store/client.store'
+import { useRoleSwitch } from '../hooks/useRoleSwitch';
 import { storageService } from '../services/StorageService'
 
 const ProfileScreen = ({ route, navigation }: any) => {
   const { userId } = route.params || {};
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { switchRole, isSwitching } = useRoleSwitch();
   const [error, setError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
@@ -107,20 +109,14 @@ const ProfileScreen = ({ route, navigation }: any) => {
   );
 
   const toggleRole = async () => {
-    if (!user) return;
+    if (!user || isSwitching) return;
     const newRole = user.role === 'EMPLOYER' ? 'WORKER' : 'EMPLOYER';
     try {
-        const updatedUser = await mapEngine.setRole(newRole);
-        updateUser(updatedUser);
-        useClientStore.getState().setActiveRole(newRole);
-        fetchProfile();
-        Alert.alert("Роль изменена", `Теперь вы ${newRole === 'EMPLOYER' ? 'Заказчик' : 'Мастер'}`);
-    } catch (e: any) {
-        if (e.response?.status === 403) {
-            Alert.alert("Ошибка", "Роль нельзя сменить — у вас уже есть заказы, заявки или чаты, привязанные к текущей роли");
-        } else {
-            Alert.alert("Ошибка", "Не удалось сменить роль");
-        }
+        await switchRole(newRole, () => {
+            fetchProfile();
+        });
+    } catch (e) {
+        // Handled inside switchRole hook
     }
   };
 
@@ -175,7 +171,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
   if (error || !user) {
     return (
       <SafeAreaView style={styles.center} edges={['top']}>
-        <Ionicons name="alert-circle-outline" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
+        <AppIcon name="status-warning" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
         <Text style={[styles.name, { marginBottom: 20, textAlign: 'center', paddingHorizontal: 30 }]}>{error || "Профиль не найден"}</Text>
         <TouchableOpacity
           style={[styles.mainActionBtn, { paddingHorizontal: 30 }]}
@@ -197,7 +193,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
           <Text style={styles.topHeaderTitle}>Профиль</Text>
           {isMe && (
               <TouchableOpacity onPress={() => setShowSettingsModal(true)} style={styles.settingsIconBtn}>
-                  <Ionicons name="settings-outline" size={24} color={COLORS.dark} />
+                  <AppIcon name="settings-outline" size={24} color={COLORS.dark} />
               </TouchableOpacity>
           )}
       </View>
@@ -215,7 +211,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                 )}
                 {isMe && (
                     <TouchableOpacity style={styles.editBadge} onPress={() => navigation.navigate('EditProfile')}>
-                        <Ionicons name="pencil" size={14} color="#fff" />
+                        <AppIcon name="action-edit" size={14} color="#fff" />
                     </TouchableOpacity>
                 )}
             </View>
@@ -242,7 +238,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                             style={styles.socialIconBtn}
                             onPress={() => Linking.openURL(`https://t.me/${user.telegram.replace('@', '')}`)}
                         >
-                            <Ionicons name="paper-plane" size={18} color="#0088cc" />
+                            <AppIcon name="action-send" size={18} color="#0088cc" />
                             <Text style={styles.socialText}>Telegram</Text>
                         </TouchableOpacity>
                     )}
@@ -251,7 +247,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                             style={styles.socialIconBtn}
                             onPress={() => Linking.openURL(user.instagram.startsWith('http') ? user.instagram : `https://instagram.com/${user.instagram}`)}
                         >
-                            <Ionicons name="logo-instagram" size={18} color="#e1306c" />
+                            <AppIcon name="logo-instagram" size={18} color="#e1306c" />
                             <Text style={styles.socialText}>Instagram</Text>
                         </TouchableOpacity>
                     )}
@@ -266,12 +262,33 @@ const ProfileScreen = ({ route, navigation }: any) => {
             </View>
         )}
 
+        {/* Trust Score & Verification Card */}
+        <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => isMe && navigation.navigate('Verification')}
+            style={styles.trustCard}
+        >
+            <View style={styles.trustHeader}>
+                <AppIcon name={user?.isVerified ? "sys-verified" : "sys-shield"}
+                    size={18}
+                    color={user?.isVerified ? '#10B981' : COLORS.warning}
+                />
+                <Text style={styles.trustCardLabel}>Индекс доверия:</Text>
+                <Text style={[styles.trustCardVal, { color: (user?.trustScore || 50) >= 80 ? '#10B981' : COLORS.warning }]}>
+                    {user?.trustScore || 50}/100
+                </Text>
+            </View>
+            <Text style={styles.trustCardDesc}>
+                {user?.isVerified ? "Профиль верифицирован (аккаунт подтвержден)" : "Профиль не верифицирован. Нажмите, чтобы подтвердить личность."}
+            </Text>
+        </TouchableOpacity>
+
         {/* Stats Row */}
         <View style={styles.statsRow}>
             <View style={styles.statItem}>
                 <Text style={styles.statValue}>{user?.rating?.toFixed(1) || '5.0'}</Text>
                 <View style={styles.ratingStars}>
-                    <Ionicons name="star" size={12} color={COLORS.warning} />
+                    <AppIcon name="sys-rating" size={12} color={COLORS.warning} />
                     <Text style={styles.statLabel}>Рейтинг</Text>
                 </View>
             </View>
@@ -317,7 +334,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                         <View style={styles.reviewHeader}>
                             <Text style={styles.reviewAuthor}>{rev.author?.name}</Text>
                             <View style={styles.reviewStars}>
-                                {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= rev.rating ? "star" : "star-outline"} size={12} color={COLORS.warning} />)}
+                                {[1,2,3,4,5].map(s => <AppIcon key={s} name={s <= rev.rating ? "sys-rating" : "sys-rating"} size={12} color={COLORS.warning} />)}
                             </View>
                         </View>
                         <Text style={styles.reviewOrder}>{rev.order?.title}</Text>
@@ -337,7 +354,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     style={styles.mainActionBtn}
                     onPress={() => navigation.navigate('EditProfile')}
                 >
-                    <Ionicons name="create-outline" size={20} color="#fff" />
+                    <AppIcon name="action-edit" size={20} color="#fff" />
                     <Text style={styles.mainActionText}>Редактировать профиль</Text>
                 </TouchableOpacity>
             </View>
@@ -349,13 +366,14 @@ const ProfileScreen = ({ route, navigation }: any) => {
                 <View style={styles.settingItem}>
                     <View style={styles.settingLeft}>
                         <View style={[styles.settingIcon, { backgroundColor: COLORS.primary + '15' }]}>
-                            <Ionicons name="briefcase-outline" size={20} color={COLORS.primary} />
+                            <AppIcon name="role-employer" size={20} color={COLORS.primary} />
                         </View>
                         <Text style={styles.settingLabel}>Режим мастера</Text>
                     </View>
                     <Switch
                         value={user?.role === 'WORKER'}
                         onValueChange={toggleRole}
+                        disabled={isSwitching}
                         trackColor={{ false: '#767577', true: COLORS.primary }}
                     />
                 </View>
@@ -364,26 +382,36 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('CategorySelection')}>
                         <View style={styles.settingLeft}>
                             <View style={[styles.settingIcon, { backgroundColor: COLORS.primary + '15' }]}>
-                                <Ionicons name="compass-outline" size={20} color={COLORS.primary} />
+                                <AppIcon name="sys-compass" size={20} color={COLORS.primary} />
                             </View>
                             <Text style={styles.settingLabel}>Сменить направление</Text>
                         </View>
-                        <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
+                        <AppIcon name="nav-forward" size={20} color={COLORS.gray} />
                     </TouchableOpacity>
                 )}
 
                 <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Subscription')}>
                     <View style={styles.settingLeft}>
                         <View style={[styles.settingIcon, { backgroundColor: COLORS.warning + '15' }]}>
-                            <Ionicons name="ribbon-outline" size={20} color={COLORS.warning} />
+                            <AppIcon name="sys-premium" size={20} color={COLORS.warning} />
                         </View>
                         <Text style={styles.settingLabel}>Подписка и PRO</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={20} color={COLORS.gray} />
+                    <AppIcon name="nav-forward" size={20} color={COLORS.gray} />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('Verification')}>
+                    <View style={styles.settingLeft}>
+                        <View style={[styles.settingIcon, { backgroundColor: '#10B981' + '15' }]}>
+                            <AppIcon name="status-done" size={20} color="#10B981" />
+                        </View>
+                        <Text style={styles.settingLabel}>Верификация личности</Text>
+                    </View>
+                    <AppIcon name="nav-forward" size={20} color={COLORS.gray} />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-                    <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
+                    <AppIcon name="sys-logout" size={20} color={COLORS.danger} />
                     <Text style={styles.logoutText}>Выйти из профиля</Text>
                 </TouchableOpacity>
             </View>
@@ -395,7 +423,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                         Alert.alert("Чат", "Перейдите в заказ, чтобы начать чат с этим пользователем.");
                     }}
                 >
-                    <Ionicons name="chatbubble-outline" size={20} color="#fff" />
+                    <AppIcon name="action-chat" size={20} color="#fff" />
                     <Text style={styles.messageBtnText}>Написать сообщение</Text>
                 </TouchableOpacity>
             </View>
@@ -414,7 +442,7 @@ const ProfileScreen = ({ route, navigation }: any) => {
                 <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>Настройки приложения</Text>
                     <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
-                        <Ionicons name="close-circle" size={28} color={COLORS.gray} />
+                        <AppIcon name="nav-close" size={28} color={COLORS.gray} />
                     </TouchableOpacity>
                 </View>
 
@@ -452,14 +480,14 @@ const ProfileScreen = ({ route, navigation }: any) => {
                     <Text style={styles.modalSectionTitle}>Обслуживание</Text>
 
                     <TouchableOpacity style={styles.modalBtn} onPress={handleClearCache}>
-                        <Ionicons name="trash-outline" size={20} color={COLORS.dark} style={{ marginRight: 10 }} />
+                        <AppIcon name="action-delete" size={20} color={COLORS.dark} style={{ marginRight: 10 }} />
                         <Text style={styles.modalBtnText}>Очистить локальный кэш</Text>
                     </TouchableOpacity>
 
                     <Text style={styles.modalSectionTitle}>Опасная зона</Text>
 
                     <TouchableOpacity style={[styles.modalBtn, styles.dangerBtn]} onPress={handleDeleteAccount}>
-                        <Ionicons name="trash-outline" size={20} color="#fff" style={{ marginRight: 10 }} />
+                        <AppIcon name="action-delete" size={20} color="#fff" style={{ marginRight: 10 }} />
                         <Text style={styles.dangerBtnText}>УДАЛИТЬ АККАУНТ</Text>
                     </TouchableOpacity>
                 </ScrollView>
@@ -545,7 +573,39 @@ const styles = StyleSheet.create({
   dangerBtn: { backgroundColor: COLORS.danger, padding: 15, borderRadius: 15, justifyContent: 'center', marginTop: 15, borderBottomWidth: 0 },
   dangerBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   modalFooter: { alignItems: 'center', marginTop: 10, paddingBottom: 10 },
-  versionText: { fontSize: 12, color: COLORS.gray, fontWeight: '600' }
+  versionText: { fontSize: 12, color: COLORS.gray, fontWeight: '600' },
+  trustCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    ...SHADOWS.soft,
+    borderWidth: 1,
+    borderColor: 'rgba(226, 232, 240, 0.4)'
+  },
+  trustHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  trustCardLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.dark,
+    marginLeft: 6,
+    flex: 1
+  },
+  trustCardVal: {
+    fontSize: 15,
+    fontWeight: '900'
+  },
+  trustCardDesc: {
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 16,
+    fontWeight: '500'
+  }
 });
 
 export default ProfileScreen;

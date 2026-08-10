@@ -17,6 +17,7 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CategorySelectionScreen from '../screens/CategorySelectionScreen';
+import CreateOrderScreen from '../screens/CreateOrderScreen';
 
 const Stack = createStackNavigator();
 
@@ -38,6 +39,7 @@ export default function Navigation() {
           <Stack.Screen name="RegisterDetails" component={RegisterDetailsScreen} />
           <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
           <Stack.Screen name="CategorySelection" component={CategorySelectionScreen} />
+          <Stack.Screen name="CreateOrder" component={CreateOrderScreen} options={{headerShown: true, title: 'Создать заказ'}} />
           <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{headerShown: true, title: 'Заказ'}} />
           <Stack.Screen name="EditOrder" component={EditOrderScreen} options={{headerShown: true, title: 'Редактирование'}} />
           <Stack.Screen name="InviteFriends" component={InviteFriendsScreen} options={{headerShown: true, title: 'Пригласить друзей'}} />

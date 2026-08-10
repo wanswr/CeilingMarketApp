@@ -1,6 +1,6 @@
+import AppIcon from './AppIcon';
 import React from 'react';
 import { TouchableOpacity, View, Text, StyleSheet, ActivityIndicator } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
 import { Swipeable } from 'react-native-gesture-handler'
 import { Order, OrderStatus } from '../types'
 import { COLORS, SHADOWS } from '../constants/theme'
@@ -72,7 +72,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
     if (isEmployer && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
       return (
         <TouchableOpacity style={styles.deleteAction} onPress={onDelete}>
-          <Ionicons name="trash-outline" size={24} color="#fff" />
+          <AppIcon name="action-delete" size={24} color="#fff" />
           <Text style={styles.actionText}>Удалить</Text>
         </TouchableOpacity>
       );
@@ -81,7 +81,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
     if (hasApplied && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
       return (
         <TouchableOpacity style={styles.deleteAction} onPress={onCancelApplication}>
-          <Ionicons name="close-circle-outline" size={24} color="#fff" />
+          <AppIcon name="nav-close" size={24} color="#fff" />
           <Text style={styles.actionText}>Отказать</Text>
         </TouchableOpacity>
       );
@@ -94,7 +94,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
     if (isEmployer && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
       return (
         <TouchableOpacity style={styles.editAction} onPress={onEdit}>
-          <Ionicons name="create-outline" size={24} color="#fff" />
+          <AppIcon name="action-edit" size={24} color="#fff" />
           <Text style={styles.actionText}>Правка</Text>
         </TouchableOpacity>
       );
@@ -103,7 +103,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
     if (!isEmployer && order.status === 'CLAIMED' && amIExecutor) {
       return (
         <TouchableOpacity style={styles.startAction} onPress={onStart} disabled={submitting}>
-          {submitting ? <ActivityIndicator color="#fff" /> : <Ionicons name="play-outline" size={24} color="#fff" />}
+          {submitting ? <ActivityIndicator color="#fff" /> : <AppIcon name="status-active" size={24} color="#fff" />}
           <Text style={styles.actionText}>{submitting ? 'Запуск...' : 'Начать'}</Text>
         </TouchableOpacity>
       );
@@ -112,7 +112,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
     if (!isEmployer && order.status === 'IN_PROGRESS' && amIExecutor) {
       return (
         <TouchableOpacity style={styles.completeAction} onPress={onComplete} disabled={submitting}>
-          {submitting ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-done-outline" size={24} color="#fff" />}
+          {submitting ? <ActivityIndicator color="#fff" /> : <AppIcon name="status-done" size={24} color="#fff" />}
           <Text style={styles.actionText}>{submitting ? 'Завершение...' : 'Завершить'}</Text>
         </TouchableOpacity>
       );
@@ -133,7 +133,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
       >
         <View style={styles.header}>
           <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '15' }]}>
-            <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
+            <AppIcon name={statusInfo.icon as any} size={14} color={statusInfo.color} />
             <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
           </View>
           <View style={styles.priceContainer}>
@@ -150,14 +150,14 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
         </View>
 
         <View style={styles.infoRow}>
-          <Ionicons name="location-outline" size={16} color={COLORS.gray} />
+          <AppIcon name="sys-location" size={16} color={COLORS.gray} />
           <Text style={styles.infoText} numberOfLines={1}>{order.address}</Text>
         </View>
 
         <View style={styles.footer}>
           <View style={styles.metaInfo}>
             <View style={styles.metaItem}>
-              <Ionicons name="calendar-outline" size={14} color={COLORS.gray} />
+              <AppIcon name="sys-calendar" size={14} color={COLORS.gray} />
               <Text style={styles.metaText}>{formatDate(order.date)}</Text>
             </View>
             {hasApplied && !isEmployer && (
@@ -169,7 +169,7 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
             )}
             {isEmployer && order.applications && order.applications.length > 0 && (
                <View style={styles.metaItem}>
-                 <Ionicons name="people-outline" size={14} color={COLORS.primary} />
+                 <AppIcon name="sys-friends" size={14} color={COLORS.primary} />
                  <Text style={[styles.metaText, { color: COLORS.primary, fontWeight: '700' }]}>
                    {order.applications.length} откл.
                  </Text>
@@ -185,11 +185,11 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
                     style={[styles.chatButton, { backgroundColor: COLORS.warning + "20" }]}
                     onPress={onPress}
                   >
-                    <Ionicons name="star-outline" size={20} color={COLORS.warning} />
+                    <AppIcon name="sys-rating" size={20} color={COLORS.warning} />
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity style={styles.chatButton} onPress={onChat}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
+                  <AppIcon name="action-chat" size={20} color={COLORS.primary} />
                 </TouchableOpacity>
               </View>
           )}

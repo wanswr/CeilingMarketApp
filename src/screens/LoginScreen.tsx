@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState } from 'react';
 import { logger } from '../services/logger/LoggerService';
 
@@ -21,7 +22,6 @@ import { AppInput } from '../components/Input'
 import { Button } from '../components/Button'
 import { mapEngine } from '../services/MapEngine'
 import { COLORS, SHADOWS } from '../constants/theme'
-import { Ionicons } from '@expo/vector-icons'
 import { apiService } from '../services/ApiService'
 
 export default function LoginScreen({ navigation }: any) {
@@ -72,7 +72,7 @@ export default function LoginScreen({ navigation }: any) {
             >
               <View style={styles.header}>
                 <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.logoContainer}>
-                  <Ionicons name="construct" size={50} color="#fff" />
+                  <AppIcon name="role-worker" size={50} color="#fff" />
                 </LinearGradient>
                 <Text style={styles.title}>CeilingsApp</Text>
                 <Text style={styles.subtitle}>Профессиональный маркетплейс мастеров по потолкам</Text>
@@ -86,7 +86,7 @@ export default function LoginScreen({ navigation }: any) {
                   onChangeText={setPhone}
                   keyboardType="phone-pad"
                   placeholder="+7 (___) ___-__-__"
-                  icon={<Ionicons name="call-outline" size={20} color={COLORS.primary} />}
+                  icon={<AppIcon name="sys-phone" size={20} color={COLORS.primary} />}
                 />
                 <TouchableOpacity
                   style={styles.termsRow}
@@ -94,7 +94,7 @@ export default function LoginScreen({ navigation }: any) {
                   activeOpacity={0.7}
                 >
                   <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-                    {acceptedTerms && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    {acceptedTerms && <AppIcon name="sys-check" size={16} color="#fff" />}
                   </View>
                   <Text style={styles.termsTextLabel}>
                     Согласен с <Text style={styles.termsLink}>Политикой конфиденциальности</Text> и обработкой персональных данных

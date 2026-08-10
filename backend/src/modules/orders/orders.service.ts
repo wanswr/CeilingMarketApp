@@ -157,7 +157,8 @@ export class OrdersService {
     if (!creator || creator.deletedAt) {
       throw new ForbiddenException('User account is deleted');
     }
-    if (creator.role !== 'EMPLOYER') {
+    const creatorRoles = creator.roles && creator.roles.length > 0 ? creator.roles : [creator.role].filter(Boolean);
+    if (!creatorRoles.includes('EMPLOYER') || creator.role !== 'EMPLOYER') {
       throw new ForbiddenException('Только заказчик может публиковать заказы');
     }
 
@@ -351,7 +352,11 @@ export class OrdersService {
   async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
     // Validate executor role (must be WORKER to apply)
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
-    if (!executor || executor.role !== Role.WORKER || executor.deletedAt) {
+    if (!executor || executor.deletedAt) {
+        throw new ForbiddenException('Only workers are allowed to apply to orders');
+    }
+    const executorRoles = executor.roles && executor.roles.length > 0 ? executor.roles : [executor.role].filter(Boolean);
+    if (!executorRoles.includes(Role.WORKER) || executor.role !== Role.WORKER) {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
     }
 
@@ -380,6 +385,17 @@ export class OrdersService {
         // Check if the order status is open for applications
         if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
             throw new ConflictException('Order is no longer open for applications');
+        }
+
+        // Row-level lock on parent Order row to eliminate concurrent application race conditions
+        await tx.$executeRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+
+        // Limit maximum applications to 10
+        const appCount = await tx.application.count({
+          where: { orderId }
+        });
+        if (appCount >= 10) {
+          throw new ConflictException('Maximum application limit reached');
         }
 
         const app = await tx.application.create({
