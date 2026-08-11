@@ -1,292 +1,280 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateOrderDto } from './dto/create-order.dto';
-import { OrderStatus, WorkType } from '@prisma/client';
+import { OrderStatus, Prisma, Role } from '@prisma/client';
+import { ORDER_STATE_MACHINE } from './order-state-machine';
 import { AppGateway } from '../gateway/app.gateway';
+import { LoggerService } from '../logger/logger.service';
+import { ChatsService } from '../chats/chats.service';
+import { OrderParserService } from './order-parser.service';
+import { OrderSpatialService } from './order-spatial.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private prisma: PrismaService,
     private gateway: AppGateway,
-  ) {}
-
-  /**
-   * Status transitions map: defines legal state changes.
-   */
-  private readonly transitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.PENDING]: [OrderStatus.PUBLISHED],
-    [OrderStatus.PUBLISHED]: [OrderStatus.HAS_RESPONSES, OrderStatus.CANCELLED],
-    [OrderStatus.HAS_RESPONSES]: [OrderStatus.CLAIMED, OrderStatus.CANCELLED],
-    [OrderStatus.CLAIMED]: [OrderStatus.IN_PROGRESS, OrderStatus.CANCELLED],
-    [OrderStatus.IN_PROGRESS]: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
-    [OrderStatus.COMPLETED]: [],
-    [OrderStatus.CANCELLED]: [],
-    [OrderStatus.DISPUTE]: [],
-  };
-
-  /**
-   * CREATE: Implements idempotency and sets initial status.
-   */
-  async create(dto: CreateOrderDto, employerId: string) {
-    if (dto.idempotencyKey) {
-      const existing = await this.prisma.order.findUnique({
-        where: { idempotencyKey: dto.idempotencyKey }
-      });
-      if (existing) return existing;
-    }
-
-    console.log(`[OrdersService] Creating order for employer: ${employerId}`);
-    const order = await this.prisma.order.create({
-      data: {
-        title: dto.title,
-        address: dto.address,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
-        price: dto.price,
-        details: dto.details,
-        workType: dto.workType as WorkType,
-        date: new Date(dto.date),
-        images: dto.images || [],
-        employerId,
-        idempotencyKey: dto.idempotencyKey,
-        status: OrderStatus.PUBLISHED, // Target status for new orders
-      },
-    });
-
-    this.gateway.broadcast('order.created', { order, orderId: order.id, employerId: order.employerId });
-    return order;
+    private logger: LoggerService,
+    private chats: ChatsService,
+    private orderParserService: OrderParserService,
+    private orderSpatialService: OrderSpatialService,
+  ) {
+    this.logger.setService('OrdersService');
   }
 
-  /**
-   * APPLY for order: Creates an Application and updates order status if needed.
-   */
-  async apply(orderId: string, executorId: string, price?: number) {
-    const result = await this.prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { id: orderId } });
-      if (!order) throw new NotFoundException('Order not found');
+  private sanitizeOrderForPublic(order: any) {
+    if (!order) return null;
+    return {
+      id: order.id,
+      title: order.title,
+      price: order.price,
+      status: order.status,
+      workType: order.workType,
+      categoryId: order.categoryId,
+      createdAt: order.createdAt,
+      employer: order.employer ? {
+        id: order.employer.id,
+        name: order.employer.name,
+        avatar: order.employer.avatar,
+        rating: order.employer.rating,
+      } : null,
+      statusHistory: order.statusHistory || []
+    };
+  }
 
-      if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
-        throw new ConflictException('Order is no longer available for applications');
-      }
-
-      // 2. Check for existing application (idempotency)
-      const existingApp = await tx.application.findUnique({
-        where: { orderId_executorId: { orderId, executorId } },
-        include: {
-          executor: { select: { id: true, name: true, rating: true, avatar: true, completedOrders: true } }
-        }
-      });
-
-      if (existingApp) return { application: existingApp, order };
-
-      // 3. Create application
-      const application = await tx.application.create({
+  private async logStatusHistory(tx: any, orderId: string, oldStatus: OrderStatus, newStatus: OrderStatus, changedById?: string) {
+    const targetStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
+    if (targetStatuses.includes(newStatus)) {
+      await tx.orderStatusHistory.create({
         data: {
           orderId,
-          executorId,
-          price: price || order.price,
-        },
-        include: {
-          executor: { select: { id: true, name: true, rating: true, avatar: true, completedOrders: true } }
+          oldStatus,
+          newStatus,
+          changedById
         }
       });
-
-      // Update order status if first application
-      let updatedOrder = order;
-      if (order.status === OrderStatus.PUBLISHED) {
-        updatedOrder = await tx.order.update({
-          where: { id: orderId },
-          data: { status: OrderStatus.HAS_RESPONSES }
-        });
-      }
-
-      return { application, order: updatedOrder };
-    });
-
-    this.gateway.broadcast('application.new', result.application);
-    this.gateway.broadcast('order.status.changed', result.order);
-    return result;
-  }
-
-  /**
-   * ACCEPT APPLICATION: Employer selects an executor.
-   */
-  async acceptApplication(applicationId: string, employerId: string) {
-    const result = await this.prisma.$transaction(async (tx) => {
-      const application = await tx.application.findUnique({
-        where: { id: applicationId },
-        include: { order: true }
-      });
-
-      if (!application) throw new NotFoundException('Application not found');
-      if (application.order.employerId !== employerId) throw new ForbiddenException();
-
-      // Update application status
-      await tx.application.update({
-        where: { id: applicationId },
-        data: { status: 'ACCEPTED' }
-      });
-
-      // Reject other applications
-      const otherApplications = await tx.application.findMany({
-        where: { orderId: application.orderId, id: { not: applicationId } },
-        select: { id: true, executorId: true }
-      });
-
-      await tx.application.updateMany({
-        where: { orderId: application.orderId, id: { not: applicationId } },
-        data: { status: 'REJECTED' }
-      });
-
-      // Update order
-      const updatedOrder = await tx.order.update({
-        where: { id: application.orderId },
-        data: {
-          status: OrderStatus.CLAIMED,
-          executorId: application.executorId,
-          claimedAt: new Date(),
-        },
-        include: {
-          employer: { select: { id: true, name: true, rating: true, avatar: true } },
-          executor: { select: { id: true, name: true, avatar: true } }
-        }
-      });
-
-      return {
-        order: updatedOrder,
-        acceptedApplicationId: applicationId,
-        rejectedApplicationIds: otherApplications.map(a => a.id)
-      };
-    });
-
-    this.gateway.broadcast('order.status.changed', result.order);
-    this.gateway.broadcast('application.accepted', { id: result.acceptedApplicationId });
-    result.rejectedApplicationIds.forEach(id => {
-      this.gateway.broadcast('application.rejected', { id });
-    });
-    return result;
-  }
-
-  async startWork(orderId: string, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) throw new NotFoundException();
-    if (order.executorId !== userId) throw new ForbiddenException();
-
-    if (order.status !== OrderStatus.CLAIMED) {
-      throw new ConflictException('Order must be in CLAIMED status to start work');
     }
-
-    const result = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.IN_PROGRESS },
-      include: {
-        employer: { select: { id: true, name: true, rating: true, avatar: true } },
-        executor: { select: { id: true, name: true, avatar: true } }
-      }
-    });
-
-    this.gateway.broadcast('order.status.changed', result);
-    return result;
-  }
-
-  async completeWork(orderId: string, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) throw new NotFoundException();
-
-    // Only executor can complete
-    if (order.executorId !== userId) throw new ForbiddenException();
-
-    if (order.status !== OrderStatus.IN_PROGRESS) {
-      throw new ConflictException('Order must be IN_PROGRESS to be completed');
-    }
-
-    const result = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.COMPLETED },
-      include: {
-        employer: { select: { id: true, name: true, rating: true, avatar: true } },
-        executor: { select: { id: true, name: true, avatar: true } }
-      }
-    });
-
-    this.gateway.broadcast('order.status.changed', result);
-    return result;
-  }
-
-  /**
-   * TRANSITION: Guarded status changes using centralized transition map
-   */
-  async transitionStatus(orderId: string, newStatus: OrderStatus, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) throw new NotFoundException();
-
-    // Permissions check
-    const isEmployer = order.employerId === userId;
-    const isExecutor = order.executorId === userId;
-    if (!isEmployer && !isExecutor) throw new ForbiddenException();
-
-    // State Machine Rules
-    if (!this.canTransition(order.status, newStatus)) {
-      throw new ConflictException(`Transition ${order.status} -> ${newStatus} not allowed`);
-    }
-
-    const result = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: newStatus }
-    });
-
-    this.gateway.broadcast('order.status.changed', result);
-    return result;
   }
 
   private canTransition(from: OrderStatus, to: OrderStatus): boolean {
-    return this.transitions[from]?.includes(to) || false;
+    const currentTransitions = ORDER_STATE_MACHINE[from];
+    if (!currentTransitions) return false;
+    return !!currentTransitions[to];
   }
 
-  async findAll(filters: { lat?: number; lng?: number; radius?: number; minPrice?: number; status?: string }) {
-    const { lat, lng, radius, minPrice, status } = filters;
+  private validateTransition(
+    order: any,
+    toStatus: OrderStatus,
+    userId: string,
+    isSystem = false
+  ): void {
+    const fromStatus = order.status;
 
-    const where: any = {};
-    if (minPrice) where.price = { gte: minPrice };
-    if (status) where.status = status as OrderStatus;
-
-    if (lat && lng && radius) {
-      const R = 6371;
-      const dLat = (radius / R) * (180 / Math.PI);
-      const dLng = (radius / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
-
-      where.latitude = { gte: lat - dLat, lte: lat + dLat };
-      where.longitude = { gte: lng - dLng, lte: lng + dLng };
+    if (fromStatus === toStatus) {
+      throw new ConflictException(`Cannot transition from ${fromStatus} to ${toStatus}`);
     }
 
-    return this.prisma.order.findMany({
-      where,
-      include: {
-        employer: { select: { id: true, name: true, rating: true, avatar: true } }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const currentTransitions = ORDER_STATE_MACHINE[fromStatus];
+    if (!currentTransitions) {
+      throw new ConflictException(`Cannot transition from ${fromStatus} to ${toStatus}`);
+    }
+
+    const rule = currentTransitions[toStatus];
+    if (!rule) {
+      throw new ConflictException(`Cannot transition from ${fromStatus} to ${toStatus}`);
+    }
+
+    if (rule.requiresParticipant === 'system' && !isSystem) {
+      throw new ConflictException(`Cannot transition from ${fromStatus} to ${toStatus}`);
+    }
+
+    if (isSystem) {
+      return;
+    }
+
+    if (rule.requiresParticipant === 'employer') {
+      if (order.employerId !== userId) {
+        throw new ForbiddenException(`Only the employer can transition this order to ${toStatus}`);
+      }
+    } else if (rule.requiresParticipant === 'executor') {
+      if (order.executorId !== userId) {
+        throw new ForbiddenException(`Only the executor can transition this order to ${toStatus}`);
+      }
+    } else if (rule.requiresParticipant === 'any') {
+      if (order.employerId !== userId && order.executorId !== userId) {
+        throw new ForbiddenException(`Only order participants can transition this order to ${toStatus}`);
+      }
+    }
   }
 
-  async findOne(id: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id },
-      include: {
-        employer: true,
-        executor: true,
-        applications: {
-          include: {
-            executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
-          }
-        }
+  private async broadcast(event: string, payload: any, userId?: string) {
+      let activeRole = 'none';
+      if (userId) {
+          try {
+              const user = await this.prisma.user.findUnique({ where: { id: userId } });
+              if (user) {
+                  activeRole = user.role || 'none';
+              }
+          } catch (e) {}
+      }
+
+      let dataPayload = payload;
+      if ((event === 'order.created' || event === 'order.status.changed') && payload?.id) {
+          try {
+              const lightweightOrder = await this.prisma.order.findUnique({
+                  where: { id: payload.id },
+                  select: {
+                      id: true,
+                      latitude: true,
+                      longitude: true,
+                      price: true,
+                      status: true,
+                      title: true,
+                      workType: true,
+                      updatedAt: true,
+                      employer: { select: { id: true, name: true, rating: true, avatar: true } },
+                      _count: { select: { applications: true } }
+                  }
+              });
+              if (lightweightOrder) {
+                  dataPayload = lightweightOrder;
+              }
+          } catch (err) {}
+      }
+
+      this.gateway.broadcast(event, {
+          event,
+          eventType: event,
+          eventId: randomUUID(),
+          userId: userId || 'system',
+          activeRole,
+          data: dataPayload
+      });
+  }
+
+  async create(dto: any, userId: string) {
+    const creator = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!creator || creator.deletedAt) {
+      throw new ForbiddenException('User account is deleted');
+    }
+    const creatorRoles = creator.roles && creator.roles.length > 0 ? creator.roles : [creator.role].filter(Boolean);
+    if (!creatorRoles.includes('EMPLOYER') || creator.role !== 'EMPLOYER') {
+      throw new ForbiddenException('Только заказчик может публиковать заказы');
+    }
+
+    let categoryId = dto.categoryId;
+    if (!categoryId) {
+      const ceilingCategory = await this.prisma.category.findUnique({
+        where: { slug: 'ceilings' }
+      });
+      if (ceilingCategory) {
+        categoryId = ceilingCategory.id;
+      }
+    }
+
+    const { idempotencyKey } = dto;
+
+    const whitelist: any = {
+      title: dto.title,
+      address: dto.address,
+      latitude: dto.latitude !== undefined ? Number(dto.latitude) : undefined,
+      longitude: dto.longitude !== undefined ? Number(dto.longitude) : undefined,
+      date: dto.date ? new Date(dto.date) : undefined,
+      price: dto.price !== undefined ? Number(dto.price) : undefined,
+      details: dto.details,
+      workType: dto.workType,
+      images: dto.images,
+      categoryId,
+    };
+
+    Object.keys(whitelist).forEach(key => {
+      if (whitelist[key] === undefined) {
+        delete whitelist[key];
       }
     });
-    if (!order) throw new NotFoundException();
+
+    if (idempotencyKey) {
+      const existing = await this.prisma.order.findUnique({
+        where: { idempotencyKey }
+      });
+      if (existing) {
+        this.logger.info('ORDER_CREATE_IDEMPOTENT_HIT', 'Order already created, returning existing', { orderId: existing.id, idempotencyKey });
+        return existing;
+      }
+
+      try {
+        const order = await this.prisma.order.create({
+          data: {
+            ...whitelist,
+            idempotencyKey,
+            employerId: userId,
+            status: OrderStatus.PUBLISHED,
+          },
+        });
+        this.logger.info('ORDER_CREATED', `Order created successfully with idempotencyKey`, { userId, orderId: order.id, idempotencyKey });
+        await this.broadcast('order.created', order, userId);
+        return order;
+      } catch (error: any) {
+        if (error.code === 'P2002') {
+          const duplicate = await this.prisma.order.findUnique({
+            where: { idempotencyKey }
+          });
+          if (duplicate) {
+            this.logger.info('ORDER_CREATE_IDEMPOTENT_RACE_HIT', 'Order already created by parallel request, returning existing', { orderId: duplicate.id, idempotencyKey });
+            return duplicate;
+          }
+        }
+        throw error;
+      }
+    }
+
+    const order = await this.prisma.order.create({
+      data: {
+        ...whitelist,
+        employerId: userId,
+        status: OrderStatus.PUBLISHED,
+      },
+    });
+    this.logger.info('ORDER_CREATED', `Order created successfully`, { userId, orderId: order.id });
+    await this.broadcast('order.created', order, userId);
     return order;
   }
 
-  async findMyOrders(userId: string) {
+
+
+  async findOne(id: string, requesterId?: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: {
+        employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+        executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+        reviews: true,
+        statusHistory: { orderBy: { createdAt: 'asc' } }
+      }
+    });
+    if (!order) throw new NotFoundException();
+
+    if (requesterId && requesterId === order.employerId) {
+      const applications = await this.prisma.application.findMany({
+        where: { orderId: id },
+        include: {
+          executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+        }
+      });
+      return { ...order, applications };
+    }
+
+    if (requesterId && requesterId === order.executorId) {
+      return order;
+    }
+
+    return this.sanitizeOrderForPublic(order);
+  }
+
+  async findMyOrders(userId: string, params?: { skip?: number; take?: number }) {
+    const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
+    const take = params?.take !== undefined ? Number(params.take) : 50;
+
     return this.prisma.order.findMany({
       where: {
         OR: [
@@ -299,11 +287,13 @@ export class OrdersService {
         employer: { select: { id: true, name: true, rating: true, avatar: true } },
         executor: { select: { id: true, name: true, avatar: true } },
         applications: {
-          where: { executorId: userId },
-          select: { id: true, status: true, price: true }
+            where: { executorId: userId },
+            select: { id: true, status: true, price: true }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take
     });
   }
 
@@ -312,28 +302,296 @@ export class OrdersService {
     if (!order) throw new NotFoundException();
     if (order.employerId !== userId) throw new ForbiddenException();
 
-    // If status is being changed, validate transition
     if (dto.status && dto.status !== order.status) {
-      if (!this.canTransition(order.status, dto.status)) {
-        throw new ConflictException(`Transition ${order.status} -> ${dto.status} not allowed`);
-      }
+      this.validateTransition(order, dto.status, userId, false);
+    }
+
+    const whitelist: any = {};
+    if (dto.title !== undefined) whitelist.title = dto.title;
+    if (dto.details !== undefined) whitelist.details = dto.details;
+    if (dto.address !== undefined) whitelist.address = dto.address;
+    if (dto.price !== undefined) whitelist.price = Number(dto.price);
+    if (dto.date !== undefined) whitelist.date = new Date(dto.date);
+    if (dto.images !== undefined) whitelist.images = dto.images;
+    if (dto.status !== undefined && dto.status !== order.status) {
+      whitelist.status = dto.status;
     }
 
     const result = await this.prisma.order.update({
       where: { id },
-      data: dto
+      data: whitelist
     });
 
-    this.gateway.broadcast('order.status.changed', result);
+    await this.broadcast('order.status.changed', result, userId);
     return result;
   }
 
   async remove(id: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
+
+    // Fetch chat IDs before deleting
+    const chats = await this.prisma.chat.findMany({
+        where: { orderId: id },
+        select: { id: true }
+    });
+    const chatIds = chats.map(c => c.id);
+
     await this.prisma.order.delete({ where: { id } });
-    this.gateway.broadcast('order.deleted', { id });
+
+    await this.broadcast('order.deleted', {
+        id,
+        employerId: order.employerId,
+        executorId: order.executorId,
+        chatIds
+    }, userId);
+
     return { id };
+  }
+
+  async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
+    // Validate executor role (must be WORKER to apply)
+    const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
+    if (!executor || executor.deletedAt) {
+        throw new ForbiddenException('Only workers are allowed to apply to orders');
+    }
+    const executorRoles = executor.roles && executor.roles.length > 0 ? executor.roles : [executor.role].filter(Boolean);
+    if (!executorRoles.includes(Role.WORKER) || executor.role !== Role.WORKER) {
+        throw new ForbiddenException('Only workers are allowed to apply to orders');
+    }
+
+    if (idempotencyKey) {
+      const existingApp = await this.prisma.application.findUnique({
+        where: { idempotencyKey }
+      });
+      if (existingApp) {
+        this.logger.info('ORDER_APPLY_IDEMPOTENT_HIT', 'Application already exists with this idempotencyKey', { idempotencyKey });
+        const currentOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+        return { app: existingApp, order: currentOrder };
+      }
+    }
+
+    const existing = await this.prisma.application.findUnique({
+      where: { orderId_executorId: { orderId, executorId } }
+    });
+    if (existing) throw new ConflictException('Already applied');
+
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        // Read actual status from database INSIDE the transaction
+        const order = await tx.order.findUnique({ where: { id: orderId } });
+        if (!order) throw new NotFoundException('Order not found');
+
+        // Check if the order status is open for applications
+        if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
+            throw new ConflictException('Order is no longer open for applications');
+        }
+
+        // Row-level lock on parent Order row to eliminate concurrent application race conditions
+        await tx.$executeRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+
+        // Limit maximum applications to 10
+        const appCount = await tx.application.count({
+          where: { orderId }
+        });
+        if (appCount >= 10) {
+          throw new ConflictException('Maximum application limit reached');
+        }
+
+        const app = await tx.application.create({
+          data: { orderId, executorId, price, status: 'PENDING', idempotencyKey }
+        });
+
+        let updatedOrder = order;
+        if (order.status === OrderStatus.PUBLISHED) {
+          updatedOrder = await tx.order.update({
+            where: { id: orderId },
+            data: { status: OrderStatus.HAS_RESPONSES }
+          });
+        }
+
+        return { app, order: updatedOrder };
+      });
+
+      this.logger.info('ORDER_APPLIED', `New application for order ${result.order.id}`, { orderId: result.order.id, userId: executorId });
+      await this.broadcast('application.new', result.app, executorId);
+      await this.broadcast('order.status.changed', result.order, executorId);
+      return result.app;
+    } catch (error: any) {
+      if (idempotencyKey && error.code === 'P2002') {
+        const duplicateApp = await this.prisma.application.findUnique({
+          where: { idempotencyKey }
+        });
+        if (duplicateApp) {
+          this.logger.info('ORDER_APPLY_IDEMPOTENT_RACE_HIT', 'Application created by parallel request, returning existing', { idempotencyKey });
+          const currentOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+          return { app: duplicateApp, order: currentOrder };
+        }
+      }
+      if (error.code === 'P2002') {
+        throw new ConflictException('Already applied');
+      }
+      throw error;
+    }
+  }
+
+  async markApplicationViewed(applicationId: string, userId: string) {
+     const app = await this.prisma.application.findUnique({
+         where: { id: applicationId },
+         include: { order: true }
+     });
+     if (!app || app.order.employerId !== userId) throw new ForbiddenException();
+     return this.prisma.application.update({
+         where: { id: applicationId },
+         data: { status: 'VIEWED' }
+     });
+  }
+
+  async acceptApplication(applicationId: string, userId: string) {
+     const app = await this.prisma.application.findUnique({
+         where: { id: applicationId },
+         include: { order: true, executor: true }
+     });
+     if (!app || app.order.employerId !== userId) throw new ForbiddenException();
+     if (app.executor?.deletedAt) {
+         throw new ConflictException('Executor account is deleted');
+     }
+
+     // Conflict Check: Is order already claimed or in progress?
+     this.validateTransition(app.order, OrderStatus.CLAIMED, userId, true);
+
+     const result = await this.prisma.$transaction(async (tx) => {
+         const updatedCount = await tx.order.updateMany({
+             where: {
+                 id: app.orderId,
+                 status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] }
+             },
+             data: {
+                 status: OrderStatus.CLAIMED,
+                 executorId: app.executorId,
+                 claimedAt: new Date()
+             }
+         });
+
+         if (updatedCount.count === 0) {
+             throw new ConflictException('Cannot accept application. Order has already been claimed or status has changed.');
+         }
+
+         const updatedOrder = await tx.order.findUnique({
+             where: { id: app.orderId }
+         });
+
+         if (!updatedOrder) {
+             throw new NotFoundException('Order not found');
+         }
+
+         await this.logStatusHistory(tx, app.orderId, app.order.status, OrderStatus.CLAIMED, userId);
+
+         await tx.application.update({
+             where: { id: applicationId },
+             data: { status: 'ACCEPTED' }
+         });
+
+         // V12: Auto-reject all other applications for this order
+         await tx.application.updateMany({
+             where: {
+                 orderId: app.orderId,
+                 id: { not: applicationId }
+             },
+             data: { status: 'REJECTED' }
+         });
+
+         // Auto-create chat
+         await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId, tx);
+
+         return updatedOrder;
+     });
+
+     this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.id}`, { orderId: result.id, userId });
+     await this.broadcast('order.status.changed', result, userId);
+     await this.broadcast('application.accepted', { orderId: result.id, executorId: app.executorId }, userId);
+     return result;
+  }
+
+  async startWork(id: string, userId: string) {
+      const order = await this.prisma.order.findUnique({ where: { id } });
+      if (!order) throw new NotFoundException();
+
+      this.validateTransition(order, OrderStatus.IN_PROGRESS, userId, false);
+
+      const updateResult = await this.prisma.order.updateMany({
+          where: {
+              id,
+              status: OrderStatus.CLAIMED,
+              executorId: userId
+          },
+          data: { status: OrderStatus.IN_PROGRESS }
+      });
+
+      if (updateResult.count === 0) {
+          throw new ConflictException('Cannot start work. Status changed or executor mismatch.');
+      }
+
+      await this.logStatusHistory(this.prisma, id, order.status, OrderStatus.IN_PROGRESS, userId);
+
+      const result = await this.prisma.order.findUnique({
+          where: { id },
+          include: {
+              employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              reviews: true,
+              statusHistory: true
+          }
+      });
+
+      this.logger.info('ORDER_STARTED', `Order started by executor`, { orderId: result!.id, userId });
+      await this.broadcast('order.status.changed', result, userId);
+      return result!;
+  }
+
+  async completeWork(id: string, userId: string) {
+      const order = await this.prisma.order.findUnique({ where: { id } });
+      if (!order) throw new NotFoundException();
+
+      this.validateTransition(order, OrderStatus.COMPLETED, userId, false);
+
+      const updateResult = await this.prisma.order.updateMany({
+          where: {
+              id,
+              status: OrderStatus.IN_PROGRESS,
+              executorId: userId
+          },
+          data: { status: OrderStatus.COMPLETED }
+      });
+
+      if (updateResult.count === 0) {
+          throw new ConflictException('Cannot complete work. Status changed or executor mismatch.');
+      }
+
+      await this.logStatusHistory(this.prisma, id, order.status, OrderStatus.COMPLETED, userId);
+
+      const result = await this.prisma.order.findUnique({
+          where: { id },
+          include: {
+              employer: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } },
+              reviews: true,
+              statusHistory: true
+          }
+      });
+
+      this.logger.info('ORDER_COMPLETED', `Order completed by executor`, { orderId: result!.id, userId });
+      await this.broadcast('order.status.changed', result, userId);
+      return result!;
+  }
+
+  async transitionStatus(id: string, status: OrderStatus, userId: string) {
+      const order = await this.prisma.order.findUnique({ where: { id } });
+      if (!order) throw new NotFoundException();
+
+      this.validateTransition(order, status, userId, false);
+
+      return this.update(id, { status }, userId);
   }
 
   async cancelApplication(orderId: string, executorId: string) {
@@ -343,9 +601,19 @@ export class OrdersService {
     const app = await this.prisma.application.findUnique({
       where: { orderId_executorId: { orderId, executorId } }
     });
-    if (!app) throw new NotFoundException('Application not found');
+    if (!app) {
+        // Idempotent: already cancelled or not found
+        return { success: true };
+    }
 
-    // Rule: Cannot cancel if less than 24h before монтаж
+    if (app.status === 'ACCEPTED') {
+      throw new ForbiddenException('Нельзя отменить уже принятую заявку — используйте отмену заказа');
+    }
+    if (app.status === 'REJECTED') {
+      // уже отклонена, ничего не делать, вернуть success как для idempotent-случая
+      return { success: true };
+    }
+
     const now = new Date();
     const orderDate = new Date(order.date);
     const diffHours = (orderDate.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -354,178 +622,103 @@ export class OrdersService {
       throw new ForbiddenException('Cannot cancel application less than 24 hours before order date');
     }
 
-    await this.prisma.application.delete({
-      where: { id: app.id }
-    });
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.application.delete({
+          where: { id: app.id }
+        });
+      } catch (err: any) {
+        // Already deleted by a parallel process
+        return null;
+      }
 
-    // Check if HAS_RESPONSES status should be reverted
-    const remainingApps = await this.prisma.application.count({
-      where: { orderId }
-    });
-
-    if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
-      await this.prisma.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.PUBLISHED }
+      const remainingApps = await tx.application.count({
+        where: { orderId }
       });
+
+      if (remainingApps === 0 && order.status === OrderStatus.HAS_RESPONSES) {
+        this.validateTransition(order, OrderStatus.PUBLISHED, executorId, true);
+        return tx.order.update({
+          where: { id: orderId },
+          data: { status: OrderStatus.PUBLISHED },
+          include: {
+            employer: { select: { id: true, name: true, rating: true, avatar: true } },
+            executor: { select: { id: true, name: true, avatar: true } },
+            applications: {
+              include: {
+                executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+              }
+            },
+            reviews: true
+          }
+        });
+      }
+
+      return tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          employer: { select: { id: true, name: true, rating: true, avatar: true } },
+          executor: { select: { id: true, name: true, avatar: true } },
+          applications: {
+            include: {
+              executor: { select: { id: true, name: true, avatar: true, rating: true, completedOrders: true } }
+            }
+          },
+          reviews: true
+        }
+      });
+    });
+
+    if (updatedOrder) {
+      await this.broadcast('order.status.changed', updatedOrder, executorId);
     }
 
     return { success: true };
   }
 
-  /**
-   * SPATIAL ENGINE V6: Universal spatial search supporting Radius and BBOX modes.
-   */
   async findSpatial(params: {
     lat?: number; lng?: number; radius?: number;
     minLat?: number; maxLat?: number; minLng?: number; maxLng?: number;
     updatedAfter?: Date;
+    categoryId?: string;
+    requesterId?: string;
+    cursorId?: string;
+    limit?: number;
   }) {
-    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter } = params;
-
-    let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
-
-    // Mode A: Radius Search (approximate via bounding box for performance)
-    if (lat !== undefined && lng !== undefined && radius !== undefined) {
-      const R = 6371; // Earth radius in km
-      const deltaLat = (radius / R) * (180 / Math.PI);
-      const deltaLng = (radius / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180);
-
-      searchBounds = {
-        minLat: lat - deltaLat,
-        maxLat: lat + deltaLat,
-        minLng: lng - deltaLng,
-        maxLng: lng + deltaLng,
-      };
-    } else if (minLat !== undefined && maxLat !== undefined && minLng !== undefined && maxLng !== undefined) {
-      // Mode B: BBOX Search
-      searchBounds = { minLat, maxLat, minLng, maxLng };
-    }
-
-    if (!searchBounds) return { created: [], updated: [], deleted: [] };
-
-    const orders = await this.prisma.order.findMany({
-      where: {
-        status: { in: [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES] },
-        latitude: { gte: searchBounds.minLat, lte: searchBounds.maxLat },
-        longitude: { gte: searchBounds.minLng, lte: searchBounds.maxLng },
-        // If updatedAfter is provided, we only want those changed.
-        // If not, we are doing a full region sync, so we rely on the pruning logic on frontend.
-        updatedAt: updatedAfter ? { gt: updatedAfter } : undefined,
-      },
-      take: 1000,
-      include: {
-        employer: { select: { id: true, name: true, rating: true, avatar: true } },
-        applications: { select: { id: true, executorId: true, status: true } }
-      },
-    });
-
-    return { created: orders, updated: [], deleted: [] };
+    return this.orderSpatialService.findSpatial(params);
   }
 
-  /**
-   * SMART PARSER: Heuristic NLP for ceiling order texts.
-   */
   parseOrderText(text: string) {
-    // 0. Clean text from common copy-paste metadata (timestamps like [10.06.2026 11:11])
-    const cleanText = text.replace(/\[\d{2}\.\d{2}\.\d{4}\s\d{2}:\d{2}\].*?:/g, '').trim();
-    const lines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
-    const result: any = {
-      title: '',
-      details: text,
-      price: 0,
-      address: '',
-      date: new Date(),
-    };
+    return this.orderParserService.parseOrderText(text);
+  }
 
-    // 1. Extract Price (Patterns: 15000, ЗП 15000, 15.000р, 15000₽)
-    const priceRegex = /(?:зп|зарплата|цена|стоимость|выплата)?[:\s-]*(\d[\d\s.,]*)(?:₽|р|руб|рублей)/i;
-    const priceMatch = text.match(priceRegex);
-    if (priceMatch) {
-      const rawPrice = priceMatch[1].replace(/[\s.,]/g, '');
-      result.price = parseInt(rawPrice, 10);
-    } else {
-        // Simple fallback for "зп 15000" without currency symbol
-        const altPriceRegex = /(?:зп|зарплата)[:\s-]*(\d[\d\s]*)/i;
-        const altMatch = text.match(altPriceRegex);
-        if (altMatch) {
-            result.price = parseInt(altMatch[1].replace(/\s/g, ''), 10);
-        }
-    }
+  async openDispute(orderId: string, userId: string, reason: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Order not found');
 
-    // 2. Extract Date
-    const today = new Date();
-    const daysOfWeek: Record<string, number> = {
-      'воскресенье': 0, 'понедельник': 1, 'вторник': 2, 'среда': 3, 'четверг': 4, 'пятница': 5, 'суббота': 6
-    };
+    this.validateTransition(order, OrderStatus.DISPUTE, userId, false);
 
-    if (/завтра/i.test(cleanText)) {
-      const tomorrow = new Date();
-      tomorrow.setDate(today.getDate() + 1);
-      result.date = tomorrow;
-    } else if (/послезавтра/i.test(cleanText)) {
-      const dayAfter = new Date();
-      dayAfter.setDate(today.getDate() + 2);
-      result.date = dayAfter;
-    } else {
-      // Check for day names
-      for (const [dayName, dayIndex] of Object.entries(daysOfWeek)) {
-        if (new RegExp(dayName, 'i').test(cleanText)) {
-          const targetDate = new Date();
-          const currentDay = today.getDay();
-          let daysUntil = dayIndex - currentDay;
-          if (daysUntil <= 0) daysUntil += 7;
-          targetDate.setDate(today.getDate() + daysUntil);
-          result.date = targetDate;
-          break;
-        }
-      }
+    const result = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.DISPUTE }
+    });
 
-      // Look for DD.MM (overrides day of week if both present)
-      const dateRegex = /(\d{1,2})\.(\d{1,2})/;
-      const dateMatch = cleanText.match(dateRegex);
-      if (dateMatch) {
-        const d = parseInt(dateMatch[1], 10);
-        const m = parseInt(dateMatch[2], 10) - 1;
-        const targetDate = new Date(today.getFullYear(), m, d);
-        // If the date has already passed this year, assume next year (for late Dec -> Jan)
-        if (targetDate < today && m < today.getMonth()) {
-            targetDate.setFullYear(today.getFullYear() + 1);
-        }
-        result.date = targetDate;
-      }
-    }
-
-    // 3. Extract Address (Heuristic: usually the 2nd or 3rd line, or line with "ул", "проезд", "корпус", or known cities)
-    const cities = ['москва', 'котельники', 'истра', 'химки', 'балашиха', 'красногорск', 'люберцы', 'мытищи', 'одинцово', 'подольск', 'ясенево', 'коммунарка', 'видное'];
-    const addressKeywords = ['ул', 'улица', 'пр-т', 'проспект', 'проезд', 'бульвар', 'корпус', 'дом', 'д.'];
-
-    for (const line of lines) {
-       const lowerLine = line.toLowerCase();
-       const isDateLine = /завтра|сегодня|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье|\d{1,2}\.\d{1,2}/i.test(lowerLine);
-       const isPriceLine = /зп|зарплата|руб|₽/i.test(lowerLine);
-
-       const hasCity = cities.some(c => lowerLine.includes(c));
-       const hasKeyword = addressKeywords.some(k => lowerLine.includes(k + '.') || lowerLine.includes(k + ' '));
-
-       if ((hasCity || hasKeyword) && !isPriceLine && !isDateLine) {
-         result.address = line;
-         break;
-       }
-    }
-
-    // 4. Extract Title (First line that isn't a date or address)
-    for (const line of lines) {
-        if (line === result.address) continue;
-        if (/завтра|сегодня|\d{1,2}\.\d{1,2}/i.test(line)) continue;
-        if (line.length > 5 && line.length < 50) {
-            result.title = line;
-            break;
-        }
-    }
-
-    if (!result.title) result.title = "Монтаж натяжных потолков";
-
+    this.logger.info('ORDER_DISPUTED', `Dispute opened by user ${userId} for reason: ${reason}`, { orderId, userId });
+    await this.broadcast('order.status.changed', result, userId);
     return result;
+  }
+
+  async findStuckOrders(hours: number) {
+    const threshold = new Date(Date.now() - hours * 60 * 60 * 1000);
+    return this.prisma.order.findMany({
+      where: {
+        status: { in: [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS] },
+        updatedAt: { lt: threshold }
+      },
+      include: {
+        employer: { select: { id: true, name: true, rating: true, avatar: true } },
+        executor: { select: { id: true, name: true, avatar: true } }
+      }
+    });
   }
 }

@@ -1,3 +1,4 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect } from 'react';
 
 import {
@@ -11,7 +12,6 @@ import {
   Alert
  } from 'react-native'
 import * as Contacts from 'expo-contacts';
-import { Ionicons } from '@expo/vector-icons'
 import { COLORS } from '../constants/theme'
 
 export default function InviteFriendsScreen() {
@@ -56,7 +56,7 @@ export default function InviteFriendsScreen() {
 
   if (error) return (
     <View style={styles.center}>
-      <Ionicons name="lock-closed" size={64} color={COLORS.gray} />
+      <AppIcon name="sys-locked" size={64} color={COLORS.gray} />
       <Text style={styles.errorText}>{error}</Text>
       <TouchableOpacity
         style={styles.retryBtn}

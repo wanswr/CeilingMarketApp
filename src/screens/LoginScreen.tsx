@@ -1,4 +1,6 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState } from 'react';
+import { logger } from '../services/logger/LoggerService';
 
 import {
   TouchableOpacity,
@@ -10,7 +12,7 @@ import {
   StyleSheet,
   TouchableWithoutFeedback,
   Keyboard,
-  ImageBackground
+  ActivityIndicator
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -20,15 +22,14 @@ import { AppInput } from '../components/Input'
 import { Button } from '../components/Button'
 import { mapEngine } from '../services/MapEngine'
 import { COLORS, SHADOWS } from '../constants/theme'
-import { Ionicons } from '@expo/vector-icons'
+import { apiService } from '../services/ApiService'
 
 export default function LoginScreen({ navigation }: any) {
   const [phone, setPhone] = useState('+7');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
 
-  const handleLogin = async () => {
+  const handleRequestOtp = async () => {
     if (phone.length < 12) {
       Alert.alert("Ошибка", "Введите номер в формате +79991234567");
       return;
@@ -39,19 +40,23 @@ export default function LoginScreen({ navigation }: any) {
     }
     setLoading(true);
     try {
-      const data = await mapEngine.login(phone);
-      if (data.access_token) {
-        await signIn(data.access_token, data.user);
+      // @ts-ignore
+      const res = await apiService.api.post('auth/request-otp', { phone });
+      if (res.data.status === 'sent') {
+          navigation.navigate('VerifyCode', {
+              phone,
+              devCode: res.data.devCode // For dev convenience as requested
+          });
       }
     } catch (err: any) {
-      console.error(err);
-      let errorMsg = "Произошла ошибка при входе.";
+      logger.error("UI_ERROR", { error: err });
+      let errorMsg = "Произошла ошибка при запросе кода.";
       if (err.message === "Network Error") {
-        errorMsg = "Ошибка сети. Убедитесь, что сервер запущен и доступен по адресу " + mapEngine.getApiBaseUrl();
+        errorMsg = "Ошибка сети. Убедитесь, что сервер запущен.";
       } else if (err.response?.data?.message) {
         errorMsg = err.response.data.message;
       }
-      Alert.alert("Ошибка входа", errorMsg);
+      Alert.alert("Ошибка", errorMsg);
     }
     finally { setLoading(false); }
   };
@@ -67,7 +72,7 @@ export default function LoginScreen({ navigation }: any) {
             >
               <View style={styles.header}>
                 <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.logoContainer}>
-                  <Ionicons name="construct" size={50} color="#fff" />
+                  <AppIcon name="role-worker" size={50} color="#fff" />
                 </LinearGradient>
                 <Text style={styles.title}>CeilingsApp</Text>
                 <Text style={styles.subtitle}>Профессиональный маркетплейс мастеров по потолкам</Text>
@@ -81,7 +86,7 @@ export default function LoginScreen({ navigation }: any) {
                   onChangeText={setPhone}
                   keyboardType="phone-pad"
                   placeholder="+7 (___) ___-__-__"
-                  icon={<Ionicons name="call-outline" size={20} color={COLORS.primary} />}
+                  icon={<AppIcon name="sys-phone" size={20} color={COLORS.primary} />}
                 />
                 <TouchableOpacity
                   style={styles.termsRow}
@@ -89,7 +94,7 @@ export default function LoginScreen({ navigation }: any) {
                   activeOpacity={0.7}
                 >
                   <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-                    {acceptedTerms && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    {acceptedTerms && <AppIcon name="sys-check" size={16} color="#fff" />}
                   </View>
                   <Text style={styles.termsTextLabel}>
                     Согласен с <Text style={styles.termsLink}>Политикой конфиденциальности</Text> и обработкой персональных данных
@@ -97,8 +102,8 @@ export default function LoginScreen({ navigation }: any) {
                 </TouchableOpacity>
 
                 <Button
-                  title="Продолжить"
-                  onPress={handleLogin}
+                  title="Получить код"
+                  onPress={handleRequestOtp}
                   loading={loading}
                   style={[styles.loginBtn, !acceptedTerms && { opacity: 0.6 }]}
                 />

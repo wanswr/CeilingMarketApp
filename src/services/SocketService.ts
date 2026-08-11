@@ -1,121 +1,392 @@
+import { useClientStore } from '../store/client.store';
 import { io, Socket } from 'socket.io-client'
-import { mapEngine } from './MapEngine'
-import { getDistance } from '../utils/geo'
+import * as SecureStore from 'expo-secure-store';
+import { entityStore } from './EntityStore'
+import { requestRouter } from './RequestRouter'
+import { logger } from './logger/LoggerService'
 
+/**
+ * SocketService V12: Advanced WebSocket Management with Event Deduplication & Active Listener Rebinding.
+ */
 class SocketService {
   private socket: Socket | null = null;
+  private currentUrl: string | null = null;
 
-  connect(url: string) {
-    if (this.socket?.connected) return;
+
+
+  // Local mutations register to block self-echo events
+  private readonly localMutations = new Map<string, number>();
+
+  // Active listeners registry
+  private readonly listeners = new Map<string, Set<Function>>();
+  private lastJoinedSocketId: string | null = null;
+  private isConnectingFlag = false;
+  // Deduplication Map (eventId -> timestamp)
+  private readonly receivedEventsMap = new Map<string, number>();
+  private readonly EVENT_TTL = 10000; // 10 seconds TTL
+  private isResyncing = false;
+  private lastResyncAt = 0;
+
+  constructor() {
+    // Register standard core listeners
+    this.on('connect', () => {
+      const currentUser = entityStore.getCurrentUser();
+      const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
+      const activeRole = useClientStore.getState().activeRole || 'none';
+      const socketId = this.socket?.id || 'none';
+
+      logger.info('WEBSOCKET_CONNECTED', {
+          source: 'websocket',
+          metadata: {
+              socketId,
+              userId,
+              activeRole,
+              url: this.currentUrl
+          }
+      });
+
+      this.joinPrivateRoom();
+
+      const { mapViewportStore } = require('./MapViewportStore');
+      const { mapEngine } = require('./MapEngine');
+      const region = mapViewportStore.getRegion();
+      if (region) {
+          mapEngine.updateSocketRoom(region, true);
+      }
+    });
+
+    this.on('order.created', (order: any) => {
+      logger.info('ORDER_CREATED_RECEIVED', { orderId: order?.id, status: order?.status, lat: order?.latitude ?? order?.lat, lng: order?.longitude ?? order?.lng });
+      requestRouter.metrics.websocketUpdates++;
+      entityStore.setOrder(order, 'websocket');
+      require('./MapEngine').mapEngine.triggerNotify();
+      entityStore.persist();
+    });
+
+    this.on('order.status.changed', (order: any) => {
+      logger.info('WS_ORDER_STATUS_CHANGED', { orderId: order.id, status: order.status });
+      requestRouter.metrics.websocketUpdates++;
+      entityStore.setOrder(order, 'websocket');
+      require('./MapEngine').mapEngine.syncOrder(order.id, true);
+      require('./MapEngine').mapEngine.triggerNotify();
+      entityStore.persist();
+    });
+
+    this.on('application.new', (app: any) => {
+      logger.info('WS_APPLICATION_NEW', { orderId: app.orderId });
+      requestRouter.metrics.websocketUpdates++;
+      require('./MapEngine').mapEngine.syncOrder(app.orderId, true).then(() => {
+          require('./MapEngine').mapEngine.triggerNotify();
+      });
+    });
+  }
+
+  async connect(url: string, source: string = 'unknown') {
+    let socketUrl = url;
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.pathname.startsWith('/api')) {
+        parsedUrl.pathname = parsedUrl.pathname.replace(/^\/api\/?/, '');
+      }
+      socketUrl = parsedUrl.toString();
+    } catch (e) {
+      socketUrl = url.replace('/api/', '');
+    }
+    const currentUser = entityStore.getCurrentUser();
+    const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';
+    const activeRole = useClientStore.getState().activeRole || 'none';
+    const socketId = this.socket?.id || 'none';
+
+    logger.info('[WebSocket] connect() called', {
+        source: 'websocket',
+        metadata: {
+            userId,
+            activeRole,
+            socketId,
+            connectSource: source,
+            url: socketUrl
+        }
+    });
+
     if (this.socket) {
-        this.socket.connect();
-        return;
+      if (this.currentUrl === socketUrl) {
+          const isForegroundRefresh = source === 'auth_sync' || source === 'auth_offline_fallback';
+
+          if (this.socket.connected && isForegroundRefresh) {
+              logger.info('[WebSocket] already connected on foreground refresh, skipping reconnect', {
+                  source: 'websocket',
+                  metadata: {
+                      userId,
+                      activeRole,
+                      socketId,
+                      connectSource: source,
+                      url: socketUrl
+                  }
+              });
+              return;
+          }
+
+          if (this.socket.connected && !isForegroundRefresh) {
+              logger.info('[WebSocket] already connected', {
+                  source: 'websocket',
+                  metadata: {
+                      userId,
+                      activeRole,
+                      socketId,
+                      connectSource: source,
+                      url: socketUrl
+                  }
+              });
+              return;
+          }
+
+          logger.info('[WebSocket] socket exists, ensuring connection...', {
+              source: 'websocket',
+              metadata: {
+                  userId,
+                  activeRole,
+                  socketId,
+                  connectSource: source,
+                  url: socketUrl,
+                  isForegroundRefresh,
+                  currentlyConnected: this.socket.connected
+              }
+          });
+
+          if (isForegroundRefresh) {
+              // Force disconnect to clear out any half-open TCP zombie states on app wake
+              this.socket.disconnect();
+          }
+          this.socket.connect();
+          return;
+      }
+
+      logger.info('[WebSocket] URL changed, recreating socket...', { from: this.currentUrl, to: socketUrl });
+      this.disconnect();
     }
 
-    const socketUrl = url.replace('/api/', '');
-    console.log('[WebSocket] Initializing connection to:', socketUrl);
+    this.currentUrl = socketUrl;
+
+    logger.info('[WebSocket] Initializing new connection...', { url: socketUrl });
+
+    const token = await SecureStore.getItemAsync('userToken');
+
     this.socket = io(socketUrl, {
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
+        reconnectionDelayMax: 10000,
         timeout: 20000,
-        transports: ['websocket'], // Prefer pure websockets for stability
-    });
-
-    this.socket.on('connect', () => {
-      console.log('WEBSOCKET_CONNECTED', { id: this.socket?.id });
-    });
-
-    this.socket.on('order.created', (payload: any) => {
-      const order = payload.order || payload;
-
-      // V9 Optimization: Only add order if it's within 100km of our currently loaded area center
-      const loadedBounds = mapEngine.entityStore?.loadedBounds;
-      if (loadedBounds) {
-          const centerLat = (loadedBounds.north + loadedBounds.south) / 2;
-          const centerLng = (loadedBounds.east + loadedBounds.west) / 2;
-          const lat = order.latitude ?? order.location?.latitude ?? order.lat;
-          const lng = order.longitude ?? order.location?.longitude ?? order.lng;
-          if (lat && lng) {
-              const distance = getDistance(lat, lng, centerLat, centerLng);
-              if (distance > 150) { // Increased buffer for WebSockets
-                  console.log('[WebSocket] Order skipped (too far):', order.id, distance.toFixed(1) + 'km');
-                  return;
-              }
-          }
-      }
-
-      const countBefore = mapEngine.entityStore?.getAllOrders().length;
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
-      mapEngine.triggerNotify();
-      mapEngine.entityStore?.persist();
-      const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.created', id: order.id, countBefore, countAfter });
-    });
-
-    this.socket.on('order.status.changed', (order: any) => {
-      const countBefore = mapEngine.entityStore?.getAllOrders().length;
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
-      mapEngine.triggerNotify();
-      mapEngine.entityStore?.persist();
-      const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.status.changed', id: order.id, status: order.status, countBefore, countAfter });
-    });
-
-    this.socket.on('order.updated', (order: any) => {
-      const countBefore = mapEngine.entityStore?.getAllOrders().length;
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
-      mapEngine.triggerNotify();
-      mapEngine.entityStore?.persist();
-      const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.updated', id: order.id, countBefore, countAfter });
-    });
-
-    this.socket.on('application.new', (application: any) => {
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'application.new', orderId: application.orderId });
-      mapEngine.syncOrder(application.orderId);
-    });
-
-    this.socket.on('order.completed', (order: any) => {
-      const countBefore = mapEngine.entityStore?.getAllOrders().length;
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.setOrder(order, 'websocket');
-      mapEngine.triggerNotify();
-      mapEngine.entityStore?.persist();
-      const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.completed', id: order.id, countBefore, countAfter });
-    });
-
-    this.socket.on('order.deleted', (payload: any) => {
-      const orderId = payload.id || payload.orderId || payload;
-      const countBefore = mapEngine.entityStore?.getAllOrders().length;
-      mapEngine.requestRouter.metrics.websocketUpdates++;
-      mapEngine.entityStore?.removeOrder(orderId);
-      mapEngine.triggerNotify();
-      // removeOrder already persists
-      const countAfter = mapEngine.entityStore?.getAllOrders().length;
-      console.log('MAP_DATA_SOURCE: WEBSOCKET', { event: 'order.deleted', id: orderId, countBefore, countAfter });
+        transports: ['websocket'],
+        auth: {
+            token: token
+        }
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('WEBSOCKET_DISCONNECTED', { reason });
+      logger.warn('WEBSOCKET_DISCONNECTED', { reason, url: socketUrl });
+      this.lastJoinedSocketId = null;
     });
 
-    this.socket.on('connect_error', (error) => {
-      console.warn('WEBSOCKET_CONNECT_ERROR', { message: error.message });
+    this.socket.on('connect_error', (err) => {
+      logger.error('WEBSOCKET_CONNECT_ERROR', { error: err.message, url: socketUrl });
     });
+
+    this.socket.io.on('reconnect', () => {
+      logger.info('[WebSocket] Connection re-established. Relying on real-time event updates.');
+    });
+
+    // Rebind all registered event listeners to the new socket instance
+    this.rebindAllListeners();
+  }
+
+  private joinPrivateRoom() {
+      const currentUser = entityStore.getCurrentUser();
+      const myId = (currentUser as any)?.id || currentUser?.uid;
+      const activeRole = useClientStore.getState().activeRole || 'none';
+      const socketId = this.socket?.id || 'none';
+
+      if (myId && this.socket?.connected) {
+          if (this.lastJoinedSocketId === socketId) {
+              logger.info('[WebSocket] Already joined private room for this socket ID', { socketId });
+              return;
+          }
+          logger.info('[WebSocket] joinPrivateRoom() emitting auth.join', {
+              source: 'websocket',
+              metadata: {
+                  userId: myId,
+                  activeRole,
+                  socketId
+              }
+          });
+          this.socket.emit('auth.join', myId);
+          this.lastJoinedSocketId = socketId;
+      }
   }
 
   disconnect() {
     if (this.socket) {
+      logger.info('[WebSocket] Disconnecting manually');
+      // Clean up all physical listeners on this instance before removing it
+      this.socket.removeAllListeners();
       this.socket.disconnect();
       this.socket = null;
     }
+    this.lastJoinedSocketId = null;
+    this.isConnectingFlag = false;
+  }
+
+  getSocket() {
+      return this.socket;
+  }
+
+  /**
+   * Register a local mutation key to prevent 'self-echo' WebSocket event loops.
+   */
+  registerLocalMutation(eventType: string, orderId: string, applicationId: string = 'none', status: string = 'none') {
+      const key = eventType + '_' + orderId + '_' + applicationId + '_' + status;
+      this.localMutations.set(key, Date.now());
+      logger.debug('[WebSocket] Registered local mutation key', { key });
+
+      if (this.localMutations.size > 100) {
+          const oldestKey = this.localMutations.keys().next().value;
+          if (oldestKey) this.localMutations.delete(oldestKey);
+      }
+  }
+
+  /**
+   * Verify if the incoming event matches a recently performed local client mutation.
+   */
+  isLocalMutationDuplicate(eventType: string, orderId: string, applicationId: string = 'none', status: string = 'none'): boolean {
+      const keys = [
+          eventType + '_' + orderId + '_' + applicationId + '_' + status,
+          eventType + '_' + orderId + '_any_' + status,
+          eventType + '_' + orderId + '_' + applicationId + '_any',
+          eventType + '_' + orderId + '_any_any'
+      ];
+      for (const key of keys) {
+          const mutationTime = this.localMutations.get(key);
+          if (mutationTime) {
+              const age = Date.now() - mutationTime;
+              const DEDUPLICATION_TTL = 5000; // 5 seconds sliding window
+              if (age < DEDUPLICATION_TTL) {
+                  return true;
+              }
+          }
+      }
+      return false;
+  }
+
+  /**
+   * Register an event listener on the active socket instance.
+   * Leverages internal registry so listeners automatically re-bind on reconnect or socket recreation.
+   */
+  on(event: string, handler: Function) {
+      if (!this.listeners.has(event)) {
+          this.listeners.set(event, new Set());
+      }
+      this.listeners.get(event)!.add(handler);
+      this.setupSocketListener(event);
+  }
+
+  /**
+   * Remove an event listener.
+   */
+  off(event: string, handler: Function) {
+      const handlers = this.listeners.get(event);
+      if (handlers) {
+          handlers.delete(handler);
+          if (handlers.size === 0) {
+              this.listeners.delete(event);
+              if (this.socket) {
+                  this.socket.off(event);
+              }
+          }
+      }
+  }
+
+  /**
+   * Internal helper to register a single unified dispatcher listener on the physical socket instance.
+   * This dispatcher handles deduplication and unwraps the payload container if present.
+   */
+  private setupSocketListener(event: string) {
+      if (!this.socket) return;
+
+      // Ensure we only have one physical socket.on event listener for this event type
+      this.socket.off(event);
+      this.socket.on(event, (payload: any) => {
+          // 2. Extract unwrapped business data if it conforms to our { event, eventId, data } standard envelope
+          const data = (payload && payload.data !== undefined) ? payload.data : payload;
+
+          // 3. Extract business identifiers for secondary self-echo deduplication
+          let orderId = 'none';
+          let applicationId = 'none';
+          let status = 'none';
+
+          if (event === 'order.created' || event === 'order.status.changed') {
+              orderId = data?.id || 'none';
+              status = data?.status || 'none';
+          } else if (event === 'application.new') {
+              orderId = data?.orderId || 'none';
+              applicationId = data?.id || 'none';
+              status = data?.status || 'none';
+          }
+
+          // 1. Check event ID or fallback to deterministic composite key for TTL-based deduplication
+          const eventId = payload?.eventId || (event + '_' + orderId + '_' + status);
+
+          const now = Date.now();
+          this.receivedEventsMap.forEach((timestamp, id) => {
+              if (now - timestamp > this.EVENT_TTL) {
+                  this.receivedEventsMap.delete(id);
+              }
+          });
+
+          if (this.receivedEventsMap.has(eventId)) {
+              logger.info('EVENT_DUPLICATE_IGNORED', {
+                  eventId,
+                  orderId,
+                  eventType: event
+              });
+              return;
+          }
+          this.receivedEventsMap.set(eventId, now);
+
+          if (this.isLocalMutationDuplicate(event, orderId, applicationId, status)) {
+              logger.debug('WS_EVENT_SELF_ECHO_BLOCKED', {
+                  source: 'websocket',
+                  metadata: {
+                      event,
+                      orderId,
+                      applicationId,
+                      status
+                  }
+              });
+              return;
+          }
+
+          // 4. Dispatch to all registered listeners
+          const handlers = this.listeners.get(event);
+          if (handlers) {
+              handlers.forEach(handler => {
+                  try {
+                      handler(data);
+                  } catch (e) {
+                      logger.error('WS_HANDLER_ERROR', { event, error: (e as any).message });
+                  }
+              });
+          }
+      });
+  }
+
+  /**
+   * Rebinds all registered listeners to a newly created socket instance.
+   */
+  private rebindAllListeners() {
+      if (!this.socket) return;
+      this.listeners.forEach((_, event) => {
+          this.setupSocketListener(event);
+      });
   }
 }
 

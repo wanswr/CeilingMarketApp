@@ -4,8 +4,8 @@ module.exports = {
   apps: {
     'ios.debug': {
       type: 'ios.app',
-      binaryPath: 'ios/build/Build/Products/Debug-iphonesimulator/YourApp.app',
-      build: 'xcodebuild -workspace ios/YourApp.xcworkspace -scheme YourApp -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build',
+      binaryPath: 'ios/build/Build/Products/Debug-iphonesimulator/Ceilingsapp.app',
+      build: 'xcodebuild -workspace ios/Ceilingsapp.xcworkspace -scheme Ceilingsapp -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build',
     },
   },
   devices: {

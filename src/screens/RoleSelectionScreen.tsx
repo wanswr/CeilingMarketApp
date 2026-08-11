@@ -12,11 +12,26 @@ const RoleSelectionScreen = ({ navigation }: any) => {
   const selectRole = async (role: 'WORKER' | 'EMPLOYER') => {
     setLoading(true);
     try {
-      const data = await mapEngine.updateProfile({ role });
+      const data = await mapEngine.setRole(role);
       updateUser(data);
-      // navigation.replace('MainTabs') is not needed, useAuth re-renders Navigation
-    } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось сохранить выбор роли');
+      if (role === 'WORKER') {
+        navigation.navigate('CategorySelection');
+      }
+    } catch (error: any) {
+      if (error.response?.status === 403) {
+        Alert.alert('Инфо', 'Роль уже была установлена ранее');
+        try {
+          const freshProfile = await mapEngine.syncUser(true);
+          updateUser(freshProfile);
+          if (role === 'WORKER') {
+            navigation.navigate('CategorySelection');
+          }
+        } catch (e) {
+          // fallback ignore
+        }
+      } else {
+        Alert.alert('Ошибка', 'Не удалось сохранить выбор роли');
+      }
     } finally {
       setLoading(false);
     }

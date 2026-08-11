@@ -14,6 +14,10 @@ import InviteFriendsScreen from '../screens/InviteFriendsScreen';
 import SubscriptionScreen from '../screens/SubscriptionScreen';
 import VerificationScreen from '../screens/VerificationScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
+import ChatDetailScreen from '../screens/ChatDetailScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import CategorySelectionScreen from '../screens/CategorySelectionScreen';
+import CreateOrderScreen from '../screens/CreateOrderScreen';
 
 const Stack = createStackNavigator();
 
@@ -29,20 +33,29 @@ export default function Navigation() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} />
         </>
-      ) : !user.role ? (
+      ) : !user.name ? (
         <>
           <Stack.Screen name="RegisterDetails" component={RegisterDetailsScreen} />
           <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
         </>
+      ) : !user.role ? (
+        <>
+          <Stack.Screen name="RoleSelection" component={RoleSelectionScreen} />
+          <Stack.Screen name="CategorySelection" component={CategorySelectionScreen} />
+        </>
       ) : (
         <>
           <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
+          <Stack.Screen name="CreateOrder" component={CreateOrderScreen} options={{headerShown: true, title: 'Создать заказ'}} />
           <Stack.Screen name="OrderDetail" component={OrderDetailScreen} options={{headerShown: true, title: 'Заказ'}} />
           <Stack.Screen name="EditOrder" component={EditOrderScreen} options={{headerShown: true, title: 'Редактирование'}} />
           <Stack.Screen name="InviteFriends" component={InviteFriendsScreen} options={{headerShown: true, title: 'Пригласить друзей'}} />
           <Stack.Screen name="Subscription" component={SubscriptionScreen} options={{headerShown: true, title: 'Подписка'}} />
           <Stack.Screen name="Verification" component={VerificationScreen} options={{headerShown: true, title: 'Верификация'}} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{headerShown: true, title: 'Редактировать профиль'}} />
+          <Stack.Screen name="ChatDetail" component={ChatDetailScreen} options={{headerShown: false}} />
+          <Stack.Screen name="Profile" component={ProfileScreen} options={{headerShown: true, title: 'Профиль'}} />
+          <Stack.Screen name="CategorySelection" component={CategorySelectionScreen} />
         </>
       )}
     </Stack.Navigator>

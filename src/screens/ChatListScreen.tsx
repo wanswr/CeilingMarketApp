@@ -1,37 +1,106 @@
-import React, { useState } from 'react';
-import { TouchableOpacity, View, Text, StyleSheet, FlatList, TextInput } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import AppIcon from '../components/AppIcon';
+import React, { useState, useEffect } from 'react';
+import { logger } from '../services/logger/LoggerService';
+import { TouchableOpacity, View, Text, StyleSheet, FlatList, TextInput, ActivityIndicator, RefreshControl } from 'react-native'
 import { COLORS } from '../constants/theme'
+import { apiService } from '../services/ApiService'
+import { socketService } from '../services/SocketService'
+import { mapEngine } from '../services/MapEngine'
 
 const ChatListScreen = ({ navigation }: any) => {
-  const [chats] = useState([
-    { id: '1', name: 'Монтаж на Ленина 5', lastMessage: 'Иван: Потолок готов', time: '12:45', unreadCount: 2, type: 'group' },
-    { id: '2', name: 'Александр (Замерщик)', lastMessage: 'Вы: Скинул размеры', time: '11:20', unreadCount: 0, type: 'direct' },
-  ]);
+  const [chats, setChats] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const currentUser = mapEngine.getCurrentUser();
+  const myId = currentUser?.id || currentUser?.uid;
+
+  const fetchChats = async () => {
+    try {
+      const res = await apiService.getMyChats();
+      setChats(res.data);
+    } catch (e) {
+      logger.error("UI_ERROR", { error: 'Fetch chats error:', e });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchChats();
+
+    socketService.on('chat.update', fetchChats);
+    socketService.on('message.new', fetchChats);
+    socketService.on('message.read', fetchChats);
+
+    return () => {
+        socketService.off('chat.update', fetchChats);
+        socketService.off('message.new', fetchChats);
+        socketService.off('message.read', fetchChats);
+    };
+  }, []);
+
+  const renderChatItem = ({ item }: { item: any }) => {
+    const isEmployer = item.employerId === myId;
+    const partner = isEmployer ? item.executor : item.employer;
+    const lastMsg = item.messages?.[0];
+
+    return (
+      <TouchableOpacity
+        style={styles.chatItem}
+        onPress={() => navigation.navigate('ChatDetail', {
+            chatId: item.id,
+            name: partner?.name || 'Пользователь'
+        })}
+      >
+        <View style={[styles.avatar, { backgroundColor: COLORS.primary }]}>
+          <Text style={styles.avatarText}>{(partner?.name || '?')[0]}</Text>
+        </View>
+        <View style={styles.chatInfo}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.chatName} numberOfLines={1}>{item.order?.title || 'Чат по заказу'}</Text>
+            {lastMsg && <Text style={styles.chatTime}>{new Date(lastMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>}
+          </View>
+          <View style={styles.lastMsgRow}>
+            <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.unreadText]} numberOfLines={1}>
+                {lastMsg ? (lastMsg.senderId === myId ? 'Вы: ' : '') + lastMsg.text : 'Нет сообщений'}
+            </Text>
+            {item.unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadCountText}>{item.unreadCount}</Text>
+                </View>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
+      return (
+          <View style={styles.center}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+      )
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.searchBar}>
-        <Ionicons name="search" size={20} color={COLORS.gray} />
+        <AppIcon name="action-search" size={20} color={COLORS.gray} />
         <TextInput placeholder="Поиск чатов..." style={styles.searchInput} />
       </View>
       <FlatList
         data={chats}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.chatItem} onPress={() => navigation.navigate('ChatDetail', { name: item.name })}>
-            <View style={[styles.avatar, { backgroundColor: item.type === 'group' ? COLORS.secondary : COLORS.primary }]}>
-              <Ionicons name={item.type === 'group' ? "people" : "person"} size={24} color="#fff" />
+        renderItem={renderChatItem}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchChats(); }} />}
+        ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+                <AppIcon name="tab-chats" size={64} color={COLORS.border} />
+                <Text style={styles.emptyText}>У вас пока нет активных чатов</Text>
             </View>
-            <View style={styles.chatInfo}>
-              <View style={styles.chatHeader}>
-                <Text style={styles.chatName}>{item.name}</Text>
-                <Text style={styles.chatTime}>{item.time}</Text>
-              </View>
-              <Text style={styles.lastMessage} numberOfLines={1}>{item.lastMessage}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
+        }
       />
     </View>
   );
@@ -39,15 +108,23 @@ const ChatListScreen = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', margin: 10, paddingHorizontal: 10, borderRadius: 10, height: 40 },
   searchInput: { flex: 1, marginLeft: 10 },
-  chatItem: { flexDirection: 'row', padding: 15, alignItems: 'center' },
+  chatItem: { flexDirection: 'row', padding: 15, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   avatar: { width: 55, height: 55, borderRadius: 27.5, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   chatInfo: { flex: 1, marginLeft: 15 },
-  chatHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  chatName: { fontSize: 17, fontWeight: '600' },
-  chatTime: { fontSize: 13, color: COLORS.gray },
-  lastMessage: { fontSize: 15, color: COLORS.gray, marginTop: 2 }
+  chatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  chatName: { fontSize: 16, fontWeight: 'bold', flex: 1, marginRight: 5 },
+  chatTime: { fontSize: 12, color: COLORS.gray },
+  lastMsgRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  lastMessage: { fontSize: 14, color: COLORS.gray, flex: 1 },
+  unreadText: { color: COLORS.dark, fontWeight: '600' },
+  unreadBadge: { backgroundColor: COLORS.primary, borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
+  unreadCountText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  emptyContainer: { flex: 1, alignItems: 'center', marginTop: 100, padding: 40 },
+  emptyText: { marginTop: 20, fontSize: 16, color: COLORS.gray, textAlign: 'center' }
 });
 
 export default ChatListScreen;

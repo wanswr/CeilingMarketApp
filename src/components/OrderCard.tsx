@@ -1,6 +1,6 @@
+import AppIcon, { IconName } from './AppIcon';
 import React from 'react';
-import { TouchableOpacity, View, Text, StyleSheet, Animated } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
+import { TouchableOpacity, View, Text, StyleSheet, ActivityIndicator } from 'react-native'
 import { Swipeable } from 'react-native-gesture-handler'
 import { Order, OrderStatus } from '../types'
 import { COLORS, SHADOWS } from '../constants/theme'
@@ -17,22 +17,24 @@ interface OrderCardProps {
   onChat?: () => void;
 }
 
-const getStatusDetails = (status: OrderStatus) => {
+const getStatusDetails = (status: OrderStatus): { label: string; color: string; icon: IconName } => {
   switch (status) {
     case 'PUBLISHED':
-      return { label: 'Ожидает исполнителя', color: '#EF4444', icon: 'time-outline' };
+      return { label: 'Ожидает исполнителя', color: '#EF4444', icon: 'status-pending' };
     case 'HAS_RESPONSES':
-      return { label: 'Есть отклики', color: '#F59E0B', icon: 'people-outline' };
+      return { label: 'Есть отклики', color: '#F59E0B', icon: 'sys-friends' };
     case 'CLAIMED':
-      return { label: 'Исполнитель выбран', color: '#3B82F6', icon: 'checkmark-circle-outline' };
+      return { label: 'Исполнитель выбран', color: '#3B82F6', icon: 'status-done' };
     case 'IN_PROGRESS':
-      return { label: 'В работе', color: '#8B5CF6', icon: 'hammer-outline' };
+      return { label: 'В работе', color: '#8B5CF6', icon: 'sys-hammer' };
     case 'COMPLETED':
-      return { label: 'Выполнено', color: '#10B981', icon: 'ribbon-outline' };
+      return { label: 'Выполнено', color: '#10B981', icon: 'sys-premium' };
+    // case 'REVIEWED': // Deprecated
+      return { label: 'Оставлен отзыв', color: '#059669', icon: 'sys-rating' };
     case 'CANCELLED':
-      return { label: 'Отменен', color: COLORS.gray, icon: 'close-circle-outline' };
+      return { label: 'Отменен', color: COLORS.gray, icon: 'nav-close' };
     default:
-      return { label: status, color: COLORS.gray, icon: 'help-circle-outline' };
+      return { label: status, color: COLORS.gray, icon: 'sys-help' };
   }
 };
 
@@ -47,7 +49,7 @@ const getWorkTypeLabel = (type: string) => {
     }
 }
 
-export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string }> = ({
+export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => void, hasApplied?: boolean, currentUserId?: string, submitting?: boolean }> = ({
   order,
   isEmployer,
   onPress,
@@ -58,26 +60,29 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
   onChat,
   onCancelApplication,
   hasApplied,
-  currentUserId
+  currentUserId,
+  submitting
 }) => {
   const statusInfo = getStatusDetails(order.status);
   const amIExecutor = order.executorId === currentUserId;
+  const myApplication = order.applications?.find(a => a.executorId === currentUserId);
+  const hasUnviewedApplication = isEmployer && order.applications?.some(a => a.status === 'PENDING');
 
   const renderRightActions = (progress: any, dragX: any) => {
-    if (isEmployer) {
+    if (isEmployer && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
       return (
         <TouchableOpacity style={styles.deleteAction} onPress={onDelete}>
-          <Ionicons name="trash-outline" size={24} color="#fff" />
+          <AppIcon name="action-delete" size={24} color="#fff" />
           <Text style={styles.actionText}>Удалить</Text>
         </TouchableOpacity>
       );
     }
 
-    if (hasApplied && order.status === 'HAS_RESPONSES') {
+    if (hasApplied && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
       return (
         <TouchableOpacity style={styles.deleteAction} onPress={onCancelApplication}>
-          <Ionicons name="close-circle-outline" size={24} color="#fff" />
-          <Text style={styles.actionText}>Отказаться</Text>
+          <AppIcon name="nav-close" size={24} color="#fff" />
+          <Text style={styles.actionText}>Отказать</Text>
         </TouchableOpacity>
       );
     }
@@ -86,29 +91,29 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
   };
 
   const renderLeftActions = (progress: any, dragX: any) => {
-    if (isEmployer) {
+    if (isEmployer && (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES')) {
       return (
         <TouchableOpacity style={styles.editAction} onPress={onEdit}>
-          <Ionicons name="create-outline" size={24} color="#fff" />
-          <Text style={styles.actionText}>Редактировать</Text>
+          <AppIcon name="action-edit" size={24} color="#fff" />
+          <Text style={styles.actionText}>Правка</Text>
         </TouchableOpacity>
       );
     }
 
     if (!isEmployer && order.status === 'CLAIMED' && amIExecutor) {
       return (
-        <TouchableOpacity style={styles.startAction} onPress={onStart}>
-          <Ionicons name="play-outline" size={24} color="#fff" />
-          <Text style={styles.actionText}>Приступить</Text>
+        <TouchableOpacity style={styles.startAction} onPress={onStart} disabled={submitting}>
+          {submitting ? <ActivityIndicator color="#fff" /> : <AppIcon name="status-active" size={24} color="#fff" />}
+          <Text style={styles.actionText}>{submitting ? 'Запуск...' : 'Начать'}</Text>
         </TouchableOpacity>
       );
     }
 
     if (!isEmployer && order.status === 'IN_PROGRESS' && amIExecutor) {
       return (
-        <TouchableOpacity style={styles.completeAction} onPress={onComplete}>
-          <Ionicons name="checkmark-done-outline" size={24} color="#fff" />
-          <Text style={styles.actionText}>Закончить</Text>
+        <TouchableOpacity style={styles.completeAction} onPress={onComplete} disabled={submitting}>
+          {submitting ? <ActivityIndicator color="#fff" /> : <AppIcon name="status-done" size={24} color="#fff" />}
+          <Text style={styles.actionText}>{submitting ? 'Завершение...' : 'Завершить'}</Text>
         </TouchableOpacity>
       );
     }
@@ -123,49 +128,71 @@ export const OrderCard: React.FC<OrderCardProps & { onCancelApplication?: () => 
     >
       <TouchableOpacity
         activeOpacity={0.9}
-        style={styles.card}
+        style={[styles.card, hasUnviewedApplication && styles.cardUnread]}
         onPress={onPress}
       >
         <View style={styles.header}>
           <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '15' }]}>
-            <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
+            <AppIcon name={statusInfo.icon} size={14} color={statusInfo.color} />
             <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
           </View>
-          <Text style={styles.price}>{order.price} ₽</Text>
+          <View style={styles.priceContainer}>
+              {myApplication && !amIExecutor && (
+                  <Text style={styles.myPriceLabel}>Ваша цена: {myApplication.price || order.price} ₽</Text>
+              )}
+              <Text style={styles.price}>{order.price} ₽</Text>
+          </View>
         </View>
 
-        <Text style={styles.title} numberOfLines={1}>{order.title}</Text>
+        <View style={styles.titleRow}>
+            <Text style={styles.title} numberOfLines={1}>{order.title}</Text>
+            {hasUnviewedApplication && <View style={styles.unreadDot} />}
+        </View>
 
         <View style={styles.infoRow}>
-          <Ionicons name="location-outline" size={16} color={COLORS.gray} />
+          <AppIcon name="sys-location" size={16} color={COLORS.gray} />
           <Text style={styles.infoText} numberOfLines={1}>{order.address}</Text>
         </View>
 
         <View style={styles.footer}>
           <View style={styles.metaInfo}>
             <View style={styles.metaItem}>
-              <Ionicons name="calendar-outline" size={14} color={COLORS.gray} />
+              <AppIcon name="sys-calendar" size={14} color={COLORS.gray} />
               <Text style={styles.metaText}>{formatDate(order.date)}</Text>
             </View>
-            {order.workType && (
-              <View style={styles.metaItem}>
-                <Ionicons name="construct-outline" size={14} color={COLORS.gray} />
-                <Text style={styles.metaText}>{getWorkTypeLabel(order.workType)}</Text>
-              </View>
+            {hasApplied && !isEmployer && (
+                <View style={[styles.metaItem, styles.appliedBadge]}>
+                    <Text style={styles.appliedText}>
+                        {(myApplication?.status as any) === 'VIEWED' ? 'Просмотрено' : 'Отклик отправлен'}
+                    </Text>
+                </View>
             )}
             {isEmployer && order.applications && order.applications.length > 0 && (
                <View style={styles.metaItem}>
-                 <Ionicons name="people-outline" size={14} color={COLORS.primary} />
+                 <AppIcon name="sys-friends" size={14} color={COLORS.primary} />
                  <Text style={[styles.metaText, { color: COLORS.primary, fontWeight: '700' }]}>
-                   {order.applications.length} откликов
+                   {order.applications.length} откл.
                  </Text>
                </View>
             )}
           </View>
 
-          <TouchableOpacity style={styles.chatButton} onPress={onChat}>
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
+          {(isEmployer || amIExecutor || hasApplied) && (
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {((isEmployer && order.status === "COMPLETED") || (amIExecutor && (order.status === "COMPLETED" ))) &&
+                 !(order.reviews || []).some(r => r.authorId?.toString().trim().toLowerCase() === currentUserId?.toString().trim().toLowerCase()) && (
+                  <TouchableOpacity
+                    style={[styles.chatButton, { backgroundColor: COLORS.warning + "20" }]}
+                    onPress={onPress}
+                  >
+                    <AppIcon name="sys-rating" size={20} color={COLORS.warning} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.chatButton} onPress={onChat}>
+                  <AppIcon name="action-chat" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+              </View>
+          )}
         </View>
       </TouchableOpacity>
     </Swipeable>
@@ -181,10 +208,14 @@ const styles = StyleSheet.create({
     ...SHADOWS.soft,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)' },
+  cardUnread: {
+      borderColor: COLORS.primary + '30',
+      backgroundColor: COLORS.primary + '05'
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12 },
   statusBadge: {
     flexDirection: 'row',
@@ -194,17 +225,39 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 4 },
   statusText: {
-    fontSize: 12,
-    fontWeight: '700' },
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase' },
+  priceContainer: {
+      alignItems: 'flex-end'
+  },
   price: {
     fontSize: 18,
     fontWeight: '900',
     color: COLORS.dark },
+  myPriceLabel: {
+      fontSize: 11,
+      color: COLORS.gray,
+      marginBottom: 2
+  },
+  titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8
+  },
   title: {
     fontSize: 18,
     fontWeight: '800',
     color: COLORS.dark,
-    marginBottom: 8 },
+    flex: 1,
+    letterSpacing: -0.5 },
+  unreadDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: COLORS.primary,
+      marginLeft: 8
+  },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -224,7 +277,8 @@ const styles = StyleSheet.create({
   metaInfo: {
     flexDirection: 'row',
     gap: 12,
-    flex: 1 },
+    flex: 1,
+    alignItems: 'center' },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -233,6 +287,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.gray,
     fontWeight: '500' },
+  appliedBadge: {
+      backgroundColor: 'rgba(45, 91, 255, 0.1)',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6
+  },
+  appliedText: {
+      fontSize: 10,
+      color: COLORS.primary,
+      fontWeight: '700'
+  },
   chatButton: {
     width: 36,
     height: 36,
