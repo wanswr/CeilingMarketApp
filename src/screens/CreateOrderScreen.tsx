@@ -320,7 +320,7 @@ export default function CreateOrderScreen({ navigation }: any) {
             latitude: coordinates.latitude,
             longitude: coordinates.longitude,
             price: Number(form.price),
-            images: [],
+            images: images,
             idempotencyKey: idempotencyKeyRef.current
           });
 

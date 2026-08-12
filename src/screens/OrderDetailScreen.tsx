@@ -78,6 +78,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }, [orderId]);
 
   const handleCancelApplication = async () => {
+    if (!currentUser) {
+        navigation.navigate('Login');
+        return;
+    }
     if (submitting) return;
     logger.logClick('CancelApplication', 'OrderDetail', { orderId });
     Alert.alert(
@@ -109,6 +113,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
   const handleApply = async () => {
     logger.logClick('ApplyButton', 'OrderDetail', { orderId });
+    if (!currentUser) {
+        navigation.navigate('Login');
+        return;
+    }
     if (submitting || hasApplied) return;
     setOfferPrice(order?.price.toString() || '');
     setShowPriceModal(true);
@@ -213,6 +221,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }
 
   const handleStartWork = async () => {
+    if (!currentUser) {
+        navigation.navigate('Login');
+        return;
+    }
     if (submitting || order?.status !== 'CLAIMED') {
         return;
     }
@@ -238,6 +250,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const handleCompleteWork = async () => {
+    if (!currentUser) {
+        navigation.navigate('Login');
+        return;
+    }
     if (submitting || order?.status !== 'IN_PROGRESS') {
         return;
     }
@@ -265,6 +281,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   };
 
   const submitReview = async () => {
+      if (!currentUser) {
+          navigation.navigate('Login');
+          return;
+      }
       if (rating === 0 || submitting) return;
       if (activeReviews.has(orderId)) return;
       const myReview = order?.reviews?.find(r => normalizeId(r.authorId) === nid);
@@ -649,6 +669,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   style={styles.chatButtonFooter}
                   onPress={async () => {
                       logger.logClick('OpenChat', 'OrderDetail', { orderId, isEmployer: true });
+                      if (!currentUser) {
+                          navigation.navigate('Login');
+                          return;
+                      }
                       if (order.executorId) {
                         const res = await apiService.getOrCreateChat(order.id, order.executorId);
                         navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.executor?.name });
@@ -720,6 +744,10 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 style={styles.iconChatBtn}
                 onPress={async () => {
                     logger.logClick('OpenChat', 'OrderDetail', { orderId, isExecutor: false });
+                    if (!currentUser) {
+                        navigation.navigate('Login');
+                        return;
+                    }
                     const res = await apiService.getOrCreateChat(order.id, myId!);
                     navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.employer?.name });
                 }}

@@ -360,6 +360,12 @@ export class OrdersService {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
     }
 
+    // Verify subscription status on backend
+    const sub = await this.prisma.subscription.findUnique({ where: { userId: executorId } });
+    if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
+        throw new ForbiddenException('Требуется активная подписка для отклика');
+    }
+
     if (idempotencyKey) {
       const existingApp = await this.prisma.application.findUnique({
         where: { idempotencyKey }
