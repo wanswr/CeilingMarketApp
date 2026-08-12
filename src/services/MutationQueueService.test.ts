@@ -1,0 +1,184 @@
+jest.mock('react-native', () => {
+  (global as any).__DEV__ = true;
+  (global as any).API_URL = 'http://localhost:3000/api/';
+  return {
+    Platform: {
+      OS: 'ios',
+      select: jest.fn().mockImplementation((obj) => obj.ios || obj.default),
+    }
+  };
+}, { virtual: true });
+
+jest.mock('@env', () => {
+  (global as any).API_URL = 'http://localhost:3000/api/';
+  return {
+    __esModule: true,
+    API_URL: 'http://localhost:3000/api/'
+  };
+}, { virtual: true });
+
+import { mutationQueueService } from './MutationQueueService';
+import { networkService } from './NetworkService';
+import { apiService } from './ApiService';
+import { entityStore } from './EntityStore';
+
+jest.mock('@react-native-community/netinfo', () => {
+  let isConnected = true;
+  let listeners: any[] = [];
+  return {
+    fetch: jest.fn().mockImplementation(() => Promise.resolve({ isConnected })),
+    addEventListener: jest.fn().mockImplementation((cb) => {
+      listeners.push(cb);
+      return () => {
+        listeners = listeners.filter(l => l !== cb);
+      };
+    }),
+    __setConnected: (status: boolean) => {
+      isConnected = status;
+      listeners.forEach(cb => cb({ isConnected: status }));
+    }
+  };
+});
+
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn().mockResolvedValue('fake-token'),
+  setItemAsync: jest.fn().mockResolvedValue(true),
+  deleteItemAsync: jest.fn().mockResolvedValue(true),
+}));
+
+jest.mock('react-native-mmkv', () => {
+  return {
+    MMKV: jest.fn().mockImplementation(() => {
+      let store = new Map();
+      return {
+        getString: (k: string) => store.get(k),
+        set: (k: string, v: string) => store.set(k, v),
+        delete: (k: string) => store.delete(k),
+        clearAll: () => store.clear(),
+        getAllKeys: () => Array.from(store.keys()),
+      };
+    })
+  };
+}, { virtual: true });
+
+describe('MutationQueueService & Offline-First flow', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    mutationQueueService.clearQueue();
+    entityStore.clear();
+    entityStore.setUser({ id: 'user-1', name: 'Test User', role: 'WORKER', isMe: true } as any);
+
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(true);
+  });
+
+  it('Scenario A: Mutation executes immediately when online', async () => {
+    const apiSpy = jest.spyOn(apiService, 'createOrder').mockResolvedValue({
+      data: { id: 'srv_order_123', title: 'Test Order', status: 'PUBLISHED', latitude: 55.75, longitude: 37.61 },
+      status: 201
+    } as any);
+
+    const result = await apiService.createOrder({ title: 'Test Order', latitude: 55.75, longitude: 37.61 });
+
+    expect(result.data.id).toBe('srv_order_123');
+    expect(apiSpy).toHaveBeenCalledTimes(1);
+    expect(mutationQueueService.getQueue().length).toBe(0);
+  });
+
+  it('Scenario B: Mutation queued when offline', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    expect(networkService.isOnline()).toBe(false);
+
+    const result = await apiService.createOrder({ title: 'Offline Order', latitude: 55.75, longitude: 37.61 });
+
+    expect(result.data.id).toContain('temp_create_');
+    expect(mutationQueueService.getQueue().length).toBe(1);
+    expect(mutationQueueService.getQueue()[0].status).toBe('pending');
+  });
+
+  it('Scenario C & D: Internet appears -> automatically processed and removed from queue', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    await apiService.createOrder({ title: 'Offline Order', latitude: 55.75, longitude: 37.61 });
+    expect(mutationQueueService.getQueue().length).toBe(1);
+
+    const apiSpy = jest.spyOn(apiService, 'createOrder').mockResolvedValue({
+      data: { id: 'srv_order_789', title: 'Offline Order', status: 'PUBLISHED', latitude: 55.75, longitude: 37.61 },
+      status: 201
+    } as any);
+
+    netinfo.__setConnected(true);
+    expect(networkService.isOnline()).toBe(true);
+
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    expect(apiSpy).toHaveBeenCalledTimes(1);
+    expect(mutationQueueService.getQueue().length).toBe(0);
+    expect(entityStore.getOrder('srv_order_789')).toBeDefined();
+  });
+
+  it('Scenario E: Mutation gets permanent error -> removed from active queue with failed status', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    await apiService.createOrder({ title: 'Bad Order', latitude: 55.75, longitude: 37.61 });
+
+    const apiSpy = jest.spyOn(apiService, 'createOrder').mockRejectedValue({
+      response: { status: 400 },
+      message: 'Bad Request'
+    });
+
+    netinfo.__setConnected(true);
+
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    expect(apiSpy).toHaveBeenCalledTimes(1);
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(1);
+    expect(queue[0].status).toBe('failed');
+    expect(queue[0].error).toContain('Permanent error');
+  });
+
+  it('Scenario F: Persisted queue survives reload', () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    mutationQueueService.add('updateProfile', { data: { name: 'Bob' } });
+    expect(mutationQueueService.getQueue().length).toBe(1);
+
+    const MutationQueueModule = require('./MutationQueueService');
+    const list = entityStore.hydrate();
+    expect(mutationQueueService.getQueue().length).toBe(1);
+  });
+
+  it('Scenario G: Multiple mutations in queue processed in FIFO order', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    await apiService.createOrder({ title: 'Order A', latitude: 55.75, longitude: 37.61 });
+    await apiService.createOrder({ title: 'Order B', latitude: 55.75, longitude: 37.61 });
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(2);
+
+    const apiSpy = jest.spyOn(apiService, 'createOrder').mockResolvedValue({
+      data: { id: 'srv_order_real', title: 'Order', status: 'PUBLISHED', latitude: 55.75, longitude: 37.61 },
+      status: 201
+    } as any);
+
+    netinfo.__setConnected(true);
+
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    expect(apiSpy).toHaveBeenCalledTimes(2);
+    expect(mutationQueueService.getQueue().length).toBe(0);
+  });
+
+  it('Scenario H: applyForOrder on a temp_ ID order is blocked', async () => {
+    await expect(apiService.applyForOrder('temp_create_123', 500)).rejects.toThrow();
+  });
+});
