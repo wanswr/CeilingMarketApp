@@ -6,11 +6,11 @@ export interface LogContext {
   screen?: string;
   component?: string;
   duration?: number;
-  status?: number;
+  status?: number | string;
   userId?: string;
   orderId?: string;
   chatId?: string;
-  source?: 'api' | 'websocket' | 'store' | 'ui' | 'system';
+  source?: 'api' | 'websocket' | 'store' | 'ui' | 'system' | 'state' | 'map' | (string & {});
   payload?: any;
   error?: any;
   [key: string]: any;

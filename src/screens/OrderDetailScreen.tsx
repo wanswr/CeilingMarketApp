@@ -349,7 +349,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   }
 
   const myId = currentUser?.uid || currentUser?.id;
-  const normalizeId = (id) => id?.toString().trim().toLowerCase();
+  const normalizeId = (id: any) => id?.toString().trim().toLowerCase();
   const nid = normalizeId(myId);
   const isEmployer = !!nid && !!order?.employerId && nid === normalizeId(order.employerId);
   const isExecutor = !!nid && !!order?.executorId && nid === normalizeId(order.executorId);

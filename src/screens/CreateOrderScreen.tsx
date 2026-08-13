@@ -498,7 +498,7 @@ export default function CreateOrderScreen({ navigation }: any) {
                     style={[styles.workTypeBtn, form.categoryId === cat.id && styles.workTypeBtnActive]}
                     onPress={() => {
                       setForm({ ...form, categoryId: cat.id });
-                      setErrors((e) => ({ ...e, categoryId: undefined }));
+                      setErrors((e: any) => ({ ...e, categoryId: undefined }));
                     }}
                   >
                     <Text style={[styles.workTypeBtnText, form.categoryId === cat.id && styles.workTypeBtnTextActive]}>

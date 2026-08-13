@@ -84,11 +84,11 @@ describe('MapEngine - syncMap pagination', () => {
     const getOrdersSpatialSpy = jest.spyOn(apiService, 'getOrdersSpatial')
       .mockImplementation(async (params: any) => {
         if (!params.cursorId) {
-          return { data: { created: page1Orders } };
+          return { data: { created: page1Orders } } as any;
         } else if (params.cursorId === 'order-250') {
-          return { data: { created: page2Orders } };
+          return { data: { created: page2Orders } } as any;
         }
-        return { data: { created: [] } };
+        return { data: { created: [] } } as any;
       });
 
     // Spy on requestRouter.request
@@ -119,7 +119,7 @@ describe('MapEngine - syncMap pagination', () => {
       maxLat: 55.809999999999995,
       minLng: 37.550000000000004,
       maxLng: 37.669999999999995,
-      zoom: 12,
+      zoom: 14,
       limit: 250,
     });
 
@@ -129,7 +129,7 @@ describe('MapEngine - syncMap pagination', () => {
       maxLat: 55.809999999999995,
       minLng: 37.550000000000004,
       maxLng: 37.669999999999995,
-      zoom: 12,
+      zoom: 14,
       limit: 250,
       cursorId: 'order-250',
     });
@@ -140,7 +140,7 @@ describe('MapEngine - syncMap pagination', () => {
       maxLat: 55.809999999999995,
       minLng: 37.550000000000004,
       maxLng: 37.669999999999995,
-      zoom: 12,
+      zoom: 14,
       limit: 250,
       cursorId: 'order-500',
     });

@@ -3,6 +3,7 @@ import { apiService } from './ApiService'
 import { requestRouter } from './RequestRouter'
 import { entityStore } from './EntityStore'
 import { GeoClusterService } from './GeoClusterService'
+import { GeoGridService } from './GeoGridService'
 import { spatialManager } from '../map/SpatialManager'
 import { mapViewportStore } from './MapViewportStore'
 import { logger } from './logger/LoggerService'
@@ -223,7 +224,7 @@ class MapEngine {
 
     try {
       const latDelta = viewRegion.latitudeDelta;
-      const zoom = this.geoClusterService?.getZoomLevel ? this.geoClusterService.getZoomLevel(latDelta) : 12;
+      const zoom = GeoGridService.getZoomLevel(latDelta);
       const activeCategoryId = currentUser?.activeCategoryId;
 
       const limit = 250;
@@ -265,7 +266,7 @@ class MapEngine {
         if (params.dateFilter) keyParts.push("date:" + params.dateFilter);
         const routerKey = keyParts.join('_');
 
-        const isCached = requestRouter.cache.has(routerKey) && (Date.now() - (requestRouter.cache.get(routerKey)?.timestamp || 0)) < (force ? 0 : 30000);
+        const isCached = requestRouter.hasValidCache(routerKey, force ? 0 : 30000);
 
         if (!isCached && !cursorId) {
           source = 'network';
@@ -277,7 +278,7 @@ class MapEngine {
         }
 
         const fetchStartTs = Date.now();
-        const res = cursorId
+        const res: any = cursorId
           ? await this.apiService.getOrdersSpatial(params)
           : await this.requestRouter.request(routerKey, () => this.apiService.getOrdersSpatial(params), force ? 0 : 30000);
 
@@ -290,7 +291,7 @@ class MapEngine {
         }
 
         if (res && res.data) {
-          const { created } = res.data;
+          const created: any[] = res.data.created;
           if (created && created.length > 0) {
             allCreated = [...allCreated, ...created];
             if (created.length === limit) {

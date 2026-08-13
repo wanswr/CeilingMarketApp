@@ -83,6 +83,15 @@ class RequestRouter {
   }
 
   /**
+   * Expose safe verification of valid cache existence to avoid private property exposure.
+   */
+  hasValidCache(key: string, ttl: number = 30000): boolean {
+    const cached = this.cache.get(key);
+    if (!cached) return false;
+    return (Date.now() - cached.timestamp) < ttl;
+  }
+
+  /**
    * Force invalidate a specific cache key.
    */
   invalidate = (key: string) => {
