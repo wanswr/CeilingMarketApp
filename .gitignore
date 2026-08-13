@@ -31,6 +31,7 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 config.js
 # typescript
@@ -39,3 +40,7 @@ esc/
 
 # testing
 coverage/
+
+# logs
+backend.log
+*.log

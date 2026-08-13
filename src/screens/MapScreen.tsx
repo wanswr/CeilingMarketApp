@@ -1,3 +1,5 @@
+import { useClientStore } from '../store/client.store';
+import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import {
@@ -8,66 +10,93 @@ import {
   ActivityIndicator,
   TextInput,
   ScrollView,
-  Platform
+  Platform,
+  Modal
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur'
 import { COLORS, SHADOWS } from '../constants/theme'
+import { CONFIG } from '../constants/config'
 import { mapEngine } from '../services/MapEngine'
 import { mapViewportStore } from '../services/MapViewportStore'
+import { logger } from '../services/logger/LoggerService'
 import { formatDate } from '../utils/date'
 import { Order } from '../types'
 import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const MapScreen = ({ navigation }: any) => {
   const mapRef = useRef<MapView>(null);
+  const activeRole = useClientStore(state => state.activeRole);
   const isFocusedRef = useRef(true);
   const [displayedOrders, setDisplayedOrders] = useState<any[]>(mapEngine.getOrders());
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [statusState, setStatusState] = useState<'loading' | 'success' | 'error'>('loading');
   const [region, setRegion] = useState<Region>(mapViewportStore.getRegion());
-  const [radius, setRadius] = useState(100);
+  const [radius, setRadius] = useState(CONFIG.DEFAULT_SEARCH_RADIUS_KM);
+  const [dateFilter, setDateFilter] = useState(mapEngine.getDateFilter?.() || 'all');
   const [showFilters, setShowFilters] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
+  const [pendingLocation, setPendingLocation] = useState<{latitude: number, longitude: number} | null>(null);
+
   const movingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastPanDragRef = useRef<number>(0);
-  const lastSyncRequestRef = useRef<number>(0);
+  const lastHandledRegionRef = useRef<string>('');
+  const currentUser = mapEngine.getCurrentUser();
+  const myId = currentUser?.uid || currentUser?.id;
 
-  const fitToOrders = useCallback((orders: Order[]) => {
-    if (!orders || orders.length === 0 || !mapRef.current) return;
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
-    const coords = orders
-      .map(o => mapEngine.getOrderCoords(o))
-      .filter(Boolean) as { latitude: number, longitude: number }[];
-
-    if (coords.length > 0) {
-      mapRef.current.fitToCoordinates(coords, {
-        edgePadding: {
-            top: 80,
-            right: 80,
-            bottom: selectedOrder ? 300 : 250,
-            left: 80
-        },
-        animated: true });
+  useEffect(() => {
+    if (currentUser && myId) {
+      const key = `onboarding_shown_${myId}`;
+      const shown = require('../services/StorageService').storageService.get(key);
+      if (!shown) {
+        setShowOnboarding(true);
+      }
     }
-  }, [selectedOrder]);
+  }, [currentUser, myId]);
 
-  // 1. Static Subscriptions (Mount/Unmount)
+  const handleCloseOnboarding = () => {
+    if (myId) {
+      const key = `onboarding_shown_${myId}`;
+      require('../services/StorageService').storageService.set(key, true);
+    }
+    setShowOnboarding(false);
+  };
+
   const isSubscribedRef = useRef(false);
 
   useEffect(() => {
     if (isSubscribedRef.current) return;
-    if (__DEV__) console.log('MAP_SCREEN_MOUNT');
+    logger.debug('MAP_SCREEN_MOUNT', { source: 'ui' });
 
     const unsubscribeOrders = mapEngine.subscribe((newOrders: any) => {
       setDisplayedOrders([...newOrders]);
       setLoading(false);
+
+      const curUser = mapEngine.getCurrentUser();
+      const currentRegion = mapViewportStore.getRegion();
+      logger.info('MAP_DEBUG', {
+          userId: curUser?.id || curUser?.uid || 'anonymous',
+          role: curUser?.role || 'none',
+          ordersCount: newOrders.filter((o: any) => !o.isCluster).length,
+          entitiesCount: mapEngine.entityStore.getAllOrders().length,
+          visibleMarkersCount: newOrders.length,
+          viewport: {
+              latitudeDelta: currentRegion?.latitudeDelta,
+              longitudeDelta: currentRegion?.longitudeDelta
+          },
+          coordinates: {
+              latitude: currentRegion?.latitude,
+              longitude: currentRegion?.longitude
+          }
+      });
     }, 'MapScreen');
 
     const unsubscribeViewport = mapViewportStore.subscribe((newRegion: any) => {
@@ -77,69 +106,94 @@ const MapScreen = ({ navigation }: any) => {
     isSubscribedRef.current = true;
 
     return () => {
-      console.log('MAP_SCREEN_UNMOUNT');
+      logger.debug('MAP_SCREEN_UNMOUNT', { source: 'ui' });
       unsubscribeOrders();
       unsubscribeViewport();
       isSubscribedRef.current = false;
     };
   }, []);
 
-  // 2. Active Focus Lifecycle
+  const loadMapData = useCallback(async () => {
+    setStatusState('loading');
+    setLoading(true);
+    try {
+        let loc = null;
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          try {
+            loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            setLocation(loc);
+          } catch (locationError: any) {
+            logger.warn('[MapScreen] Failed to get GPS location, using fallback region:', { error: locationError.message });
+          }
+        }
+
+        let isSimulatorFallback = false;
+        if (loc) {
+          const lat = loc.coords.latitude;
+          const lon = loc.coords.longitude;
+          // Check if coordinates represent the default US/San Francisco simulator coordinates
+          if (lat >= 37.0 && lat <= 38.0 && lon >= -123.0 && lon <= -122.0) {
+            isSimulatorFallback = true;
+            logger.info('[MapScreen] Detected default San Francisco simulator location, falling back to Moscow');
+          }
+        }
+
+        if (loc && !isSimulatorFallback) {
+          // Calculate precise latitude/longitude deltas for 50km radius coverage (100km total span)
+          const totalRangeKm = CONFIG.DEFAULT_SEARCH_RADIUS_KM * 2;
+          const latDelta = totalRangeKm / 111;
+          const lonDelta = totalRangeKm / (111 * Math.cos(loc.coords.latitude * Math.PI / 180));
+
+          const userRegion = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            latitudeDelta: latDelta,
+            longitudeDelta: lonDelta
+          };
+
+          mapViewportStore.setRegion(userRegion);
+          await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
+          mapRef.current?.animateToRegion(userRegion, 500);
+        } else {
+          const fallback = mapViewportStore.getRegion();
+          await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
+        }
+        setStatusState('success');
+    } catch (e) {
+        logger.error("UI_ERROR", { error: '[MapScreen] Init Error:', e });
+        setStatusState('error');
+    } finally {
+        setLoading(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       isFocusedRef.current = true;
-
       setDisplayedOrders([...mapEngine.getOrders()]);
       setRegion(mapViewportStore.getRegion());
 
       const orders = mapEngine.getOrders();
       if (orders.length === 0) {
-          console.log('MAP_FOCUS (Init)');
-          (async () => {
-            try {
-                const { status } = await Location.requestForegroundPermissionsAsync();
-                if (status === 'granted') {
-                  const loc = await Location.getCurrentPositionAsync({});
-                  setLocation(loc);
-                  const userRegion = {
-                    latitude: loc.coords.latitude,
-                    longitude: loc.coords.longitude,
-                    latitudeDelta: 0.25,
-                    longitudeDelta: 0.25
-                  };
-                  mapViewportStore.setRegion(userRegion);
-                  await mapEngine.initialLoad(loc.coords.latitude, loc.coords.longitude);
-                  mapRef.current?.animateToRegion(userRegion, 500);
-
-                  const currentOrders = mapEngine.getOrders();
-                  if (currentOrders.length > 0) {
-                      const coords = currentOrders.map((o: any) => mapEngine.getOrderCoords(o)).filter(Boolean) as any[];
-                      if (coords.length > 0) {
-                          setTimeout(() => mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 80, right: 80, bottom: 250, left: 80 }, animated: true }), 1500);
-                      }
-                      setDisplayedOrders([...mapEngine.getOrders()]);
-                  }
-                } else {
-                  const fallback = mapViewportStore.getRegion();
-                  await mapEngine.initialLoad(fallback.latitude, fallback.longitude);
-                }
-            } catch (e) {
-                console.error('[MapScreen] Init Error:', e);
-            }
-          })();
+          loadMapData();
+      } else {
+          setStatusState('success');
+          setLoading(false);
       }
 
       return () => {
         isFocusedRef.current = false;
-        console.log('MAP_BLUR');
       };
-    }, [])
+    }, [loadMapData])
   );
-
-  const lastUpdateRef = useRef<{ordersCount: number, visibleCount: number, regionKey: string} | null>(null);
 
   const handleRegionChangeComplete = (newRegion: Region) => {
     if (!newRegion || !newRegion.latitude || !newRegion.longitude || !isFocusedRef.current) return;
+
+    const regionKey = `${newRegion.latitude.toFixed(4)}_${newRegion.longitude.toFixed(4)}_${newRegion.latitudeDelta.toFixed(4)}`;
+    if (regionKey === lastHandledRegionRef.current) return;
+    lastHandledRegionRef.current = regionKey;
 
     if (movingTimeoutRef.current) clearTimeout(movingTimeoutRef.current);
     movingTimeoutRef.current = setTimeout(() => setIsMoving(false), 300);
@@ -160,36 +214,11 @@ const MapScreen = ({ navigation }: any) => {
     }
   };
 
-  useEffect(() => {
-      if (!isMoving) {
-          const regionKey = `${region.latitude.toFixed(3)}:${region.longitude.toFixed(3)}:${region.latitudeDelta.toFixed(3)}`;
-
-          if (lastUpdateRef.current &&
-              lastUpdateRef.current.ordersCount === displayedOrders.length &&
-              lastUpdateRef.current.visibleCount === displayedOrders.length &&
-              lastUpdateRef.current.regionKey === regionKey) {
-              return;
-          }
-
-          lastUpdateRef.current = {
-              ordersCount: displayedOrders.length,
-              visibleCount: displayedOrders.length,
-              regionKey
-          };
-
-          console.log('MAP_RENDER', {
-              count: displayedOrders.length,
-              visible: displayedOrders.length,
-              loading,
-              source: 'entityStore',
-              region: {
-                  lat: region.latitude.toFixed(3),
-                  lng: region.longitude.toFixed(3),
-                  delta: region.latitudeDelta.toFixed(3)
-              }
-          });
-      }
-  }, [displayedOrders.length, loading, isMoving, region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
+  const handleLongPress = (e: any) => {
+      const coords = e.nativeEvent.coordinate;
+      setPendingLocation(coords);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  };
 
   return (
     <ErrorBoundary>
@@ -200,22 +229,19 @@ const MapScreen = ({ navigation }: any) => {
           style={styles.map}
           initialRegion={region}
           showsUserLocation={true}
-          onPress={() => setSelectedOrder(null)}
-          onRegionChange={(newReg) => {
+          onPress={() => {
+              setSelectedOrder(null);
+              setPendingLocation(null);
+          }}
+          onLongPress={handleLongPress}
+          onRegionChange={() => {
               if (!isFocusedRef.current) return;
               if (!isMoving) setIsMoving(true);
-              mapViewportStore.setRegion(newReg);
           }}
           onRegionChangeComplete={handleRegionChangeComplete}
           onPanDrag={() => {
             if (!isMoving) setIsMoving(true);
-            const now = Date.now();
-            if (now - lastPanDragRef.current > 1000) {
-                if (__DEV__) console.log('[MAP] PAN_DRAG');
-                lastPanDragRef.current = now;
-            }
           }}
-          onMapReady={() => console.log('[MAP] READY')}
           customMapStyle={mapStyle}
           mapPadding={{ top: 0, right: 0, bottom: selectedOrder ? 250 : 0, left: 0 }}
         >
@@ -243,20 +269,24 @@ const MapScreen = ({ navigation }: any) => {
               );
             }
 
+            const hasMyApplication = item.applications?.some((a: any) => a.executorId === myId);
+
             return (
               <Marker
-                key={item.id}
+                key={`${item.id}_${item.status}`}
                 coordinate={coords}
                 onPress={(e) => {
                   e.stopPropagation();
                   setSelectedOrder(item);
+                  setPendingLocation(null);
                 }}
                 tracksViewChanges={false}
               >
                 <View style={[
                   styles.customMarker,
                   selectedOrder?.id === item.id && styles.customMarkerActive,
-                  item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { borderColor: '#F59E0B' }
+                  item.status === 'HAS_RESPONSES' && !selectedOrder?.id && { borderColor: '#F59E0B' },
+                  hasMyApplication && { backgroundColor: COLORS.primary + '20', borderColor: COLORS.primary }
                 ]}>
                   <Text style={[
                     styles.markerPrice,
@@ -265,23 +295,34 @@ const MapScreen = ({ navigation }: any) => {
                   ]}>
                     {Number(item.price) >= 1000 ? `${(Number(item.price) / 1000).toFixed(1)}k` : item.price}
                   </Text>
+                  {hasMyApplication && (
+                      <View style={styles.appliedDot} />
+                  )}
                 </View>
               </Marker>
             );
           })}
+
+          {pendingLocation && (
+              <Marker coordinate={pendingLocation} pinColor={COLORS.primary}>
+                  <View style={styles.pendingMarker}>
+                      <AppIcon name="tab-create" size={32} color={COLORS.primary} />
+                  </View>
+              </Marker>
+          )}
         </MapView>
 
         <SafeAreaView style={styles.headerOverlay} pointerEvents="box-none">
           <View style={styles.topContainer}>
             <BlurView intensity={80} tint="light" style={styles.searchBar}>
-              <Ionicons name="search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
+              <AppIcon name="action-search" size={20} color={COLORS.gray} style={{ marginLeft: 15 }} />
               <TextInput
                 placeholder="Поиск заказов..."
                 style={styles.searchInput}
                 placeholderTextColor={COLORS.gray}
               />
               <TouchableOpacity style={styles.filterBtn} onPress={() => setShowFilters(!showFilters)}>
-                <Ionicons name="options-outline" size={22} color={COLORS.primary} />
+                <AppIcon name="action-filter" size={22} color={COLORS.primary} />
               </TouchableOpacity>
             </BlurView>
 
@@ -301,6 +342,29 @@ const MapScreen = ({ navigation }: any) => {
                       }}
                     >
                       <Text style={[styles.radiusText, radius === r && styles.radiusTextActive]}>{r}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.filterTitle}>Дата выполнения заказа</Text>
+                <View style={styles.radiusContainer}>
+                  {[
+                    { label: 'Все', value: 'all' },
+                    { label: 'Сегодня', value: 'today' },
+                    { label: '3 дня', value: '3days' },
+                    { label: 'Неделя', value: 'week' }
+                  ].map((d) => (
+                    <TouchableOpacity
+                      key={d.value}
+                      style={[styles.radiusBtn, dateFilter === d.value && styles.radiusBtnActive, { flex: 1, paddingHorizontal: 2 }]}
+                      onPress={() => {
+                        setDateFilter(d.value);
+                        // @ts-ignore
+                        mapEngine.setDateFilter?.(d.value);
+                        mapEngine.triggerNotify();
+                      }}
+                    >
+                      <Text style={[styles.radiusText, dateFilter === d.value && styles.radiusTextActive]}>{d.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -338,7 +402,7 @@ const MapScreen = ({ navigation }: any) => {
         </SafeAreaView>
 
         <TouchableOpacity style={styles.myLocationBtn} onPress={centerToUser}>
-           <Ionicons name="locate" size={24} color={COLORS.primary} />
+           <AppIcon name="action-locate" size={24} color={COLORS.primary} />
         </TouchableOpacity>
 
         {selectedOrder && (
@@ -354,12 +418,8 @@ const MapScreen = ({ navigation }: any) => {
                       <Text style={styles.previewTitle} numberOfLines={1}>{selectedOrder.title || selectedOrder.address}</Text>
                       <View style={styles.previewInfoRow}>
                         <View style={styles.infoBadge}>
-                          <Ionicons name="calendar-outline" size={12} color={COLORS.gray} />
+                          <AppIcon name="sys-calendar" size={12} color={COLORS.gray} />
                           <Text style={styles.infoBadgeText}>{formatDate(selectedOrder.date)}</Text>
-                        </View>
-                        <View style={styles.infoBadge}>
-                          <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
-                          <Text style={[styles.infoBadgeText, { color: COLORS.primary }]}>{selectedOrder.distance?.toFixed(1) || '0.0'} км</Text>
                         </View>
                       </View>
                     </View>
@@ -367,12 +427,6 @@ const MapScreen = ({ navigation }: any) => {
                       <Text style={styles.previewPrice}>{selectedOrder.price} ₽</Text>
                     </View>
                   </View>
-
-                  {selectedOrder.details && (
-                    <Text style={styles.previewDetails} numberOfLines={2}>
-                      {selectedOrder.details}
-                    </Text>
-                  )}
 
                   <View style={styles.footerRow}>
                     <TouchableOpacity
@@ -388,7 +442,7 @@ const MapScreen = ({ navigation }: any) => {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.employerNameSmall}>{selectedOrder.employer?.name || 'Заказчик'}</Text>
                         <View style={styles.ratingRowSmall}>
-                          <Ionicons name="star" size={10} color={COLORS.warning} />
+                          <AppIcon name="sys-rating" size={10} color={COLORS.warning} />
                           <Text style={styles.ratingTextSmall}>{selectedOrder.employer?.rating?.toFixed(1) || '5.0'}</Text>
                         </View>
                       </View>
@@ -402,7 +456,7 @@ const MapScreen = ({ navigation }: any) => {
                           navigation.navigate('MainTabs', { screen: 'Chats', params: { orderId: selectedOrder.id } });
                         }}
                       >
-                        <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.primary} />
+                        <AppIcon name="action-chat" size={20} color={COLORS.primary} />
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -412,7 +466,9 @@ const MapScreen = ({ navigation }: any) => {
                           navigation.navigate('OrderDetail', { orderId: selectedOrder.id });
                         }}
                       >
-                        <Text style={styles.mainActionText}>Отклик</Text>
+                        <Text style={styles.mainActionText}>
+                            {selectedOrder.applications?.some((a: any) => a.executorId === myId) ? 'Открыт' : 'Отклик'}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -421,9 +477,104 @@ const MapScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         )}
 
-        {loading && displayedOrders.length === 0 && (
-            <View style={styles.loaderOverlay} pointerEvents="none">
+        {pendingLocation && (
+            <View style={styles.createOrderPrompt}>
+                <BlurView intensity={95} tint="light" style={styles.promptCard}>
+                    <Text style={styles.promptTitle}>Создать заказ здесь?</Text>
+                    <Text style={styles.promptSubtitle}>Вы выбрали точку на карте. Нажмите кнопку ниже, чтобы заполнить детали заказа.</Text>
+                    <View style={styles.promptActions}>
+                        <TouchableOpacity
+                            style={styles.promptCancel}
+                            onPress={() => setPendingLocation(null)}
+                        >
+                            <Text style={styles.promptCancelText}>Отмена</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.promptSubmit}
+                            onPress={() => {
+                                const coords = pendingLocation;
+                                setPendingLocation(null);
+                                navigation.navigate('MainTabs', {
+                                    screen: 'Add',
+                                    params: {
+                                        latitude: coords.latitude,
+                                        longitude: coords.longitude
+                                    }
+                                });
+                            }}
+                        >
+                            <Text style={styles.promptSubmitText}>Создать заказ</Text>
+                        </TouchableOpacity>
+                    </View>
+                </BlurView>
+            </View>
+        )}
+
+      {/* First-time Onboarding Modal */}
+      <Modal
+        visible={showOnboarding}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={handleCloseOnboarding}
+      >
+        <View style={styles.onboardingOverlay}>
+          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill}>
+            <TouchableOpacity style={{ flex: 1 }} onPress={handleCloseOnboarding} />
+          </BlurView>
+          <View style={styles.onboardingContent}>
+            <LinearGradient colors={['#2D5BFF', '#8257E5']} style={styles.onboardingIconContainer}>
+              <AppIcon name={activeRole === 'WORKER' ? "role-worker" : "role-employer"}
+                size={48}
+                color={activeRole === 'WORKER' ? "#00C897" : "#ff9067"}
+              />
+            </LinearGradient>
+
+            <Text style={styles.onboardingTitle}>Добро пожаловать!</Text>
+
+            <Text style={styles.onboardingMessage}>
+              {activeRole === 'WORKER'
+                ? "Заполните ваш профиль, чтобы начать получать предложения о работе!"
+                : "Создайте ваш первый заказ, чтобы найти лучших мастеров по потолкам!"}
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.onboardingCtaBtn}
+              onPress={() => {
+                handleCloseOnboarding();
+                if (activeRole === 'WORKER') {
+                  navigation.navigate('EditProfile');
+                } else {
+                  navigation.navigate('MainTabs', { screen: 'Add' });
+                }
+              }}
+            >
+              <Text style={styles.onboardingCtaText}>
+                {activeRole === 'WORKER' ? "Заполнить профиль" : "Создать заказ"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.onboardingSkipBtn} onPress={handleCloseOnboarding}>
+              <Text style={styles.onboardingSkipText}>Пропустить</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+        {statusState === 'loading' && (
+            <View style={styles.loaderOverlay}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        )}
+
+        {statusState === 'error' && (
+            <View style={styles.errorOverlay}>
+                <AppIcon name="status-offline" size={48} color={COLORS.danger} style={{ marginBottom: 12 }} />
+                <Text style={styles.errorText}>Ошибка загрузки карты</Text>
+                <Text style={styles.errorSubtext}>Проверьте подключение к сети и геолокацию</Text>
+                <TouchableOpacity style={styles.retryBtn} onPress={loadMapData}>
+                    <Text style={styles.retryBtnText}>Повторить</Text>
+                </TouchableOpacity>
             </View>
         )}
       </View>
@@ -438,6 +589,20 @@ const mapStyle = [
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  errorOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.95)', justifyContent: 'center', alignItems: 'center', padding: 24, zIndex: 2000 },
+  errorText: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 8 },
+  errorSubtext: { fontSize: 14, color: COLORS.gray, textAlign: 'center', marginBottom: 20, paddingHorizontal: 20 },
+  retryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, ...SHADOWS.soft },
+  retryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  onboardingOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.5)' },
+  onboardingContent: { backgroundColor: '#fff', borderRadius: 32, padding: 24, width: '100%', alignItems: 'center', ...SHADOWS.heavy },
+  onboardingIconContainer: { width: 90, height: 90, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  onboardingTitle: { fontSize: 24, fontWeight: '900', color: COLORS.dark, marginBottom: 12 },
+  onboardingMessage: { fontSize: 16, color: COLORS.gray, textAlign: 'center', lineHeight: 24, marginBottom: 24, paddingHorizontal: 10, fontWeight: '500' },
+  onboardingCtaBtn: { backgroundColor: COLORS.primary, width: '100%', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', ...SHADOWS.medium },
+  onboardingCtaText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  onboardingSkipBtn: { marginTop: 15, padding: 10 },
+  onboardingSkipText: { color: COLORS.gray, fontSize: 14, fontWeight: '600' },
   map: { flex: 1, ...StyleSheet.absoluteFillObject },
   headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   topContainer: {
@@ -554,9 +719,21 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     borderWidth: 2,
     borderColor: COLORS.primary,
-    ...SHADOWS.soft
+    ...SHADOWS.soft,
+    position: 'relative'
   },
   customMarkerActive: { backgroundColor: COLORS.primary, borderColor: '#fff', transform: [{ scale: 1.1 }] },
+  appliedDot: {
+      position: 'absolute',
+      top: -4,
+      right: -4,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: COLORS.primary,
+      borderWidth: 2,
+      borderColor: '#fff'
+  },
   markerPrice: { fontSize: 13, fontWeight: '900', color: COLORS.primary },
   markerPriceActive: { color: '#fff' },
   previewCardContainer: { position: 'absolute', bottom: 10, left: 12, right: 12, zIndex: 1000 },
@@ -576,7 +753,6 @@ const styles = StyleSheet.create({
   infoBadgeText: { fontSize: 11, fontWeight: '600', color: COLORS.gray },
   priceBadge: { backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, ...SHADOWS.soft },
   previewPrice: { fontSize: 16, color: '#fff', fontWeight: '900' },
-  previewDetails: { fontSize: 13, color: COLORS.gray, marginBottom: 12, lineHeight: 18 },
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   employerLink: {
     flexDirection: 'row',
@@ -610,6 +786,71 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     ...SHADOWS.medium },
-  mainActionText: { color: '#fff', fontWeight: '900', fontSize: 14 } });
+  mainActionText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  pendingMarker: {
+      backgroundColor: '#fff',
+      padding: 4,
+      borderRadius: 20,
+      ...SHADOWS.medium,
+      borderWidth: 2,
+      borderColor: COLORS.primary
+  },
+  createOrderPrompt: {
+      position: 'absolute',
+      bottom: 20,
+      left: 20,
+      right: 20,
+      zIndex: 1001
+  },
+  promptCard: {
+      borderRadius: 24,
+      padding: 24,
+      ...SHADOWS.heavy,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.5)'
+  },
+  promptTitle: {
+      fontSize: 20,
+      fontWeight: '900',
+      color: COLORS.dark,
+      marginBottom: 8
+  },
+  promptSubtitle: {
+      fontSize: 14,
+      color: COLORS.gray,
+      lineHeight: 20,
+      marginBottom: 20
+  },
+  promptActions: {
+      flexDirection: 'row',
+      gap: 12
+  },
+  promptCancel: {
+      flex: 1,
+      height: 50,
+      justifyContent: 'center',
+      alignItems: 'center'
+  },
+  promptCancelText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: COLORS.gray
+  },
+  promptSubmit: {
+      flex: 2,
+      height: 50,
+      backgroundColor: COLORS.primary,
+      borderRadius: 15,
+      justifyContent: 'center',
+      alignItems: 'center',
+      ...SHADOWS.soft
+  },
+  promptSubmitText: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: '#fff'
+  }
+});
 
 export default MapScreen;

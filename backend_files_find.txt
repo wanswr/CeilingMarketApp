@@ -1,0 +1,6 @@
+backend/src/modules/orders/orders.service.spec.ts
+backend/src/modules/orders/orders.service.ts
+backend/src/modules/reviews/reviews.service.ts
+backend/src/modules/users/users.service.ts
+backend/src/modules/users/users.service.spec.ts
+backend/src/modules/auth/auth.service.ts

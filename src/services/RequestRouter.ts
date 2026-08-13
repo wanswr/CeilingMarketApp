@@ -1,3 +1,5 @@
+import { logger } from './logger/LoggerService';
+
 /**
  * RequestRouter: Centralized Gateway for all API requests.
  * Features: Global Deduplication, Cache-First Policy, and Request Locking.
@@ -41,7 +43,7 @@ class RequestRouter {
 
     // 1. Handle In-Flight (Deduplication) - TASK #1: Locking
     if (this.inFlight.has(key)) {
-      if (__DEV__) console.log(`[RequestRouter] DEDUP JOIN: ${key}`);
+      logger.debug(`DEDUP JOIN: ${key}`, { source: 'api' });
       this.metrics.dedupHits++;
       return this.inFlight.get(key);
     }
@@ -49,17 +51,13 @@ class RequestRouter {
     // 2. Check Cache (Cache-First)
     const cached = this.cache.get(key);
     if (cached && (now - cached.timestamp) < ttl) {
-      if (__DEV__) {
-        console.log(`[RequestRouter] CACHE HIT: ${key}`);
-      }
+      logger.debug(`CACHE HIT: ${key}`, { source: 'api', age: now - cached.timestamp });
       this.metrics.cacheHits++;
       return cached.data;
     }
 
     // 3. Perform Fetch
-    if (__DEV__) {
-        console.log(`[RequestRouter] >>> FETCH START: ${key}`);
-    }
+    logger.debug(`FETCH START: ${key}`, { source: 'api' });
     this.metrics.apiCalls++;
 
     const promise = (async () => {
@@ -72,13 +70,11 @@ class RequestRouter {
            // Don't log or throw for cancellations
            return null as any;
         }
-        console.error(`[RequestRouter] FETCH FAILED: ${key}`, error);
+        logger.error(`FETCH FAILED: ${key}`, { source: 'api', error: error.message });
         throw error;
       } finally {
         this.inFlight.delete(key);
-        if (__DEV__) {
-            console.log(`[RequestRouter] <<< FETCH END: ${key}`);
-        }
+        logger.debug(`FETCH END: ${key}`, { source: 'api' });
       }
     })();
 
@@ -91,6 +87,7 @@ class RequestRouter {
    */
   invalidate = (key: string) => {
     this.cache.delete(key);
+    logger.debug(`CACHE_INVALIDATE: ${key}`, { source: 'api' });
   }
 
   /**
@@ -109,6 +106,7 @@ class RequestRouter {
     this.metrics.spatialCacheHits = 0;
     this.metrics.spatialCacheMisses = 0;
     this.metrics.spatialRequests = 0;
+    logger.info(`CACHE_CLEAR_ALL`, { source: 'api' });
   }
 
   getMetrics = () => {

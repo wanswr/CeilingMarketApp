@@ -1,0 +1,61 @@
+=== Line 351 ===
+336:     });
+337:     const chatIds = chats.map(c => c.id);
+338:
+339:     await this.prisma.order.delete({ where: { id } });
+340:
+341:     await this.broadcast('order.deleted', {
+342:         id,
+343:         employerId: order.employerId,
+344:         executorId: order.executorId,
+345:         chatIds
+346:     }, userId);
+347:
+348:     return { id };
+349:   }
+350:
+351:   async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
+352:     // Validate executor role (must be WORKER to apply)
+353:     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
+354:     if (!executor || executor.deletedAt) {
+355:         throw new ForbiddenException('Only workers are allowed to apply to orders');
+356:     }
+357:     const executorRoles = executor.roles && executor.roles.length > 0 ? executor.roles : [executor.role].filter(Boolean);
+358:     if (!executorRoles.includes(Role.WORKER) || executor.role !== Role.WORKER) {
+359:         throw new ForbiddenException('Only workers are allowed to apply to orders');
+360:     }
+361:
+362:     if (idempotencyKey) {
+363:       const existingApp = await this.prisma.application.findUnique({
+364:         where: { idempotencyKey }
+365:       });
+366:       if (existingApp) {
+367:         this.logger.info('ORDER_APPLY_IDEMPOTENT_HIT', 'Application already exists with this idempotencyKey', { idempotencyKey });
+368:         const currentOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+369:         return { app: existingApp, order: currentOrder };
+370:       }
+371:     }
+372:
+373:     const existing = await this.prisma.application.findUnique({
+374:       where: { orderId_executorId: { orderId, executorId } }
+375:     });
+376:     if (existing) throw new ConflictException('Already applied');
+377:
+378:     try {
+379:       const result = await this.prisma.$transaction(async (tx) => {
+380:         // Read actual status from database INSIDE the transaction
+381:         const order = await tx.order.findUnique({ where: { id: orderId } });
+382:         if (!order) throw new NotFoundException('Order not found');
+383:
+384:         // Check if the order status is open for applications
+385:         if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
+386:             throw new ConflictException('Order is no longer open for applications');
+387:         }
+388:
+389:         // Row-level lock on parent Order row to eliminate concurrent application race conditions
+390:         await tx.$executeRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+391:
+392:         // Limit maximum applications to 10
+393:         const appCount = await tx.application.count({
+394:           where: { orderId }
+395:         });

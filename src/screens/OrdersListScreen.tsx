@@ -1,3 +1,4 @@
+import AppIcon, { IconName } from '../components/AppIcon';
 import React, { useState, useEffect, useMemo } from 'react';
 
 import {
@@ -5,20 +6,26 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   RefreshControl,
   Alert,
-  ScrollView
+  ScrollView,
+  ActivityIndicator
  } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
-import { Ionicons } from '@expo/vector-icons'
 import { mapEngine } from '../services/MapEngine'
+import { logger } from '../services/logger/LoggerService'
 import { Order, OrderStatus, WorkType } from '../types'
 import { COLORS, SHADOWS } from '../constants/theme'
 import { OrderCard } from '../components/OrderCard'
 
-const FILTERS = {
+const FILTERS: {
+  STATUS: { id: string; label: string }[];
+  WORK_TYPE: { id: string; label: string }[];
+  SORT: { id: string; label: string; icon: IconName }[];
+  DATE: { id: string; label: string }[];
+} = {
   STATUS: [
     { id: 'all', label: 'Все' },
     { id: 'PUBLISHED', label: 'Ожидает' },
@@ -35,8 +42,8 @@ const FILTERS = {
     { id: 'OTHER', label: 'Другое' },
   ],
   SORT: [
-    { id: 'newest', label: 'Сначала новые', icon: 'arrow-down' },
-    { id: 'oldest', label: 'Сначала старые', icon: 'arrow-up' },
+    { id: 'newest', label: 'Сначала новые', icon: 'action-sort-down' },
+    { id: 'oldest', label: 'Сначала старые', icon: 'action-sort-up' },
   ],
   DATE: [
     { id: 'all', label: 'Все даты' },
@@ -50,7 +57,12 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
   const [orders, setOrders] = useState<Order[]>(mapEngine.getOrders(true));
   const [currentUser, setCurrentUser] = useState(mapEngine.getCurrentUser());
+  const [loading, setLoading] = useState(!mapEngine.entityStore.isMyOrdersLoaded);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [submitting, setSubmitting] = useState<string | null>(null);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
@@ -59,14 +71,20 @@ const OrdersListScreen = ({ navigation }: any) => {
   const [sortOrder, setSortOrder] = useState('newest');
 
   useEffect(() => {
+    logger.debug('ORDERS_LIST_MOUNT', { source: 'ui' });
     const unsubscribe = mapEngine.subscribe(() => {
       setOrders(mapEngine.getOrders(true));
     }, 'OrdersListScreen');
-    return () => unsubscribe();
+
+    return () => {
+        logger.debug('ORDERS_LIST_UNMOUNT', { source: 'ui' });
+        unsubscribe();
+    };
   }, []);
 
   useFocusEffect(
     React.useCallback(() => {
+      // V11: Only update local state if mounted to prevent memory leaks/zombie state
       setOrders(mapEngine.getOrders(true));
 
       const user = mapEngine.getCurrentUser();
@@ -74,22 +92,33 @@ const OrdersListScreen = ({ navigation }: any) => {
       else mapEngine.syncUser().then(setCurrentUser);
 
       if (!mapEngine.entityStore.isMyOrdersLoaded) {
-        mapEngine.syncMyOrders();
+        setLoading(true);
+        setError(null);
+        setHasMore(true);
+        mapEngine.syncMyOrders({ skip: 0, take: 50 })
+          .then(() => setLoading(false))
+          .catch((e: any) => {
+             setError(e.message || "Не удалось загрузить список заказов");
+             setLoading(false);
+          });
+      } else {
+        setLoading(false);
       }
     }, [])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setHasMore(true);
     await Promise.all([
-      mapEngine.syncMyOrders(),
+      mapEngine.syncMyOrders({ skip: 0, take: 50 }),
       mapEngine.syncUser(true)
     ]);
     setRefreshing(false);
   };
 
   const filteredOrders = useMemo(() => {
-    const myId = currentUser?.uid || currentUser?.id;
+    const myId = currentUser?.uid || (currentUser as any)?.id;
     let result = orders.filter(order => {
       if (order.status === 'CANCELLED') return false;
 
@@ -142,20 +171,86 @@ const OrdersListScreen = ({ navigation }: any) => {
     return result;
   }, [orders, activeTab, statusFilter, workTypeFilter, sortOrder, currentUser]);
 
+  const sections = useMemo(() => {
+    const grouped: Record<string, Order[]> = {
+      'Сегодня': [],
+      'В работе': [],
+      'Ждут решения': [],
+      'Завершенные': [],
+    };
+
+    filteredOrders.forEach(order => {
+      const status = order.status;
+      let sectionName = 'Ждут решения';
+
+      if (status === 'COMPLETED' || status === 'REVIEWED' || status === 'CANCELLED' || (status as any) === 'CANCELLED') {
+        sectionName = 'Завершенные';
+      } else {
+        const orderDate = new Date(order.date);
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayEnd = new Date(todayStart);
+        todayEnd.setDate(todayStart.getDate() + 1);
+        const isToday = orderDate >= todayStart && orderDate < todayEnd;
+
+        if (isToday) {
+          sectionName = 'Сегодня';
+        } else if (status === 'IN_PROGRESS') {
+          sectionName = 'В работе';
+        } else {
+          sectionName = 'Ждут решения';
+        }
+      }
+
+      grouped[sectionName].push(order);
+    });
+
+    return [
+      { title: 'Сегодня', data: grouped['Сегодня'] },
+      { title: 'В работе', data: grouped['В работе'] },
+      { title: 'Ждут решения', data: grouped['Ждут решения'] },
+      { title: 'Завершенные', data: grouped['Завершенные'] },
+    ].filter(section => section.data.length > 0);
+  }, [filteredOrders]);
+
+  const loadMoreOrders = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const skip = mapEngine.entityStore.getMyOrders().length;
+      const take = 50;
+      const res = await mapEngine.syncMyOrders({ skip, take });
+      if (res && res.length < take) {
+        setHasMore(false);
+      }
+    } catch (e) {
+      logger.error('UI_ERROR', { error: 'Load more my orders failed:', e });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const handleDelete = (orderId: string) => {
+    if (submitting) return;
+
     Alert.alert(
       'Удаление заказа',
-      'Заказ будет перенесен в корзину и окончательно удален через 10 дней. Продолжить?',
+      'Заказ будет удален навсегда. Продолжить?',
       [
         { text: 'Отмена', style: 'cancel' },
         {
-          text: 'В корзину',
+          text: 'Удалить',
           style: 'destructive',
           onPress: async () => {
+            if (submitting) return;
+            setSubmitting(orderId);
             try {
-              await mapEngine.updateOrder(orderId, { status: 'CANCELLED', deletedAt: new Date().toISOString() });
+              await mapEngine.deleteOrder(orderId);
+              setOrders(mapEngine.getOrders(true));
             } catch (e) {
               Alert.alert('Ошибка', 'Не удалось удалить заказ');
+            } finally {
+                setSubmitting(null);
             }
           }
         }
@@ -164,20 +259,44 @@ const OrdersListScreen = ({ navigation }: any) => {
   };
 
   const handleStartWork = async (orderId: string) => {
+    const target = orders.find(o => o.id === orderId);
+    if (submitting || target?.status !== 'CLAIMED') return;
+
+    setSubmitting(orderId);
     try {
       await mapEngine.startOrder(orderId);
     } catch (e) {
       Alert.alert('Ошибка', 'Не удалось начать работу');
+    } finally {
+        setSubmitting(null);
     }
   };
 
   const handleCompleteWork = async (orderId: string) => {
+    const target = orders.find(o => o.id === orderId);
+    if (submitting || target?.status !== 'IN_PROGRESS') return;
+
+    setSubmitting(orderId);
     try {
       await mapEngine.completeOrder(orderId);
     } catch (e) {
       Alert.alert('Ошибка', 'Не удалось завершить работу');
+    } finally {
+        setSubmitting(null);
     }
   };
+
+  const handleCancelApplication = async (orderId: string) => {
+      if (submitting) return;
+      setSubmitting(orderId);
+      try {
+          await mapEngine.cancelApplication(orderId);
+      } catch (e: any) {
+          Alert.alert('Ошибка', e.response?.data?.message || 'Не удалось отменить отклик');
+      } finally {
+          setSubmitting(null);
+      }
+  }
 
   const renderFilterChip = (item: { id: string, label: string }, current: string, setter: (v: string) => void) => (
     <TouchableOpacity
@@ -190,6 +309,35 @@ const OrdersListScreen = ({ navigation }: any) => {
       </Text>
     </TouchableOpacity>
   );
+
+  if (loading && filteredOrders.length === 0) {
+    return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  }
+
+  if (error && filteredOrders.length === 0) {
+    return (
+      <SafeAreaView style={styles.center} edges={['top']}>
+        <AppIcon name="status-warning" size={64} color={COLORS.danger} style={{ marginBottom: 20 }} />
+        <Text style={[styles.headerTitle, { fontSize: 18, marginBottom: 20, textAlign: 'center', paddingHorizontal: 30 }]}>{error}</Text>
+        <TouchableOpacity
+          style={[styles.sortButton, { paddingHorizontal: 20, paddingVertical: 12 }]}
+          onPress={() => {
+            setLoading(true);
+            setError(null);
+            setHasMore(true);
+            mapEngine.syncMyOrders({ skip: 0, take: 50 })
+              .then(() => setLoading(false))
+              .catch((err: any) => {
+                 setError(err.message || "Не удалось загрузить список заказов");
+                 setLoading(false);
+              });
+          }}
+        >
+          <Text style={styles.sortButtonText}>Повторить попытку</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -223,8 +371,7 @@ const OrdersListScreen = ({ navigation }: any) => {
             style={styles.sortButton}
             onPress={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
           >
-            <Ionicons
-              name={FILTERS.SORT.find(s => s.id === sortOrder)?.icon as any}
+            <AppIcon name={FILTERS.SORT.find(s => s.id === sortOrder)?.icon ?? 'action-sort-down'}
               size={16}
               color={COLORS.primary}
             />
@@ -247,14 +394,15 @@ const OrdersListScreen = ({ navigation }: any) => {
         </ScrollView>
       </View>
 
-      <FlatList
-        data={filteredOrders}
+      <SectionList
+        sections={sections}
         renderItem={({ item }) => (
           <OrderCard
             order={item}
-            isEmployer={item.employerId === (currentUser?.uid || currentUser?.id)}
-            currentUserId={currentUser?.uid || currentUser?.id}
-            hasApplied={item.applications?.some(a => a.executorId === (currentUser?.uid || currentUser?.id))}
+            isEmployer={item.employerId === (currentUser?.uid || (currentUser as any)?.id)}
+            currentUserId={currentUser?.uid || (currentUser as any)?.id}
+            hasApplied={item.applications?.some(a => a.executorId === (currentUser?.uid || (currentUser as any)?.id))}
+            submitting={submitting === item.id}
             onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
             onDelete={() => handleDelete(item.id)}
             onEdit={() => navigation.navigate('EditOrder', { orderId: item.id })}
@@ -264,19 +412,34 @@ const OrdersListScreen = ({ navigation }: any) => {
             onCancelApplication={() => {
               Alert.alert('Отмена отклика', 'Вы уверены?', [
                 { text: 'Нет' },
-                { text: 'Да', onPress: () => mapEngine.cancelApplication(item.id) }
+                { text: 'Да', onPress: () => handleCancelApplication(item.id) }
               ]);
             }}
           />
+        )}
+        renderSectionHeader={({ section: { title } }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderTitle}>{title}</Text>
+          </View>
         )}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
+        onEndReached={loadMoreOrders}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={() => {
+          if (!loadingMore) return null;
+          return (
+            <View style={{ paddingVertical: 15, alignItems: 'center' }}>
+              <ActivityIndicator color={COLORS.primary} />
+            </View>
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="documents-outline" size={64} color={COLORS.border} />
+            <AppIcon name="sys-document" size={64} color={COLORS.border} />
             <Text style={styles.emptyText}>Заказов не найдено</Text>
             <Text style={styles.emptySubtext}>Попробуйте изменить фильтры или вкладку</Text>
           </View>
@@ -287,6 +450,7 @@ const OrdersListScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: '#fff' },
   headerTitle: { fontSize: 28, fontWeight: '900', color: COLORS.dark, marginBottom: 15, letterSpacing: -0.5 },
@@ -376,6 +540,20 @@ const styles = StyleSheet.create({
     color: COLORS.gray,
     textAlign: 'center',
     marginTop: 8
+  },
+  sectionHeader: {
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginTop: 15,
+    marginBottom: 5
+  },
+  sectionHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 1
   }
 });
 

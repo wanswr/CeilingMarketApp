@@ -1,6 +1,6 @@
+import AppIcon from '../components/AppIcon';
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
 import { COLORS } from '../constants/theme'
 
 const BlacklistScreen = () => {
@@ -11,7 +11,7 @@ const BlacklistScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={COLORS.gray} />
+        <AppIcon name="action-search" size={20} color={COLORS.gray} />
         <TextInput placeholder="Поиск в черном списке..." style={styles.searchInput} />
       </View>
       <FlatList

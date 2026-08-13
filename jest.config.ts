@@ -9,7 +9,7 @@ const config: Config = {
     "**/?(*.)+(spec|test).[tj]s?(x)" // Ищет файлы с суффиксами .test.js или .spec.js
   ],
   testPathIgnorePatterns: [
-    "\\\\node_modules\\\\"
+    "/node_modules/", "/backend/"
   ]
 };
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Body of Laser Rangefinder -->
+  <rect x="7" y="2" width="10" height="20" rx="2" />
+  <!-- Rangefinder Laser Lens -->
+  <circle cx="12" cy="6" r="1.5" fill="currentColor" />
+  <!-- Display screen -->
+  <rect x="9" y="10" width="6" height="4" rx="0.5" />
+  <!-- Digital Measurement lines inside display -->
+  <line x1="10" y1="12" x2="14" y2="12" stroke-width="1" />
+  <!-- Target Precision Star -->
+  <path d="M12 16l1 2h-2z" />
+</svg>
