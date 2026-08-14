@@ -30,6 +30,9 @@ describe('OrdersService - Categories & Filters', () => {
     user: {
       findUnique: jest.fn(),
     },
+    subscription: {
+      findUnique: jest.fn(),
+    },
     $transaction: jest.fn(async (cb) => cb(mockPrismaService)),
   };
 
@@ -252,6 +255,7 @@ describe('OrdersService - Categories & Filters', () => {
 
         mockPrismaService.order.findUnique.mockResolvedValue(order);
         mockPrismaService.user.findUnique.mockResolvedValue(user);
+        mockPrismaService.subscription.findUnique.mockResolvedValue({ isActive: true, activeUntil: new Date(Date.now() + 1000 * 3600) });
         mockPrismaService.application.findUnique.mockResolvedValue(existingApp);
 
         const result = await service.apply(orderId, executorId, 500, idempotencyKey);
