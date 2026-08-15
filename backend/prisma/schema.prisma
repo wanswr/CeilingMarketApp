@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   WORKER
   EMPLOYER
+  ADMIN
 }
 
 enum OrderStatus {
@@ -22,6 +23,7 @@ enum OrderStatus {
   CANCELLED
   DISPUTE
   REVIEWED
+  FROZEN
 }
 
 enum ApplicationStatus {
@@ -62,17 +64,34 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  orders          Order[]         @relation("EmployerOrders")
-  assignedOrders  Order[]         @relation("ExecutorOrders")
-  applications    Application[]
-  employerChats   Chat[]          @relation("EmployerChats")
-  executorChats   Chat[]          @relation("ExecutorChats")
-  messages        Message[]
-  subscription    Subscription?
-  authoredReviews Review[]        @relation("AuthoredReviews")
-  receivedReviews Review[]        @relation("TargetedReviews")
-  portfolioItems  PortfolioItem[]
-  notifications   Notification[]
+  // Moderation / Block fields
+  isBlocked     Boolean   @default(false)
+  blockedAt     DateTime?
+  blockedReason String?
+  blockedById   String?
+  blockedBy     User?     @relation("UserBlockedBy", fields: [blockedById], references: [id], onDelete: SetNull)
+  blockedUsers  User[]    @relation("UserBlockedBy")
+
+  orders               Order[]         @relation("EmployerOrders")
+  assignedOrders       Order[]         @relation("ExecutorOrders")
+  applications         Application[]
+  employerChats        Chat[]          @relation("EmployerChats")
+  executorChats        Chat[]          @relation("ExecutorChats")
+  messages             Message[]
+  subscription         Subscription?
+  authoredReviews      Review[]        @relation("AuthoredReviews")
+  receivedReviews      Review[]        @relation("TargetedReviews")
+  portfolioItems       PortfolioItem[]
+  notifications        Notification[]
+  reportsCreated       Report[]        @relation("ReportReporter")
+  reportsAgainst       Report[]        @relation("ReportTargetUser")
+  reportsResolved      Report[]        @relation("ReportResolvedBy")
+  disputesOpened       Dispute[]       @relation("DisputeOpenedBy")
+  disputesRespondent   Dispute[]       @relation("DisputeRespondent")
+  disputesAssigned     Dispute[]       @relation("DisputeAdmin")
+  disputesAppealed     Dispute[]       @relation("DisputeAppealedBy")
+  disputesAppealResolved Dispute[]     @relation("DisputeAppealResolvedBy")
+  adminAuditLogs       AdminAuditLog[]
 
   @@index([role])
   @@index([rating])
@@ -98,6 +117,11 @@ model Order {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  // Freeze metadata
+  isFrozen       Boolean   @default(false)
+  frozenAt       DateTime?
+  frozenReason   String?
+
   employer      User                 @relation("EmployerOrders", fields: [employerId], references: [id], onDelete: Cascade)
   executor      User?                @relation("ExecutorOrders", fields: [executorId], references: [id], onDelete: SetNull)
   applications  Application[]
@@ -107,6 +131,7 @@ model Order {
   category      Category?            @relation(fields: [categoryId], references: [id])
   statusHistory OrderStatusHistory[]
   photos        OrderPhoto[]
+  disputes      Dispute[]
 
   @@index([status, latitude, longitude])
   @@index([latitude])
@@ -261,7 +286,6 @@ enum MessageStatus {
   READ
 }
 
-
 model OrderPhoto {
   id        String   @id @default(uuid())
   orderId   String
@@ -272,4 +296,103 @@ model OrderPhoto {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
+}
+
+enum ReportStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_REVIEW
+  WAITING_FOR_PARTY
+  RESOLVED
+  REJECTED
+  APPEALED
+  CLOSED
+}
+
+enum ResolutionType {
+  NO_ACTION
+  REFUND
+  PARTIAL_REFUND
+  COMPENSATION
+  WARNING
+  USER_BLOCK
+  ORDER_FREEZE
+  DISPUTE_REJECTED
+}
+
+model Report {
+  id            String       @id @default(uuid())
+  reporterId    String
+  targetUserId  String?
+  targetOrderId String?
+  reason        String
+  description   String?
+  status        ReportStatus @default(OPEN)
+  resolvedById  String?
+  resolution    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  reporter   User  @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetUser User? @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  resolvedBy User? @relation("ReportResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([reporterId])
+  @@index([targetUserId])
+  @@index([status])
+}
+
+model Dispute {
+  id              String         @id @default(uuid())
+  orderId         String
+  openedById      String
+  respondentId    String
+  reason          String
+  description     String?
+  status          DisputeStatus  @default(OPEN)
+  assignedAdminId String?
+  resolutionType  ResolutionType?
+  resolution      String?
+  appealReason    String?
+  appealedById    String?
+  appealedAt      DateTime?
+  appealResolvedById String?
+  appealResult    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  resolvedAt      DateTime?
+
+  order            Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  openedBy         User  @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Cascade)
+  respondent       User  @relation("DisputeRespondent", fields: [respondentId], references: [id], onDelete: Cascade)
+  assignedAdmin    User? @relation("DisputeAdmin", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  appealedBy       User? @relation("DisputeAppealedBy", fields: [appealedById], references: [id], onDelete: SetNull)
+  appealResolvedBy User? @relation("DisputeAppealResolvedBy", fields: [appealResolvedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([openedById])
+  @@index([status])
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
 }
