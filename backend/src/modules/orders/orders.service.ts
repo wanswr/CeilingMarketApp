@@ -68,6 +68,9 @@ export class OrdersService {
     userId: string,
     isSystem = false
   ): void {
+    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+      throw new ForbiddenException('Order is frozen and cannot be modified');
+    }
     const fromStatus = order.status;
 
     if (fromStatus === toStatus) {
@@ -156,6 +159,9 @@ export class OrdersService {
     const creator = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!creator || creator.deletedAt) {
       throw new ForbiddenException('User account is deleted');
+    }
+    if (creator.isBlocked) {
+      throw new ForbiddenException('Blocked user cannot perform this action');
     }
     const creatorRoles = creator.roles && creator.roles.length > 0 ? creator.roles : [creator.role].filter(Boolean);
     if (!creatorRoles.includes('EMPLOYER') || creator.role !== 'EMPLOYER') {
@@ -354,6 +360,9 @@ export class OrdersService {
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
     if (!executor || executor.deletedAt) {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
+    }
+    if (executor.isBlocked) {
+        throw new ForbiddenException('Blocked user cannot perform this action');
     }
     const executorRoles = executor.roles && executor.roles.length > 0 ? executor.roles : [executor.role].filter(Boolean);
     if (!executorRoles.includes(Role.WORKER) || executor.role !== Role.WORKER) {
