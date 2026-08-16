@@ -41,6 +41,13 @@ enum WorkType {
   OTHER
 }
 
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
 model User {
   id               String    @id @default(uuid())
   phone            String    @unique
@@ -66,6 +73,7 @@ model User {
 
   sessionVersion Int       @default(1)
   sessions       Session[]
+  deviceSessions DeviceSession[]
 
   // Moderation / Block fields
   isBlocked     Boolean   @default(false)
@@ -75,29 +83,44 @@ model User {
   blockedBy     User?     @relation("UserBlockedBy", fields: [blockedById], references: [id], onDelete: SetNull)
   blockedUsers  User[]    @relation("UserBlockedBy")
 
-  orders               Order[]         @relation("EmployerOrders")
-  assignedOrders       Order[]         @relation("ExecutorOrders")
+  adminProfile         Admin?
+  orders               Order[]                 @relation("EmployerOrders")
+  assignedOrders       Order[]                 @relation("ExecutorOrders")
   applications         Application[]
-  employerChats        Chat[]          @relation("EmployerChats")
-  executorChats        Chat[]          @relation("ExecutorChats")
+  employerChats        Chat[]                  @relation("EmployerChats")
+  executorChats        Chat[]                  @relation("ExecutorChats")
   messages             Message[]
   subscription         Subscription?
-  authoredReviews      Review[]        @relation("AuthoredReviews")
-  receivedReviews      Review[]        @relation("TargetedReviews")
+  authoredReviews      Review[]                @relation("AuthoredReviews")
+  receivedReviews      Review[]                @relation("TargetedReviews")
   portfolioItems       PortfolioItem[]
   notifications        Notification[]
-  reportsCreated       Report[]        @relation("ReportReporter")
-  reportsAgainst       Report[]        @relation("ReportTargetUser")
-  reportsResolved      Report[]        @relation("ReportResolvedBy")
-  disputesOpened       Dispute[]       @relation("DisputeOpenedBy")
-  disputesRespondent   Dispute[]       @relation("DisputeRespondent")
-  disputesAssigned     Dispute[]       @relation("DisputeAdmin")
-  disputesAppealed     Dispute[]       @relation("DisputeAppealedBy")
-  disputesAppealResolved Dispute[]     @relation("DisputeAppealResolvedBy")
+  reportsCreated       Report[]                @relation("ReportReporter")
+  reportsAgainst       Report[]                @relation("ReportTargetUser")
+  reportsResolved      Report[]                @relation("ReportResolvedBy")
+  disputesOpened       Dispute[]               @relation("DisputeOpenedBy")
+  disputesRespondent   Dispute[]               @relation("DisputeRespondent")
+  disputesAssigned     Dispute[]               @relation("DisputeAdmin")
+  disputesAppealed     Dispute[]               @relation("DisputeAppealedBy")
+  disputesAppealResolved Dispute[]             @relation("DisputeAppealResolvedBy")
   adminAuditLogs       AdminAuditLog[]
+  auditLogs            AuditLog[]
+  payments             Payment[]
+  notificationPreference NotificationPreference?
+  verificationEvidence UserVerificationEvidence[]
 
   @@index([role])
   @@index([rating])
+}
+
+model Admin {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Order {
@@ -135,6 +158,7 @@ model Order {
   statusHistory OrderStatusHistory[]
   photos        OrderPhoto[]
   disputes      Dispute[]
+  payments      Payment[]
 
   @@index([status, latitude, longitude])
   @@index([latitude])
@@ -311,6 +335,7 @@ enum ReportStatus {
 enum DisputeStatus {
   OPEN
   IN_REVIEW
+  UNDER_REVIEW
   WAITING_FOR_PARTY
   RESOLVED
   REJECTED
@@ -400,13 +425,16 @@ model AdminAuditLog {
   @@index([createdAt])
 }
 
-
 model Session {
   id                String    @id @default(uuid())
   userId            String
+  sessionToken      String?   @unique
+  deviceSessionId   String?
   deviceFingerprint String?
   ipAddress         String?
+  userAgent         String?
   createdAt         DateTime  @default(now())
+  lastActiveAt      DateTime  @default(now())
   lastUsedAt        DateTime  @default(now())
   expiresAt         DateTime
   revokedAt         DateTime?
@@ -415,6 +443,94 @@ model Session {
 
   @@index([userId])
   @@index([revokedAt])
+}
+
+model DeviceSession {
+  id                String    @id @default(uuid())
+  userId            String
+  deviceFingerprint String
+  platform          String?
+  deviceName        String?
+  lastSeenAt        DateTime  @default(now())
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceFingerprint])
+  @@index([userId])
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  orderId           String
+  userId            String?
+  amount            Float
+  currency          String   @default("RUB")
+  status            String   @default("PENDING")
+  provider          String?
+  providerPaymentId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([userId])
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorUserId  String?
+  actorAdminId String?
+  action       String
+  entityType   String
+  entityId     String
+  metadata     Json?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([actorAdminId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model NotificationPreference {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  pushEnabled           Boolean  @default(true)
+  orderNotifications    Boolean  @default(true)
+  chatNotifications     Boolean  @default(true)
+  disputeNotifications  Boolean  @default(true)
+  securityNotifications Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserVerificationEvidence {
+  id                String             @id @default(uuid())
+  userId            String
+  type              String
+  status            VerificationStatus @default(PENDING)
+  provider          String?
+  providerReference String?
+  verifiedAt        DateTime?
+  expiresAt         DateTime?
+  metadata          Json?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
 }
 
 model SecurityLog {
