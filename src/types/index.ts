@@ -3,6 +3,13 @@ export type OrderStatus = 'PENDING' | 'PUBLISHED' | 'HAS_RESPONSES' | 'CLAIMED' 
 export type WorkType = 'FROZE' | 'INSTALLATION' | 'SERVICE' | 'REPAIR' | 'OTHER';
 export interface LatLng { latitude: number; longitude: number; }
 
+export interface Region {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}
+
 export interface Review {
   id: string;
   orderId: string;
@@ -28,6 +35,7 @@ export interface Review {
 }
 
 export interface UserProfile {
+  id: string;
   uid: string;
   name: string;
   phone: string;
@@ -49,6 +57,7 @@ export interface UserProfile {
   isTrialUsed: boolean;
   pushToken?: string;
   portfolio?: string[];
+  activeCategoryId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -86,6 +95,7 @@ export interface Order {
   updatedAt: number;
   comments?: string;
   details?: string;
+  description?: string;
   candidates?: any[];
   applications?: Application[];
   executorId?: string;
@@ -96,4 +106,7 @@ export interface Order {
   employer?: UserProfile;
   executor?: UserProfile;
   reviews?: Review[];
+  statusHistory?: any[];
+  claimedAt?: string | Date;
+  categoryId?: string;
 }

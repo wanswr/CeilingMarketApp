@@ -21,6 +21,7 @@ describe('OrdersService - Categories & Filters', () => {
       create: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      update: jest.fn(),
       updateMany: jest.fn(),
     },
     application: {
@@ -28,6 +29,9 @@ describe('OrdersService - Categories & Filters', () => {
       create: jest.fn(),
     },
     user: {
+      findUnique: jest.fn(),
+    },
+    subscription: {
       findUnique: jest.fn(),
     },
     $transaction: jest.fn(async (cb) => cb(mockPrismaService)),
@@ -126,6 +130,38 @@ describe('OrdersService - Categories & Filters', () => {
         },
       });
       expect(result).toEqual(mockCreatedOrder);
+    });
+  });
+
+  describe('update', () => {
+    it('should successfully update order details when requested by the employer', async () => {
+      const orderId = 'order-123';
+      const userId = 'employer-1';
+      const existingOrder = { id: orderId, employerId: userId, status: OrderStatus.PUBLISHED };
+      const updateDto = { title: 'Updated Title', price: 12000 };
+      const updatedOrder = { ...existingOrder, ...updateDto };
+
+      mockPrismaService.order.findUnique.mockResolvedValue(existingOrder);
+      mockPrismaService.order.update.mockResolvedValue(updatedOrder);
+
+      const result = await service.update(orderId, updateDto, userId);
+
+      expect(mockPrismaService.order.update).toHaveBeenCalledWith({
+        where: { id: orderId },
+        data: { title: 'Updated Title', price: 12000 }
+      });
+      expect(result).toEqual(updatedOrder);
+    });
+
+    it('should throw ForbiddenException if user is not the employer', async () => {
+      const orderId = 'order-123';
+      const userId = 'other-user';
+      const existingOrder = { id: orderId, employerId: 'employer-1', status: OrderStatus.PUBLISHED };
+      const updateDto = { title: 'Updated Title' };
+
+      mockPrismaService.order.findUnique.mockResolvedValue(existingOrder);
+
+      await expect(service.update(orderId, updateDto, userId)).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -252,6 +288,7 @@ describe('OrdersService - Categories & Filters', () => {
 
         mockPrismaService.order.findUnique.mockResolvedValue(order);
         mockPrismaService.user.findUnique.mockResolvedValue(user);
+        mockPrismaService.subscription.findUnique.mockResolvedValue({ isActive: true, activeUntil: new Date(Date.now() + 1000 * 3600) });
         mockPrismaService.application.findUnique.mockResolvedValue(existingApp);
 
         const result = await service.apply(orderId, executorId, 500, idempotencyKey);

@@ -145,6 +145,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     logger.info('AUTH_LOGOUT', { userId: (user as any)?.id });
+    try {
+      await apiService.logout();
+    } catch (e: any) {
+      logger.warn('[AuthContext] Remote logout notification failed', { error: e.message });
+    }
     await SecureStore.deleteItemAsync('userToken');
     mapEngine.setCachedToken(null);
     setToken(null);

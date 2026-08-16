@@ -94,20 +94,28 @@ const BottomTabNavigator = () => {
         component={DashboardScreen}
         options={{
           title: 'Главная',
-          tabBarButton: (props) => (
-            <TouchableOpacity
-              {...props}
-              style={[props.style, styles.centralTabButton]}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.centralTabButtonInner, props.accessibilityState?.selected && styles.centralTabButtonInnerActive]}>
-                <AppIcon name={props.accessibilityState?.selected ? "tab-dashboard" : "tab-dashboard"}
-                  size={24}
-                  color={props.accessibilityState?.selected ? "#fff" : COLORS.primary}
-                />
-              </View>
-            </TouchableOpacity>
-          )
+          tabBarButton: (props) => {
+            const { delayLongPress, disabled, onBlur, onFocus, ...safeProps } = props;
+            const extraProps: any = {};
+            if (typeof disabled === 'boolean') extraProps.disabled = disabled;
+            if (onBlur !== null && onBlur !== undefined) extraProps.onBlur = onBlur;
+            if (onFocus !== null && onFocus !== undefined) extraProps.onFocus = onFocus;
+            return (
+              <TouchableOpacity
+                {...safeProps}
+                {...extraProps}
+                style={[props.style, styles.centralTabButton]}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.centralTabButtonInner, props.accessibilityState?.selected && styles.centralTabButtonInnerActive]}>
+                  <AppIcon name={props.accessibilityState?.selected ? "tab-dashboard" : "tab-dashboard"}
+                    size={24}
+                    color={props.accessibilityState?.selected ? "#fff" : COLORS.primary}
+                  />
+                </View>
+              </TouchableOpacity>
+            );
+          }
         }}
       />
       <Tab.Screen
@@ -123,27 +131,35 @@ const BottomTabNavigator = () => {
         component={ProfileScreen}
         options={{
           title: profileTitle,
-          tabBarButton: (props) => (
-            <TouchableOpacity
-              {...props}
-              ref={profileTabRef}
-              activeOpacity={0.8}
-              onPress={(e) => {
-                if (props.onPress) {
-                  props.onPress(e);
-                }
-              }}
-              onLongPress={() => {
-                if (!user?.role || isSwitching) return;
+          tabBarButton: (props) => {
+            const { delayLongPress, disabled, onBlur, onFocus, ...safeProps } = props;
+            const extraProps: any = {};
+            if (typeof disabled === 'boolean') extraProps.disabled = disabled;
+            if (onBlur !== null && onBlur !== undefined) extraProps.onBlur = onBlur;
+            if (onFocus !== null && onFocus !== undefined) extraProps.onFocus = onFocus;
+            return (
+              <TouchableOpacity
+                {...safeProps}
+                {...extraProps}
+                ref={profileTabRef}
+                activeOpacity={0.8}
+                onPress={(e) => {
+                  if (props.onPress) {
+                    props.onPress(e);
+                  }
+                }}
+                onLongPress={() => {
+                  if (!user?.role || isSwitching) return;
 
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                profileTabRef.current?.measureInWindow((x: number, y: number, width: number, height: number) => {
-                  setAnchor({ x, y, width, height });
-                  setMenuVisible(true);
-                });
-              }}
-            />
-          )
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  profileTabRef.current?.measureInWindow((x: number, y: number, width: number, height: number) => {
+                    setAnchor({ x, y, width, height });
+                    setMenuVisible(true);
+                  });
+                }}
+              />
+            );
+          }
         }}
       />
     </Tab.Navigator>

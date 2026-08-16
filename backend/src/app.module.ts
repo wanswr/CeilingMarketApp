@@ -11,10 +11,10 @@ import { GatewayModule } from './modules/gateway/gateway.module';
 import { ChatsModule } from './modules/chats/chats.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { LoggerModule } from './modules/logger/logger.module';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { LoggerMiddleware } from './modules/logger/logger.middleware';
-import { CategoriesModule } from './modules/categories/categories.module';
 
 @Module({
   imports: [
@@ -33,6 +33,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
     ReviewsModule,
     NotificationsModule,
     CategoriesModule,
+    AdminModule,
   ],
   providers: [
     {

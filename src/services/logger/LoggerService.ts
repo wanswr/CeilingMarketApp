@@ -155,7 +155,7 @@ class LoggerService {
     }
   }
 
-  logNetworkError(requestId: string, error: any) {
+  logNetworkError(requestId: string, error: any, extra: LogContext = {}) {
     const duration = traceManager.getDuration(requestId, 'request');
     this.error(`NETWORK_ERROR`, {
         source: 'api',
@@ -163,7 +163,8 @@ class LoggerService {
         duration,
         error: error.message,
         status: error.response?.status,
-        response: this.truncateObject(error.response?.data)
+        response: this.truncateObject(error.response?.data),
+        ...extra
     });
   }
 
