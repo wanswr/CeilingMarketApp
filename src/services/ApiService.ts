@@ -243,6 +243,7 @@ class ApiService {
   // Auth
   requestOtp = (phone: string) => this.api.post('auth/request-otp', { phone });
   verifyOtp = (phone: string, code: string) => this.api.post('auth/verify-otp', { phone, code });
+  logout = () => this.api.post('auth/logout');
   login = (phone: string) => this.api.post('auth/login', { phone });
   register = (data: any) => this.api.post('auth/register', data);
 

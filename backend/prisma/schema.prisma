@@ -402,15 +402,32 @@ model AdminAuditLog {
 
 
 model Session {
-  id         String    @id @default(uuid())
-  userId     String
-  createdAt  DateTime  @default(now())
-  lastUsedAt DateTime  @default(now())
-  expiresAt  DateTime
-  revokedAt  DateTime?
+  id                String    @id @default(uuid())
+  userId            String
+  deviceFingerprint String?
+  ipAddress         String?
+  createdAt         DateTime  @default(now())
+  lastUsedAt        DateTime  @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([revokedAt])
+}
+
+model SecurityLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  phone     String?
+  event     String
+  ipAddress String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([phone])
+  @@index([event])
+  @@index([createdAt])
 }

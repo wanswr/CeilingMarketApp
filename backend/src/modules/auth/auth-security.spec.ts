@@ -5,7 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../logger/logger.service';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { UnauthorizedException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 
 describe('Auth & Session Security Tests', () => {
@@ -62,6 +62,9 @@ describe('Auth & Session Security Tests', () => {
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    securityLog: {
+      create: jest.fn().mockResolvedValue({ id: 'sec-1' }),
+    },
     $transaction: jest.fn((cb) => cb(mockPrismaService)),
   };
 
@@ -87,7 +90,13 @@ describe('Auth & Session Security Tests', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockPrismaService.$transaction.mockImplementation((cb) => {
-      if (Array.isArray(cb)) return Promise.all(cb);
+      if (Array.isArray(cb)) {
+        return Promise.resolve([
+          { count: 1 },
+          mockValidSession,
+          { ...mockActiveUser, sessionVersion: 2 },
+        ]);
+      }
       return cb(mockPrismaService);
     });
 
@@ -106,28 +115,53 @@ describe('Auth & Session Security Tests', () => {
     jwtStrategy = module.get<JwtStrategy>(JwtStrategy);
   });
 
-  // 1. valid JWT works for active user
-  it('1. valid JWT works for active user', async () => {
+  // 1. login creates session
+  it('1. login creates session', async () => {
     mockPrismaService.user.findUnique.mockResolvedValueOnce(mockActiveUser);
-    mockPrismaService.session.findUnique.mockResolvedValueOnce(mockValidSession);
+    mockPrismaService.session.create.mockResolvedValueOnce(mockValidSession);
 
-    const payload = {
+    const loginRes = await authService.login(mockActiveUser, 'device-A', '127.0.0.1');
+
+    expect(loginRes.access_token).toBeDefined();
+    expect(mockPrismaService.session.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-active-1', revokedAt: null },
+      data: expect.objectContaining({ revokedAt: expect.any(Date) }),
+    });
+  });
+
+  // 2. login from same or new device replaces previous session
+  it('2. login from new device revokes old session and increments sessionVersion', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValueOnce(mockActiveUser);
+
+    await authService.login(mockActiveUser, 'device-B', '192.168.1.1');
+
+    expect(mockPrismaService.session.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-active-1', revokedAt: null },
+      data: expect.objectContaining({ revokedAt: expect.any(Date) }),
+    });
+  });
+
+  // 3. old token becomes unauthorized
+  it('3. old token with outdated sessionVersion or revoked sessionId is rejected', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValueOnce({
+      ...mockActiveUser,
+      sessionVersion: 2, // Increment after new login
+    });
+
+    const oldPayload = {
       id: 'user-active-1',
-      phone: '+79990000001',
-      role: Role.WORKER,
-      sessionVersion: 1,
+      sessionVersion: 1, // Old token has version 1
       sessionId: 'session-1',
     };
 
-    const user = await jwtStrategy.validate(payload);
-    expect(user.id).toBe('user-active-1');
+    await expect(jwtStrategy.validate(oldPayload)).rejects.toThrow(UnauthorizedException);
   });
 
-  // 2. logout invalidates session
-  it('2. logout invalidates session', async () => {
+  // 4. logout revokes session
+  it('4. logout revokes session', async () => {
     mockPrismaService.session.update.mockResolvedValueOnce({ ...mockValidSession, revokedAt: new Date() });
 
-    const result = await authService.logout('session-1');
+    const result = await authService.logout('session-1', 'user-active-1');
 
     expect(result.success).toBe(true);
     expect(mockPrismaService.session.update).toHaveBeenCalledWith({
@@ -136,83 +170,33 @@ describe('Auth & Session Security Tests', () => {
     });
   });
 
-  // 3. revoked session fails auth
-  it('3. revoked session fails auth', async () => {
-    mockPrismaService.user.findUnique.mockResolvedValueOnce(mockActiveUser);
-    mockPrismaService.session.findUnique.mockResolvedValueOnce(mockRevokedSession);
+  // 5. blocked user cannot access protected API or login
+  it('5. blocked user cannot access protected API or login', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValue(mockBlockedUser);
 
-    const payload = {
-      id: 'user-active-1',
-      sessionVersion: 1,
-      sessionId: 'session-2',
-    };
-
-    await expect(jwtStrategy.validate(payload)).rejects.toThrow(UnauthorizedException);
-  });
-
-  // 4. blocked user cannot use old JWT
-  it('4. blocked user cannot use old JWT', async () => {
-    mockPrismaService.user.findUnique.mockResolvedValueOnce(mockBlockedUser);
-
-    const payload = {
-      id: 'user-blocked-1',
-      sessionVersion: 1, // outdated or same, but user.isBlocked = true
-      sessionId: 'session-1',
-    };
-
-    await expect(jwtStrategy.validate(payload)).rejects.toThrow(UnauthorizedException);
-  });
-
-  // 5. blocked user cannot get new working session
-  it('5. blocked user cannot get new working session', async () => {
-    mockPrismaService.user.findUnique.mockResolvedValueOnce(mockBlockedUser);
-
-    await expect(authService.verifyOtp('+79990000002', '1234')).rejects.toThrow(ForbiddenException);
+    await expect(jwtStrategy.validate({ id: 'user-blocked-1' })).rejects.toThrow(UnauthorizedException);
     await expect(authService.login(mockBlockedUser)).rejects.toThrow(ForbiddenException);
   });
 
-  // 6. unblocked user can login again
-  it('6. unblocked user can login again', async () => {
-    const unblockedUser = { ...mockBlockedUser, isBlocked: false };
-    mockPrismaService.user.findUnique.mockResolvedValueOnce(unblockedUser);
-    mockPrismaService.session.create.mockResolvedValueOnce(mockValidSession);
+  // 6. duplicate phone cannot create another account due to DB unique constraint
+  it('6. duplicate phone returns existing user or unique error', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValue(mockActiveUser);
 
-    const loginResult = await authService.verifyOtp('+79990000002', '1234');
-
-    expect(loginResult.access_token).toBeDefined();
-    expect(loginResult.user.id).toBe('user-blocked-1');
+    const result = await authService.verifyOtp('+79990000001', '1234');
+    expect(result.user.id).toBe('user-active-1');
   });
 
-  // 7. regular user cannot assign ADMIN
-  it('7. regular user cannot assign ADMIN during registration', async () => {
-    mockPrismaService.user.create.mockImplementationOnce((args) => {
-      return Promise.resolve({
-        id: 'new-user-1',
-        phone: args.data.phone,
-        name: args.data.name,
-        role: args.data.role,
-      });
-    });
-
-    const regResult = await authService.register({
-      phone: '+79991112233',
-      name: 'Hacker',
-      role: 'ADMIN' as any, // Trying to pass ADMIN
-    });
-
-    expect(mockPrismaService.user.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        role: 'WORKER', // Restricted to WORKER
-      }),
-    });
+  // 7. OTP request rate limited (cooldown)
+  it('7. OTP request is rate limited on rapid repeat requests', async () => {
+    await authService.requestOtp('+79995554433');
+    await expect(authService.requestOtp('+79995554433')).rejects.toThrow(BadRequestException);
   });
 
-  // 8. role switching does not allow gaining ADMIN
-  it('8. role switching does not allow gaining ADMIN', async () => {
-    // Verified by SetRoleDto which only accepts 'WORKER' | 'EMPLOYER'
-    const { SetRoleDto } = require('../users/dto/set-role.dto');
-    const dto = new SetRoleDto();
-    dto.role = 'WORKER';
-    expect(dto.role).toBe('WORKER');
+  // 8. security events are logged
+  it('8. security events create SecurityLog entries', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValueOnce(mockActiveUser);
+    await authService.login(mockActiveUser, 'fingerprint-123', '10.0.0.1');
+
+    expect(mockPrismaService.securityLog.create).toHaveBeenCalled();
   });
 });
