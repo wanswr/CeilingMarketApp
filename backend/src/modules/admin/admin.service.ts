@@ -46,14 +46,24 @@ export class AdminService {
       throw new ConflictException('User is already blocked');
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        isBlocked: true,
-        blockedAt: new Date(),
-        blockedReason: reason,
-        blockedById: adminId,
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id: userId },
+        data: {
+          isBlocked: true,
+          blockedAt: new Date(),
+          blockedReason: reason,
+          blockedById: adminId,
+          sessionVersion: { increment: 1 },
+        },
+      });
+
+      await tx.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+
+      return u;
     });
 
     await this.logAudit(adminId, 'BLOCK_USER', 'User', userId, reason);

@@ -61,6 +61,9 @@ describe('AdminService', () => {
       findUnique: jest.fn(),
       update: jest.fn(),
     },
+    session: {
+      updateMany: jest.fn(),
+    },
     adminAuditLog: {
       create: jest.fn(),
       findMany: jest.fn(),
