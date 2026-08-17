@@ -49,6 +49,7 @@ describe('AdminService', () => {
     },
     orderStatusHistory: {
       create: jest.fn(),
+      findFirst: jest.fn(),
     },
     report: {
       create: jest.fn(),
@@ -155,7 +156,7 @@ describe('AdminService', () => {
       });
     });
 
-    it('should allow ADMIN to unfreeze an order', async () => {
+    it('should allow ADMIN to unfreeze an order with explicit restoreStatus', async () => {
       const frozenOrder = { ...mockOrder, isFrozen: true, status: OrderStatus.FROZEN };
       mockPrismaService.user.findUnique.mockResolvedValueOnce(mockAdmin);
       mockPrismaService.order.findUnique.mockResolvedValueOnce(frozenOrder);
@@ -175,6 +176,31 @@ describe('AdminService', () => {
           targetType: 'Order',
           targetId: 'order-1',
         }),
+      });
+    });
+
+    it('should restore pre-freeze status from OrderStatusHistory when restoreStatus is omitted', async () => {
+      const frozenOrder = { ...mockOrder, isFrozen: true, status: OrderStatus.FROZEN };
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockAdmin);
+      mockPrismaService.order.findUnique.mockResolvedValueOnce(frozenOrder);
+      mockPrismaService.orderStatusHistory.findFirst.mockResolvedValueOnce({
+        orderId: 'order-1',
+        oldStatus: OrderStatus.CLAIMED,
+        newStatus: OrderStatus.FROZEN,
+      });
+      mockPrismaService.order.update.mockResolvedValueOnce({
+        ...mockOrder,
+        isFrozen: false,
+        status: OrderStatus.CLAIMED,
+      });
+
+      const result = await service.unfreezeOrder('admin-1', 'order-1', undefined, 'Resolved dispute');
+
+      expect(result.status).toBe(OrderStatus.CLAIMED);
+      expect(result.isFrozen).toBe(false);
+      expect(mockPrismaService.orderStatusHistory.findFirst).toHaveBeenCalledWith({
+        where: { orderId: 'order-1', newStatus: OrderStatus.FROZEN },
+        orderBy: { createdAt: 'desc' },
       });
     });
   });

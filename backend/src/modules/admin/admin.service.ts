@@ -143,7 +143,14 @@ export class AdminService {
       throw new ConflictException('Order is not frozen');
     }
 
-    const targetStatus = restoreStatus || OrderStatus.PUBLISHED;
+    let targetStatus = restoreStatus;
+    if (!targetStatus) {
+      const lastFreezeHistory = await this.prisma.orderStatusHistory.findFirst({
+        where: { orderId, newStatus: OrderStatus.FROZEN },
+        orderBy: { createdAt: 'desc' },
+      });
+      targetStatus = lastFreezeHistory?.oldStatus || OrderStatus.PUBLISHED;
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.order.update({

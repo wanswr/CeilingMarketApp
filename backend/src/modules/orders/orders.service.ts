@@ -308,6 +308,10 @@ export class OrdersService {
     if (!order) throw new NotFoundException();
     if (order.employerId !== userId) throw new ForbiddenException();
 
+    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+      throw new ForbiddenException('Order is frozen and cannot be modified');
+    }
+
     if (dto.status && dto.status !== order.status) {
       this.validateTransition(order, dto.status, userId, false);
     }
@@ -335,6 +339,10 @@ export class OrdersService {
   async remove(id: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order || order.employerId !== userId) throw new ForbiddenException();
+
+    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+      throw new ForbiddenException('Order is frozen and cannot be modified');
+    }
 
     // Fetch chat IDs before deleting
     const chats = await this.prisma.chat.findMany({
@@ -397,6 +405,10 @@ export class OrdersService {
         const order = await tx.order.findUnique({ where: { id: orderId } });
         if (!order) throw new NotFoundException('Order not found');
 
+        if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+          throw new ForbiddenException('Order is frozen and cannot be modified');
+        }
+
         // Check if the order status is open for applications
         if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
             throw new ConflictException('Order is no longer open for applications');
@@ -456,6 +468,9 @@ export class OrdersService {
          include: { order: true }
      });
      if (!app || app.order.employerId !== userId) throw new ForbiddenException();
+     if (app.order.isFrozen || app.order.status === OrderStatus.FROZEN) {
+         throw new ForbiddenException('Order is frozen and cannot be modified');
+     }
      return this.prisma.application.update({
          where: { id: applicationId },
          data: { status: 'VIEWED' }
@@ -612,6 +627,10 @@ export class OrdersService {
   async cancelApplication(orderId: string, executorId: string) {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
+
+    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+      throw new ForbiddenException('Order is frozen and cannot be modified');
+    }
 
     const app = await this.prisma.application.findUnique({
       where: { orderId_executorId: { orderId, executorId } }

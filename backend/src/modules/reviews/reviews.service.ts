@@ -26,6 +26,10 @@ export class ReviewsService {
         throw new NotFoundException('Order not found');
     }
 
+    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+        throw new ForbiddenException('Order is frozen and cannot be modified');
+    }
+
     const currentUserId = String(userId).trim().toLowerCase();
     const employerId = String(order.employerId).trim().toLowerCase();
     const executorId = order.executorId ? String(order.executorId).trim().toLowerCase() : null;
