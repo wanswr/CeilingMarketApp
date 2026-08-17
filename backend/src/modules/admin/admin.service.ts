@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role, ReportStatus, DisputeStatus, ResolutionType, OrderStatus } from '@prisma/client';
 import { LoggerService } from '../logger/logger.service';
@@ -6,37 +6,35 @@ import { LoggerService } from '../logger/logger.service';
 @Injectable()
 export class AdminService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly logger: LoggerService,
+    private prisma: PrismaService,
+    private logger: LoggerService,
   ) {
     this.logger.setService('AdminService');
   }
 
   private async verifyAdmin(adminId: string) {
-    const admin = await this.prisma.user.findUnique({ where: { id: adminId } });
-    if (!admin || admin.deletedAt || admin.isBlocked) {
-      throw new ForbiddenException('Admin user not found or inactive');
+    const user = await this.prisma.user.findUnique({ where: { id: adminId } });
+    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${adminId} not found`);
+    if (user.role !== Role.ADMIN) {
+      throw new ForbiddenException('Admin privileges required');
     }
-    const adminRoles = admin.roles && admin.roles.length > 0 ? admin.roles : [admin.role].filter(Boolean);
-    if (!adminRoles.includes(Role.ADMIN) && admin.role !== Role.ADMIN) {
-      throw new ForbiddenException('User is not authorized as ADMIN');
-    }
+    return user;
   }
 
   private async logAudit(adminId: string, action: string, targetType: string, targetId: string, reason?: string, metadata?: any) {
-    await this.prisma.adminAuditLog.create({
+    return this.prisma.adminAuditLog.create({
       data: {
         adminId,
         action,
         targetType,
         targetId,
         reason,
-        metadata,
+        metadata: metadata ? JSON.stringify(metadata) : null,
       },
     });
   }
 
-  // USER MODERATION
+  // USER MANAGEMENT
   async blockUser(adminId: string, userId: string, reason: string) {
     await this.verifyAdmin(adminId);
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -46,24 +44,14 @@ export class AdminService {
       throw new ConflictException('User is already blocked');
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.user.update({
-        where: { id: userId },
-        data: {
-          isBlocked: true,
-          blockedAt: new Date(),
-          blockedReason: reason,
-          blockedById: adminId,
-          sessionVersion: { increment: 1 },
-        },
-      });
-
-      await tx.session.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-
-      return u;
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isBlocked: true,
+        blockedAt: new Date(),
+        blockedReason: reason,
+        blockedById: adminId,
+      },
     });
 
     await this.logAudit(adminId, 'BLOCK_USER', 'User', userId, reason);
@@ -71,7 +59,7 @@ export class AdminService {
     return updated;
   }
 
-  async unblockUser(adminId: string, userId: string, reason?: string) {
+  async unblockUser(adminId: string, userId: string, reason: string) {
     await this.verifyAdmin(adminId);
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${userId} not found`);
@@ -143,7 +131,14 @@ export class AdminService {
       throw new ConflictException('Order is not frozen');
     }
 
-    const targetStatus = restoreStatus || OrderStatus.PUBLISHED;
+    let targetStatus = restoreStatus;
+    if (!targetStatus) {
+      const lastHistory = await this.prisma.orderStatusHistory.findFirst({
+        where: { orderId, newStatus: OrderStatus.FROZEN },
+        orderBy: { createdAt: 'desc' },
+      });
+      targetStatus = (lastHistory?.oldStatus as OrderStatus) || OrderStatus.PUBLISHED;
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.order.update({
@@ -176,6 +171,26 @@ export class AdminService {
   async createReport(reporterId: string, dto: { targetUserId?: string; targetOrderId?: string; reason: string; description?: string }) {
     if (!dto.targetUserId && !dto.targetOrderId) {
       throw new ConflictException('Report must specify either a target user or target order');
+    }
+
+    if (dto.targetUserId) {
+      if (dto.targetUserId === reporterId) {
+        throw new ForbiddenException('Cannot report yourself');
+      }
+      const targetUser = await this.prisma.user.findUnique({ where: { id: dto.targetUserId } });
+      if (!targetUser || targetUser.deletedAt) {
+        throw new NotFoundException(`Target user with ID ${dto.targetUserId} not found`);
+      }
+    }
+
+    if (dto.targetOrderId) {
+      const targetOrder = await this.prisma.order.findUnique({ where: { id: dto.targetOrderId } });
+      if (!targetOrder) {
+        throw new NotFoundException(`Target order with ID ${dto.targetOrderId} not found`);
+      }
+      if (targetOrder.employerId !== reporterId && targetOrder.executorId !== reporterId) {
+        throw new ForbiddenException('Only order participants can report an order');
+      }
     }
 
     const report = await this.prisma.report.create({
@@ -216,8 +231,22 @@ export class AdminService {
     const order = await this.prisma.order.findUnique({ where: { id: dto.orderId } });
     if (!order) throw new NotFoundException(`Order with ID ${dto.orderId} not found`);
 
+    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+      throw new ConflictException('Cannot open dispute on a frozen order');
+    }
+
     if (order.employerId !== userId && order.executorId !== userId) {
       throw new ForbiddenException('Only order participants can open a dispute');
+    }
+
+    const disputableStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
+    if (!disputableStatuses.includes(order.status)) {
+      throw new ConflictException(`Cannot open dispute on order with status ${order.status}`);
+    }
+
+    const respondentId = order.employerId === userId ? order.executorId : order.employerId;
+    if (!respondentId) {
+      throw new ConflictException('Cannot open dispute on order without assigned respondent');
     }
 
     const existingDispute = await this.prisma.dispute.findFirst({
@@ -231,13 +260,11 @@ export class AdminService {
       throw new ConflictException('An active dispute already exists for this order');
     }
 
-    const respondentId = order.employerId === userId ? order.executorId : order.employerId;
-
     const dispute = await this.prisma.dispute.create({
       data: {
         orderId: dto.orderId,
         openedById: userId,
-        respondentId: respondentId || '',
+        respondentId: respondentId,
         reason: dto.reason,
         description: dto.description,
         status: DisputeStatus.OPEN,
@@ -259,6 +286,10 @@ export class AdminService {
       include: { order: true },
     });
     if (!dispute) throw new NotFoundException(`Dispute with ID ${disputeId} not found`);
+
+    if (dispute.status === DisputeStatus.RESOLVED || dispute.status === DisputeStatus.REJECTED) {
+      throw new ConflictException('Dispute is already resolved or rejected');
+    }
 
     const nextStatus = dto.status || DisputeStatus.RESOLVED;
 

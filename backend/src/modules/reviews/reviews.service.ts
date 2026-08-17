@@ -45,12 +45,16 @@ export class ReviewsService {
         throw new ConflictException('Order has no executor');
     }
 
+    const targetId = isEmployer ? order.executorId! : order.employerId;
+
+    if (userId === targetId) {
+        throw new ForbiddenException('You cannot review yourself');
+    }
+
     const alreadyReviewed = order.reviews.some(r => r.authorId === userId);
     if (alreadyReviewed) {
         throw new ConflictException('You have already left a review for this order');
     }
-
-    const targetId = isEmployer ? order.executorId! : order.employerId;
 
     let result;
     try {
