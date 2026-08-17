@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { OrderStatus } from '@prisma/client';
 
 describe('ChatsService', () => {
   let service: ChatsService;
@@ -14,6 +15,10 @@ describe('ChatsService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      upsert: jest.fn(),
+    },
+    order: {
+      findUnique: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
@@ -68,6 +73,89 @@ describe('ChatsService', () => {
     jest.clearAllMocks();
   });
 
+  describe('getOrCreateChat - Security & IDOR Cases', () => {
+    const mockOrderA = {
+      id: 'order-A',
+      employerId: 'employer-A',
+      executorId: null,
+      status: OrderStatus.PUBLISHED,
+      applications: [
+        { id: 'app-1', executorId: 'worker-A' }
+      ]
+    };
+
+    const mockClosedOrder = {
+      id: 'order-closed',
+      employerId: 'employer-A',
+      executorId: null,
+      status: OrderStatus.CANCELLED,
+      applications: []
+    };
+
+    const mockWorkerA = { id: 'worker-A', deletedAt: null };
+    const mockWorkerB = { id: 'worker-B', deletedAt: null };
+
+    it('Case 1: Employer A + Order A + Worker A (applicant) -> ALLOW', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderA);
+      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerA);
+      mockPrismaService.chat.upsert.mockResolvedValue({
+        id: 'chat-A',
+        orderId: 'order-A',
+        employerId: 'employer-A',
+        executorId: 'worker-A',
+        messages: []
+      });
+
+      const chat = await service.getOrCreateChat('order-A', 'worker-A', 'employer-A');
+      expect(chat.id).toBe('chat-A');
+      expect(mockPrismaService.chat.upsert).toHaveBeenCalled();
+    });
+
+    it('Case 2: Employer A + Order A + Worker B (NOT associated with Order A) -> DENY', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderA);
+      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerB);
+
+      await expect(
+        service.getOrCreateChat('order-A', 'worker-B', 'employer-A')
+      ).rejects.toThrow(new ForbiddenException('Cannot start a chat with an executor who has not applied to this order'));
+    });
+
+    it('Case 3: Worker A + Order A + executorId = Worker B -> DENY (substitution attempt)', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderA);
+
+      await expect(
+        service.getOrCreateChat('order-A', 'worker-B', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('You are not authorized to start this chat'));
+    });
+
+    it('Case 4: Worker A + Order Closed + executorId = Worker A (no relationship & not open) -> DENY', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockClosedOrder);
+      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerA);
+
+      await expect(
+        service.getOrCreateChat('order-closed', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('Cannot start a chat on an order that is not open'));
+    });
+
+    it('Case 5: Worker A + Foreign Order B -> DENY if no relationship and not open', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockClosedOrder);
+      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerA);
+
+      await expect(
+        service.getOrCreateChat('order-closed', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('Cannot start a chat on an order that is not open'));
+    });
+
+    it('Case 6: Non-participant user attempting to get messages for existing foreign chat -> DENY', async () => {
+      const chat = { id: 'chat-foreign', employerId: 'employer-A', executorId: 'worker-A' };
+      mockPrismaService.chat.findUnique.mockResolvedValue(chat);
+
+      await expect(
+        service.getMessages('chat-foreign', 'stranger-user')
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe('getMessages', () => {
     it('should paginate messages using descending cursor query and reverse to chronological order', async () => {
       const chatId = 'chat-1';
@@ -81,7 +169,7 @@ describe('ChatsService', () => {
       ];
 
       mockPrismaService.chat.findUnique.mockResolvedValue(chat);
-      mockPrismaService.message.findMany.mockResolvedValue(mockMessages); // takeLimit+1 is 4 items
+      mockPrismaService.message.findMany.mockResolvedValue(mockMessages);
 
       const result = await service.getMessages(chatId, userId, undefined, 3);
 
@@ -95,7 +183,6 @@ describe('ChatsService', () => {
         include: { sender: { select: { id: true, name: true, avatar: true } } },
       });
 
-      // It sliced and reversed messages: M1 to M3 reversed chronologically -> msg-2, msg-3, msg-4 -> wait, oldest sliced is msg-1, so reversed sliced is msg-2, msg-3, msg-4.
       expect(result.messages).toHaveLength(3);
       expect(result.messages[0].id).toBe('msg-2');
       expect(result.messages[2].id).toBe('msg-4');
