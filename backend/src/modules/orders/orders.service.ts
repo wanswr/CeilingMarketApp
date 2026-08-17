@@ -258,7 +258,7 @@ export class OrdersService {
         statusHistory: { orderBy: { createdAt: 'asc' } }
       }
     });
-    if (!order) throw new NotFoundException();
+    if (!order) throw new NotFoundException('Order not found');
 
     if (requesterId && requesterId === order.employerId) {
       const applications = await this.prisma.application.findMany({
@@ -305,8 +305,8 @@ export class OrdersService {
 
   async update(id: string, dto: any, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException();
-    if (order.employerId !== userId) throw new ForbiddenException();
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.employerId !== userId) throw new ForbiddenException('Only the employer can modify this order');
 
     if (order.isFrozen || order.status === OrderStatus.FROZEN) {
       throw new ForbiddenException('Order is frozen and cannot be modified');
@@ -338,7 +338,8 @@ export class OrdersService {
 
   async remove(id: string, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order || order.employerId !== userId) throw new ForbiddenException();
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.employerId !== userId) throw new ForbiddenException('Only the employer can remove this order');
 
     if (order.isFrozen || order.status === OrderStatus.FROZEN) {
       throw new ForbiddenException('Order is frozen and cannot be modified');
@@ -467,7 +468,8 @@ export class OrdersService {
          where: { id: applicationId },
          include: { order: true }
      });
-     if (!app || app.order.employerId !== userId) throw new ForbiddenException();
+     if (!app) throw new NotFoundException('Application not found');
+     if (app.order.employerId !== userId) throw new ForbiddenException('Only employer can mark application as viewed');
      if (app.order.isFrozen || app.order.status === OrderStatus.FROZEN) {
          throw new ForbiddenException('Order is frozen and cannot be modified');
      }
@@ -482,7 +484,8 @@ export class OrdersService {
          where: { id: applicationId },
          include: { order: true, executor: true }
      });
-     if (!app || app.order.employerId !== userId) throw new ForbiddenException();
+     if (!app) throw new NotFoundException('Application not found');
+     if (app.order.employerId !== userId) throw new ForbiddenException('Only the employer can accept an application');
      if (app.executor?.deletedAt) {
          throw new ConflictException('Executor account is deleted');
      }
@@ -545,7 +548,7 @@ export class OrdersService {
 
   async startWork(id: string, userId: string) {
       const order = await this.prisma.order.findUnique({ where: { id } });
-      if (!order) throw new NotFoundException();
+      if (!order) throw new NotFoundException('Order not found');
 
       this.validateTransition(order, OrderStatus.IN_PROGRESS, userId, false);
 
@@ -581,7 +584,7 @@ export class OrdersService {
 
   async completeWork(id: string, userId: string) {
       const order = await this.prisma.order.findUnique({ where: { id } });
-      if (!order) throw new NotFoundException();
+      if (!order) throw new NotFoundException('Order not found');
 
       this.validateTransition(order, OrderStatus.COMPLETED, userId, false);
 
@@ -617,7 +620,7 @@ export class OrdersService {
 
   async transitionStatus(id: string, status: OrderStatus, userId: string) {
       const order = await this.prisma.order.findUnique({ where: { id } });
-      if (!order) throw new NotFoundException();
+      if (!order) throw new NotFoundException('Order not found');
 
       this.validateTransition(order, status, userId, false);
 
