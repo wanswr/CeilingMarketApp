@@ -1,3 +1,19 @@
+export function isValidCoordinate(latitude: any, longitude: any): boolean {
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    return false;
+  }
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return false;
+  }
+  if (latitude < -90 || latitude > 90) {
+    return false;
+  }
+  if (longitude < -180 || longitude > 180) {
+    return false;
+  }
+  return true;
+}
+
 import { Order } from '../types'
 import { apiService } from './ApiService'
 import { requestRouter } from './RequestRouter'
@@ -104,7 +120,10 @@ class MapEngine {
   }
 
   updateSocketRoom(region: any, force: boolean = false) {
-      if (!region) return;
+      if (!region || !isValidCoordinate(region.latitude, region.longitude)) {
+          logger.warn("[MapEngine] updateSocketRoom bypassed - invalid coordinates", { region });
+          return;
+      }
       const activeRole = useClientStore.getState().activeRole;
       if (!activeRole) {
           logger.info('[MapEngine] updateSocketRoom bypassed - no active role');
@@ -198,6 +217,10 @@ class MapEngine {
 
     const requestId = Math.random().toString(36).substring(7);
     const viewRegion = region || mapViewportStore.getRegion();
+    if (!viewRegion || !isValidCoordinate(viewRegion.latitude, viewRegion.longitude)) {
+      logger.warn("SYNC_BYPASS", { requestId, reason: "invalid_coordinates", viewRegion });
+      return;
+    }
     const viewportHash = viewRegion ? `${viewRegion.latitude.toFixed(4)}_${viewRegion.longitude.toFixed(4)}_${viewRegion.latitudeDelta.toFixed(4)}` : 'none';
     const previousViewportHash = this.lastSyncRegion ? `${this.lastSyncRegion.latitude.toFixed(4)}_${this.lastSyncRegion.longitude.toFixed(4)}_${this.lastSyncRegion.latitudeDelta.toFixed(4)}` : 'none';
 
