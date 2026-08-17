@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from './admin.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { Role, OrderStatus, DisputeStatus, ResolutionType } from '@prisma/client';
 
 describe('AdminService', () => {
@@ -34,7 +34,7 @@ describe('AdminService', () => {
     id: 'order-1',
     employerId: 'user-1',
     executorId: 'worker-1',
-    status: OrderStatus.PUBLISHED,
+    status: OrderStatus.CLAIMED,
     isFrozen: false,
   };
 
@@ -205,8 +205,28 @@ describe('AdminService', () => {
     });
   });
 
+  describe('reports', () => {
+    it('should throw NotFoundException if target user does not exist', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockRegularUser);
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(null); // targetUser null
+
+      await expect(
+        service.createReport('user-1', { targetUserId: 'nonexistent-user', reason: 'Spam' })
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ForbiddenException if reporter user is inactive or blocked', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce({ id: 'user-1', isBlocked: true });
+
+      await expect(
+        service.createReport('user-1', { targetUserId: 'worker-1', reason: 'Spam' })
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe('disputes', () => {
-    it('should allow a participant user to open a dispute', async () => {
+    it('should allow a participant user to open a dispute on a CLAIMED order', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockRegularUser);
       mockPrismaService.order.findUnique.mockResolvedValueOnce(mockOrder);
       mockPrismaService.dispute.findFirst.mockResolvedValueOnce(null);
       mockPrismaService.dispute.create.mockResolvedValueOnce({
@@ -225,6 +245,16 @@ describe('AdminService', () => {
 
       expect(result.id).toBe('dispute-1');
       expect(mockPrismaService.dispute.create).toHaveBeenCalled();
+    });
+
+    it('should throw ConflictException if trying to open a dispute on a PUBLISHED order', async () => {
+      const publishedOrder = { ...mockOrder, status: OrderStatus.PUBLISHED };
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockRegularUser);
+      mockPrismaService.order.findUnique.mockResolvedValueOnce(publishedOrder);
+
+      await expect(
+        service.openDispute('user-1', { orderId: 'order-1', reason: 'No worker assigned' })
+      ).rejects.toThrow(ConflictException);
     });
 
     it('should allow ADMIN to resolve a dispute', async () => {
@@ -260,6 +290,27 @@ describe('AdminService', () => {
           targetId: 'dispute-1',
         }),
       });
+    });
+
+    it('should throw ConflictException when trying to resolve an already RESOLVED dispute', async () => {
+      const mockClosedDispute = {
+        id: 'dispute-1',
+        orderId: 'order-1',
+        openedBy: 'user-1',
+        respondentId: 'worker-1',
+        status: DisputeStatus.RESOLVED,
+        order: mockOrder,
+      };
+
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockAdmin);
+      mockPrismaService.dispute.findUnique.mockResolvedValueOnce(mockClosedDispute);
+
+      await expect(
+        service.resolveDispute('admin-1', 'dispute-1', {
+          resolutionType: ResolutionType.NO_ACTION,
+          resolution: 'Already done',
+        })
+      ).rejects.toThrow(ConflictException);
     });
 
     it('should throw ForbiddenException if regular user tries to resolve dispute', async () => {
