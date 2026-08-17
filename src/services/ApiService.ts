@@ -3,12 +3,22 @@ import * as SecureStore from 'expo-secure-store';
 import { logger } from './logger/LoggerService';
 
 /**
- * ApiService V11: Hardened connection logic with explicit host logging.
+ * ApiService V11: Safe connection configuration without production fallbacks.
  */
 // @ts-ignore
 import { API_URL } from '@env';
 
-const DEFAULT_API_URL = API_URL || (__DEV__ ? 'http://192.168.1.124:3000/api/' : 'https://api.ceilingsapp.com/api/');
+function resolveDefaultApiUrl(): string {
+  if (typeof API_URL === 'string' && API_URL.trim() !== '') {
+    return API_URL;
+  }
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    return 'http://127.0.0.1:3000/api/';
+  }
+  return '';
+}
+
+const DEFAULT_API_URL = resolveDefaultApiUrl();
 
 class ApiService {
   public api: AxiosInstance;
@@ -17,7 +27,11 @@ class ApiService {
   constructor() {
     this.baseURL = DEFAULT_API_URL;
 
-    logger.info('[ApiService] Initializing with Base URL:', { url: this.baseURL });
+    if (!this.baseURL) {
+      logger.warn('[ApiService] API_URL environment variable is missing and no default fallback exists in production.');
+    } else {
+      logger.info('[ApiService] Initializing with Base URL:', { url: this.baseURL });
+    }
 
     this.api = axios.create({
       baseURL: this.baseURL,
@@ -38,6 +52,12 @@ class ApiService {
 
   private setupInterceptors() {
     this.api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+      if (!config.baseURL && !this.baseURL) {
+        const error = new Error('[ApiService] Request blocked: API_URL environment variable is not configured.');
+        logger.error('API_CONFIG_ERROR', { url: config.url, message: error.message });
+        return Promise.reject(error);
+      }
+
       const token = await SecureStore.getItemAsync('userToken');
       const requestId = Math.random().toString(36).substring(7);
 
