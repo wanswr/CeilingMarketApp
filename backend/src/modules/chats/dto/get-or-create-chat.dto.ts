@@ -1,11 +1,11 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsNotEmpty, IsUUID } from 'class-validator';
 
 export class GetOrCreateChatDto {
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   orderId: string;
 
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   executorId: string;
 }
