@@ -188,8 +188,8 @@ describe('UsersService', () => {
     });
   });
 
-  describe('findPublicProfile', () => {
-    it('should return profile if user is not deleted and exclude phone, instagram, and telegram', async () => {
+  describe('findPublicProfile - Whitelist & Privacy Contract', () => {
+    it('should return ONLY public whitelist fields and exclude phone, sessionVersion, pushToken, deletedAt, and blocked fields', async () => {
       const userId = 'user-456';
       const user = {
         id: userId,
@@ -201,13 +201,13 @@ describe('UsersService', () => {
         ordersCount: 15,
         isVerified: true,
         portfolioItems: [],
-        subscription: null,
+        activeCategory: { id: 'cat-1', slug: 'ceilings', name: 'Ceilings' },
         deletedAt: null,
       };
 
       mockPrismaService.user.findUnique.mockResolvedValue(user);
 
-      const result = await service.findPublicProfile(userId);
+      const result: any = await service.findPublicProfile(userId);
 
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: userId },
@@ -220,27 +220,39 @@ describe('UsersService', () => {
           completedOrders: true,
           ordersCount: true,
           isVerified: true,
-          portfolioItems: true,
-          deletedAt: true,
+          portfolioItems: {
+            select: {
+              id: true,
+              imageUrl: true,
+              description: true,
+              workType: true,
+              createdAt: true,
+            },
+          },
           activeCategory: { select: { id: true, slug: true, name: true } },
+          deletedAt: true,
         },
       });
-      expect(result).toEqual({
-        id: userId,
-        name: 'John Doe',
-        avatar: 'avatar.png',
-        rating: 5,
-        experience: 2,
-        completedOrders: 10,
-        ordersCount: 15,
-        isVerified: true,
-        portfolioItems: [],
-        subscription: null,
-        trustScore: 100,
-      });
-      expect(result).not.toHaveProperty('phone');
-      expect(result).not.toHaveProperty('instagram');
-      expect(result).not.toHaveProperty('telegram');
+
+      // Verify Whitelist keys
+      const allowedKeys = [
+        'id', 'name', 'avatar', 'rating', 'experience',
+        'completedOrders', 'ordersCount', 'isVerified',
+        'portfolioItems', 'activeCategory', 'trustScore'
+      ];
+      expect(Object.keys(result).sort()).toEqual(allowedKeys.sort());
+
+      // Verify Sensitive fields are strictly undefined
+      expect(result.phone).toBeUndefined();
+      expect(result.sessionVersion).toBeUndefined();
+      expect(result.pushToken).toBeUndefined();
+      expect(result.deletedAt).toBeUndefined();
+      expect(result.isBlocked).toBeUndefined();
+      expect(result.blockedAt).toBeUndefined();
+      expect(result.blockedReason).toBeUndefined();
+      expect(result.blockedById).toBeUndefined();
+      expect(result.instagram).toBeUndefined();
+      expect(result.telegram).toBeUndefined();
     });
 
     it('should throw NotFoundException if user has deletedAt set', async () => {
