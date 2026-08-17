@@ -80,23 +80,13 @@ export class UsersService {
         completedOrders: true,
         ordersCount: true,
         isVerified: true,
+        portfolioItems: true,
         deletedAt: true,
-        portfolioItems: {
-          select: {
-            id: true,
-            imageUrl: true,
-            description: true,
-            workType: true,
-            createdAt: true,
-          }
-        },
         activeCategory: { select: { id: true, slug: true, name: true } },
       }
     });
     if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
-
     const { deletedAt, ...publicProfile } = user;
-
     return {
       ...publicProfile,
       trustScore: this.calculateTrustScore({

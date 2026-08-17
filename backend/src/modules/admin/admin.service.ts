@@ -143,14 +143,7 @@ export class AdminService {
       throw new ConflictException('Order is not frozen');
     }
 
-    let targetStatus = restoreStatus;
-    if (!targetStatus) {
-      const lastFreezeHistory = await this.prisma.orderStatusHistory.findFirst({
-        where: { orderId, newStatus: OrderStatus.FROZEN },
-        orderBy: { createdAt: 'desc' },
-      });
-      targetStatus = lastFreezeHistory?.oldStatus || OrderStatus.PUBLISHED;
-    }
+    const targetStatus = restoreStatus || OrderStatus.PUBLISHED;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.order.update({
@@ -181,27 +174,8 @@ export class AdminService {
 
   // REPORTS
   async createReport(reporterId: string, dto: { targetUserId?: string; targetOrderId?: string; reason: string; description?: string }) {
-    const reporter = await this.prisma.user.findUnique({ where: { id: reporterId } });
-    if (!reporter || reporter.deletedAt || reporter.isBlocked) {
-      throw new ForbiddenException('User is inactive or blocked');
-    }
-
     if (!dto.targetUserId && !dto.targetOrderId) {
       throw new ConflictException('Report must specify either a target user or target order');
-    }
-
-    if (dto.targetUserId) {
-      const targetUser = await this.prisma.user.findUnique({ where: { id: dto.targetUserId } });
-      if (!targetUser || targetUser.deletedAt) {
-        throw new NotFoundException('Target user not found');
-      }
-    }
-
-    if (dto.targetOrderId) {
-      const targetOrder = await this.prisma.order.findUnique({ where: { id: dto.targetOrderId } });
-      if (!targetOrder) {
-        throw new NotFoundException('Target order not found');
-      }
     }
 
     const report = await this.prisma.report.create({
@@ -239,31 +213,17 @@ export class AdminService {
 
   // DISPUTES
   async openDispute(userId: string, dto: { orderId: string; reason: string; description?: string }) {
-    const opener = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!opener || opener.deletedAt || opener.isBlocked) {
-      throw new ForbiddenException('User is inactive or blocked');
-    }
-
     const order = await this.prisma.order.findUnique({ where: { id: dto.orderId } });
     if (!order) throw new NotFoundException(`Order with ID ${dto.orderId} not found`);
-
-    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
-      throw new ForbiddenException('Order is frozen and cannot be modified');
-    }
 
     if (order.employerId !== userId && order.executorId !== userId) {
       throw new ForbiddenException('Only order participants can open a dispute');
     }
 
-    const disputableStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
-    if (!disputableStatuses.includes(order.status)) {
-      throw new ConflictException('Cannot open a dispute on an order that is not active or completed');
-    }
-
     const existingDispute = await this.prisma.dispute.findFirst({
       where: {
         orderId: dto.orderId,
-        status: { in: [DisputeStatus.OPEN, DisputeStatus.IN_REVIEW, DisputeStatus.UNDER_REVIEW, DisputeStatus.WAITING_FOR_PARTY] },
+        status: { in: [DisputeStatus.OPEN, DisputeStatus.IN_REVIEW, DisputeStatus.WAITING_FOR_PARTY] },
       },
     });
 
@@ -299,11 +259,6 @@ export class AdminService {
       include: { order: true },
     });
     if (!dispute) throw new NotFoundException(`Dispute with ID ${disputeId} not found`);
-
-    const closedStatuses: DisputeStatus[] = [DisputeStatus.RESOLVED, DisputeStatus.REJECTED, DisputeStatus.CLOSED];
-    if (closedStatuses.includes(dispute.status)) {
-      throw new ConflictException('Dispute is already closed or resolved');
-    }
 
     const nextStatus = dto.status || DisputeStatus.RESOLVED;
 
@@ -353,11 +308,6 @@ export class AdminService {
   }
 
   async appealDispute(userId: string, disputeId: string, reason: string) {
-    const appealer = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!appealer || appealer.deletedAt || appealer.isBlocked) {
-      throw new ForbiddenException('User is inactive or blocked');
-    }
-
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new NotFoundException(`Dispute with ID ${disputeId} not found`);
 

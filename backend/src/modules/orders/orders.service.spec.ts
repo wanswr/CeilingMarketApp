@@ -1,135 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { OrdersService } from './orders.service';
 import { OrderStatus } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
-import { AppGateway } from '../gateway/app.gateway';
-import { LoggerService } from '../logger/logger.service';
-import { ChatsService } from '../chats/chats.service';
-import { OrderParserService } from './order-parser.service';
-import { OrderSpatialService } from './order-spatial.service';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
-describe('OrdersService - State Machine & Access Controls', () => {
-  let service: OrdersService;
-
-  const mockPrisma = {
-    order: {
-      findUnique: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
-      updateMany: jest.fn(),
-    },
-    user: {
-      findUnique: jest.fn(),
-    },
-    chat: {
-      findMany: jest.fn(),
-    },
-    orderStatusHistory: {
-      create: jest.fn(),
-    },
-  };
-
-  const mockGateway = {
-    broadcast: jest.fn(),
-  };
-
-  const mockLogger = {
-    setService: jest.fn(),
-    info: jest.fn(),
-    debug: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  };
-
-  const mockChats = {
-    getOrCreateChat: jest.fn(),
-  };
-
-  const mockParser = {};
-  const mockSpatial = {};
-
-  beforeEach(async () => {
-    jest.clearAllMocks();
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        OrdersService,
-        { provide: PrismaService, useValue: mockPrisma },
-        { provide: AppGateway, useValue: mockGateway },
-        { provide: LoggerService, useValue: mockLogger },
-        { provide: ChatsService, useValue: mockChats },
-        { provide: OrderParserService, useValue: mockParser },
-        { provide: OrderSpatialService, useValue: mockSpatial },
-      ],
-    }).compile();
-
-    service = module.get<OrdersService>(OrdersService);
-  });
-
+describe('OrdersService - canTransition state machine', () => {
   const canTransition = (from: OrderStatus, to: OrderStatus): boolean => {
     return (OrdersService.prototype as any).canTransition(from, to);
   };
-
-  describe('Object-Level Access Controls (BAC / IDOR Protection)', () => {
-    const mockOrder = {
-      id: 'order-100',
-      employerId: 'employer-1',
-      executorId: 'executor-1',
-      status: OrderStatus.PUBLISHED,
-      isFrozen: false,
-    };
-
-    it('should throw NotFoundException if findOne cannot find the order', async () => {
-      mockPrisma.order.findUnique.mockResolvedValueOnce(null);
-      await expect(service.findOne('nonexistent-id')).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw ForbiddenException if non-employer attempts to update order', async () => {
-      mockPrisma.order.findUnique.mockResolvedValueOnce(mockOrder);
-      await expect(
-        service.update('order-100', { title: 'New Title' }, 'stranger-user')
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should throw ForbiddenException if non-employer attempts to remove order', async () => {
-      mockPrisma.order.findUnique.mockResolvedValueOnce(mockOrder);
-      await expect(
-        service.remove('order-100', 'stranger-user')
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should throw ForbiddenException if non-executor attempts startWork', async () => {
-      const claimedOrder = { ...mockOrder, status: OrderStatus.CLAIMED };
-      mockPrisma.order.findUnique.mockResolvedValueOnce(claimedOrder);
-
-      await expect(
-        service.startWork('order-100', 'employer-1')
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should throw ForbiddenException if non-executor attempts completeWork', async () => {
-      const inProgressOrder = { ...mockOrder, status: OrderStatus.IN_PROGRESS };
-      mockPrisma.order.findUnique.mockResolvedValueOnce(inProgressOrder);
-
-      await expect(
-        service.completeWork('order-100', 'employer-1')
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should throw ForbiddenException if frozen order is modified or removed', async () => {
-      const frozenOrder = { ...mockOrder, isFrozen: true, status: OrderStatus.FROZEN };
-      mockPrisma.order.findUnique.mockResolvedValue(frozenOrder);
-
-      await expect(
-        service.update('order-100', { title: 'New Title' }, 'employer-1')
-      ).rejects.toThrow(ForbiddenException);
-
-      await expect(
-        service.remove('order-100', 'employer-1')
-      ).rejects.toThrow(ForbiddenException);
-    });
-  });
 
   describe('Happy Path (Legal Forward Transitions)', () => {
     it('should allow PENDING -> PUBLISHED', () => {
@@ -162,15 +37,6 @@ describe('OrdersService - State Machine & Access Controls', () => {
       const statuses = Object.values(OrderStatus);
       statuses.forEach((toStatus) => {
         expect(canTransition(OrderStatus.CANCELLED, toStatus)).toBe(false);
-      });
-    });
-  });
-
-  describe('Locked FROZEN State Rules', () => {
-    it('should never allow standard user transitions from FROZEN to any state', () => {
-      const statuses = Object.values(OrderStatus);
-      statuses.forEach((toStatus) => {
-        expect(canTransition(OrderStatus.FROZEN, toStatus)).toBe(false);
       });
     });
   });

@@ -17,11 +17,6 @@ export class ReviewsService {
   async create(userId: string, dto: { orderId: string; rating: number; comment?: string }) {
     this.logger.debug('REVIEW_CREATED_REQUEST', `User ${userId} leaving review for order ${dto.orderId}`, { userId, orderId: dto.orderId });
 
-    const author = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!author || author.deletedAt || author.isBlocked) {
-      throw new ForbiddenException('User is inactive or blocked');
-    }
-
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
       include: { reviews: true }
@@ -29,10 +24,6 @@ export class ReviewsService {
 
     if (!order) {
         throw new NotFoundException('Order not found');
-    }
-
-    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
-        throw new ForbiddenException('Order is frozen and cannot be modified');
     }
 
     const currentUserId = String(userId).trim().toLowerCase();

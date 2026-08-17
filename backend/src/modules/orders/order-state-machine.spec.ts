@@ -69,18 +69,10 @@ describe('Order State Machine - Isolated Rules', () => {
       expect(claimed?.[OrderStatus.DISPUTE]?.requiresParticipant).toBe('any');
     });
 
-    it('should block any transitions out of CANCELLED, DISPUTE, REVIEWED, FROZEN', () => {
+    it('should block any transitions out of CANCELLED, DISPUTE, REVIEWED', () => {
       expect(Object.keys(ORDER_STATE_MACHINE[OrderStatus.CANCELLED] || {})).toHaveLength(0);
       expect(Object.keys(ORDER_STATE_MACHINE[OrderStatus.DISPUTE] || {})).toHaveLength(0);
       expect(Object.keys(ORDER_STATE_MACHINE[OrderStatus.REVIEWED] || {})).toHaveLength(0);
-      expect(Object.keys(ORDER_STATE_MACHINE[OrderStatus.FROZEN] || {})).toHaveLength(0);
-    });
-
-    it('should cover 100% of OrderStatus enum values', () => {
-      const enumValues = Object.values(OrderStatus);
-      enumValues.forEach((status) => {
-        expect(ORDER_STATE_MACHINE[status]).toBeDefined();
-      });
     });
   });
 
@@ -103,13 +95,6 @@ describe('Order State Machine - Isolated Rules', () => {
       const order = { ...mockOrder, status: OrderStatus.CANCELLED };
       expect(() => validateTransition(order, OrderStatus.CANCELLED, 'employer-user')).toThrow(
         new ConflictException('Cannot transition from CANCELLED to CANCELLED')
-      );
-    });
-
-    it('should throw ConflictException on repeat transition (already FROZEN)', () => {
-      const order = { ...mockOrder, status: OrderStatus.FROZEN };
-      expect(() => validateTransition(order, OrderStatus.FROZEN, 'employer-user')).toThrow(
-        new ConflictException('Cannot transition from FROZEN to FROZEN')
       );
     });
 

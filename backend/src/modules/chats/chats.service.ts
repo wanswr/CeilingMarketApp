@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
-import { Prisma, OrderStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
@@ -26,34 +26,12 @@ export class ChatsService {
       throw new NotFoundException('Order not found');
     }
 
-    // 1. Caller identity authorization check
-    const isEmployer = order.employerId === userId;
-    const isSelfExecutor = executorId === userId;
-
-    if (!isEmployer && !isSelfExecutor) {
+    // Caller must be either the employer or the executor
+    if (order.employerId !== userId && executorId !== userId) {
       throw new ForbiddenException('You are not authorized to start this chat');
     }
 
-    // 2. Executor user validation check
-    const executor = await db.user.findUnique({ where: { id: executorId } });
-    if (!executor || executor.deletedAt) {
-      throw new NotFoundException('Executor not found');
-    }
-
-    // 3. Relationship verification between executorId and orderId
-    const isAssignedExecutor = order.executorId === executorId;
-    const hasApplied = order.applications?.some(app => app.executorId === executorId);
-
-    if (isEmployer && !isAssignedExecutor && !hasApplied) {
-      throw new ForbiddenException('Cannot start a chat with an executor who has not applied to this order');
-    }
-
-    if (isSelfExecutor && !isAssignedExecutor && !hasApplied) {
-      const openStatuses: OrderStatus[] = [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES];
-      if (!openStatuses.includes(order.status)) {
-        throw new ForbiddenException('Cannot start a chat on an order that is not open');
-      }
-    }
+    // Chat before apply is permitted, so the application check (hasApplied) is removed.
 
     const chat = await db.chat.upsert({
       where: {
