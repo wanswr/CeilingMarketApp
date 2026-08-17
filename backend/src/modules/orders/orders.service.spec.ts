@@ -41,6 +41,15 @@ describe('OrdersService - canTransition state machine', () => {
     });
   });
 
+  describe('Locked FROZEN State Rules', () => {
+    it('should never allow standard user transitions from FROZEN to any state', () => {
+      const statuses = Object.values(OrderStatus);
+      statuses.forEach((toStatus) => {
+        expect(canTransition(OrderStatus.FROZEN, toStatus)).toBe(false);
+      });
+    });
+  });
+
   describe('Blocked Cancellations During Critical Stages', () => {
     it('should allow cancellation from PUBLISHED', () => {
       expect(canTransition(OrderStatus.PUBLISHED, OrderStatus.CANCELLED)).toBe(true);

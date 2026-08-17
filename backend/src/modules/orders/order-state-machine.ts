@@ -81,4 +81,5 @@ export const ORDER_STATE_MACHINE: Record<OrderStatus, Partial<Record<OrderStatus
   [OrderStatus.CANCELLED]: {},
   [OrderStatus.DISPUTE]: {},
   [OrderStatus.REVIEWED]: {},
+  [OrderStatus.FROZEN]: {},
 };
