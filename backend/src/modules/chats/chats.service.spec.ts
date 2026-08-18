@@ -146,6 +146,17 @@ describe('ChatsService', () => {
       ).rejects.toThrow(new ForbiddenException('Cannot start a chat on an order that is not open'));
     });
 
+        it('Case 7: Chat is NOT created/upserted when ForbiddenException is thrown', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderA);
+      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerB);
+
+      await expect(
+        service.getOrCreateChat('order-A', 'worker-B', 'employer-A')
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockPrismaService.chat.upsert).not.toHaveBeenCalled();
+    });
+
     it('Case 6: Non-participant user attempting to get messages for existing foreign chat -> DENY', async () => {
       const chat = { id: 'chat-foreign', employerId: 'employer-A', executorId: 'worker-A' };
       mockPrismaService.chat.findUnique.mockResolvedValue(chat);

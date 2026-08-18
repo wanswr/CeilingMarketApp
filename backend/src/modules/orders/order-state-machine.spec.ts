@@ -170,3 +170,25 @@ describe('Order State Machine - Isolated Rules', () => {
     });
   });
 });
+
+  describe('OrderStatus.FROZEN & Admin Freeze Security Rules', () => {
+    it('should disallow regular users from manually setting status to FROZEN', () => {
+      const mockOrder = { id: 'order-1', employerId: 'employer-1', executorId: 'executor-1', status: OrderStatus.PUBLISHED };
+      expect(() => validateTransition(mockOrder, OrderStatus.FROZEN, 'employer-1')).toThrow(
+        new ConflictException('Cannot transition from PUBLISHED to FROZEN')
+      );
+      expect(() => validateTransition(mockOrder, OrderStatus.FROZEN, 'executor-1')).toThrow(
+        new ConflictException('Cannot transition from PUBLISHED to FROZEN')
+      );
+    });
+
+    it('should disallow any outgoing transitions from FROZEN via standard state machine', () => {
+      const frozenOrder = { id: 'order-1', employerId: 'employer-1', executorId: 'executor-1', status: OrderStatus.FROZEN };
+      expect(() => validateTransition(frozenOrder, OrderStatus.PUBLISHED, 'employer-1')).toThrow(
+        new ConflictException('Cannot transition from FROZEN to PUBLISHED')
+      );
+      expect(() => validateTransition(frozenOrder, OrderStatus.IN_PROGRESS, 'executor-1')).toThrow(
+        new ConflictException('Cannot transition from FROZEN to IN_PROGRESS')
+      );
+    });
+  });
