@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OrderStatus } from '@prisma/client';
 import { LoggerService } from '../logger/logger.service';
@@ -22,9 +22,53 @@ export class OrderSpatialService {
     limit?: number;
     dateFilter?: string;
   }) {
+    if (params.lat !== undefined) {
+      if (typeof params.lat !== 'number' || !Number.isFinite(params.lat) || params.lat < -90 || params.lat > 90) {
+        throw new BadRequestException('Invalid latitude');
+      }
+    }
+
+    if (params.lng !== undefined) {
+      if (typeof params.lng !== 'number' || !Number.isFinite(params.lng) || params.lng < -180 || params.lng > 180) {
+        throw new BadRequestException('Invalid longitude');
+      }
+    }
+
+    if (params.radius !== undefined) {
+      if (typeof params.radius !== 'number' || !Number.isFinite(params.radius) || params.radius <= 0) {
+        throw new BadRequestException('Invalid radius');
+      }
+      if (params.radius > 100) {
+        throw new BadRequestException('Invalid radius: exceeds maximum search radius of 100 km');
+      }
+    }
+
+    if (params.minLat !== undefined) {
+      if (typeof params.minLat !== 'number' || !Number.isFinite(params.minLat) || params.minLat < -90 || params.minLat > 90) {
+        throw new BadRequestException('Invalid latitude');
+      }
+    }
+
+    if (params.maxLat !== undefined) {
+      if (typeof params.maxLat !== 'number' || !Number.isFinite(params.maxLat) || params.maxLat < -90 || params.maxLat > 90) {
+        throw new BadRequestException('Invalid latitude');
+      }
+    }
+
+    if (params.minLng !== undefined) {
+      if (typeof params.minLng !== 'number' || !Number.isFinite(params.minLng) || params.minLng < -180 || params.minLng > 180) {
+        throw new BadRequestException('Invalid longitude');
+      }
+    }
+
+    if (params.maxLng !== undefined) {
+      if (typeof params.maxLng !== 'number' || !Number.isFinite(params.maxLng) || params.maxLng < -180 || params.maxLng > 180) {
+        throw new BadRequestException('Invalid longitude');
+      }
+    }
+
     const startTime = Date.now();
-    const { lat, lng, radius: rawRadius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit, dateFilter } = params;
-    const radius = rawRadius !== undefined ? Math.min(rawRadius, 100) : undefined;
+    const { lat, lng, radius, minLat, maxLat, minLng, maxLng, updatedAfter, categoryId, requesterId, cursorId, limit, dateFilter } = params;
 
     let searchBounds: { minLat: number, maxLat: number, minLng: number, maxLng: number } | null = null;
 
@@ -86,7 +130,6 @@ export class OrderSpatialService {
         skip: cursorId ? 1 : undefined,
         cursor: cursorId ? { id: cursorId } : undefined,
         orderBy: { id: 'asc' },
-        // V12 Lightweight Map DTO optimization:
         select: {
             id: true,
             latitude: true,
