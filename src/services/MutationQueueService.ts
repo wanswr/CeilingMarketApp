@@ -192,7 +192,8 @@ class MutationQueueService {
 
     switch (type) {
       case 'createOrder': {
-        const res = await apiService.createOrder(payload.data);
+        const orderData = { ...payload.data, idempotencyKey: mutation.idempotencyKey || payload.data?.idempotencyKey };
+        const res = await apiService.createOrder(orderData);
         if (res && res.data) {
           const newOrder = res.data;
           // Synchronize local EntityStore
@@ -207,7 +208,8 @@ class MutationQueueService {
       }
 
       case 'applyForOrder': {
-        const res = await apiService.applyForOrder(payload.id, payload.price, payload.idempotencyKey);
+        const key = mutation.idempotencyKey || payload.idempotencyKey;
+        const res = await apiService.applyForOrder(payload.id, payload.price, key);
         if (res && res.data && res.data.order) {
           entityStore.setOrder(res.data.order, 'offline_sync');
           entityStore.persist();

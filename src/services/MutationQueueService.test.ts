@@ -150,7 +150,6 @@ describe('MutationQueueService & Offline-First flow', () => {
     mutationQueueService.add('updateProfile', { data: { name: 'Bob' } });
     expect(mutationQueueService.getQueue().length).toBe(1);
 
-    const MutationQueueModule = require('./MutationQueueService');
     const list = entityStore.hydrate();
     expect(mutationQueueService.getQueue().length).toBe(1);
   });
@@ -180,5 +179,74 @@ describe('MutationQueueService & Offline-First flow', () => {
 
   it('Scenario H: applyForOrder on a temp_ ID order is blocked', async () => {
     await expect(apiService.applyForOrder('temp_create_123', 500)).rejects.toThrow();
+  });
+});
+
+describe('MutationQueueService - Idempotency & Retry Policy', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    mutationQueueService.clearQueue();
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(true);
+  });
+
+  it('should preserve and pass the SAME idempotencyKey across retries', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    const idempotencyKey = 'unique-idem-key-999';
+    await apiService.createOrder({ title: 'Idempotent Order', latitude: 55.75, longitude: 37.61, idempotencyKey });
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(1);
+    expect(queue[0].idempotencyKey).toBe(idempotencyKey);
+
+    let attempts = 0;
+    const apiSpy = jest.spyOn(apiService, 'createOrder').mockImplementation(async (data: any) => {
+      attempts++;
+      expect(data.idempotencyKey).toBe(idempotencyKey);
+      if (attempts === 1) {
+        throw { response: { status: 500 }, message: 'Server Internal Error' };
+      }
+      return { data: { id: 'srv_order_idem', title: 'Idempotent Order' }, status: 201 } as any;
+    });
+
+    netinfo.__setConnected(true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Attempt 1 failed with 500
+    expect(apiSpy).toHaveBeenCalledTimes(1);
+    expect(mutationQueueService.getQueue()[0].retryCount).toBe(1);
+
+    // Attempt 2 succeeds using the EXACT SAME idempotencyKey
+    await mutationQueueService.processQueue();
+    expect(apiSpy).toHaveBeenCalledTimes(2);
+    expect(mutationQueueService.getQueue().length).toBe(0);
+  });
+
+  it('should stop retrying 5xx or 429 errors when MAX_RETRY_COUNT is reached', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    mutationQueueService.add('applyForOrder', { id: 'order-1', price: 1000 }, 'idem-apply-123');
+
+    const apiSpy = jest.spyOn(apiService, 'applyForOrder').mockRejectedValue({
+      response: { status: 429 },
+      message: 'Too Many Requests'
+    });
+
+    netinfo.__setConnected(true);
+    await new Promise(resolve => setTimeout(resolve, 100)); // Attempt 1
+
+    await mutationQueueService.processQueue(); // Attempt 2
+    await mutationQueueService.processQueue(); // Attempt 3
+
+    expect(apiSpy).toHaveBeenCalledTimes(3);
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(1);
+    expect(queue[0].status).toBe('failed');
+    expect(queue[0].error).toContain('Exceeded retry limit');
   });
 });

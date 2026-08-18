@@ -145,7 +145,7 @@ class ApiService {
       entityStore.persist();
       mapEngine.triggerNotify();
 
-      mutationQueueService.add('createOrder', { tempId, data });
+      mutationQueueService.add('createOrder', { tempId, data }, data?.idempotencyKey);
       return { data: mockOrder, status: 201 };
     }
     return this.api.post('orders', data);
