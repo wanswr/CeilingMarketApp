@@ -8,13 +8,22 @@ describe('LoggerService', () => {
   });
 
   describe('sanitizeForLog', () => {
-    it('should completely exclude keys like password, token, otp, jwt, pushToken', () => {
+    it('should completely exclude sensitive keys including passwordHash, hash, refreshToken, authorization, cookie, secret, apiKey', () => {
       const testData = {
         password: 'my-super-secret-password',
-        token: 'jwt-token-xyz',
-        otp: '1234',
+        passwordHash: '$2b$10$xyz',
+        hash: 'hash-value-123',
         jwt: 'header.payload.signature',
+        token: 'jwt-token-xyz',
+        accessToken: 'access-123',
+        refreshToken: 'refresh-456',
         pushToken: 'push-id-777',
+        sessionVersion: 5,
+        authorization: 'Bearer secret-jwt-token',
+        cookie: 'session=xyz',
+        secret: 'my-super-secret',
+        apiKey: 'api-key-123',
+        otp: '1234',
         safeField: 'hello-world',
       };
 
@@ -24,10 +33,19 @@ describe('LoggerService', () => {
         safeField: 'hello-world',
       });
       expect(result.password).toBeUndefined();
-      expect(result.token).toBeUndefined();
-      expect(result.otp).toBeUndefined();
+      expect(result.passwordHash).toBeUndefined();
+      expect(result.hash).toBeUndefined();
       expect(result.jwt).toBeUndefined();
+      expect(result.token).toBeUndefined();
+      expect(result.accessToken).toBeUndefined();
+      expect(result.refreshToken).toBeUndefined();
       expect(result.pushToken).toBeUndefined();
+      expect(result.sessionVersion).toBeUndefined();
+      expect(result.authorization).toBeUndefined();
+      expect(result.cookie).toBeUndefined();
+      expect(result.secret).toBeUndefined();
+      expect(result.apiKey).toBeUndefined();
+      expect(result.otp).toBeUndefined();
     });
 
     it('should mask phone numbers and social contacts', () => {
@@ -53,6 +71,11 @@ describe('LoggerService', () => {
         user: {
           phone: '+79998887766',
           password: 'secret-pass',
+          auth: {
+            token: 'SECRET_JWT',
+            refreshToken: 'REFRESH_SECRET',
+            sessionVersion: 2,
+          }
         },
         list: [
           { token: 'abc', val: 123 }
@@ -63,6 +86,9 @@ describe('LoggerService', () => {
 
       expect(result.user.phone).toBe('********7766');
       expect(result.user.password).toBeUndefined();
+      expect(result.user.auth.token).toBeUndefined();
+      expect(result.user.auth.refreshToken).toBeUndefined();
+      expect(result.user.auth.sessionVersion).toBeUndefined();
       expect(result.list[0].token).toBeUndefined();
       expect(result.list[0].val).toBe(123);
     });

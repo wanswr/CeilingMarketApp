@@ -44,7 +44,28 @@ export class LoggerService {
 
     const clone = Array.isArray(data) ? [...data] : { ...data };
 
-    const keysToExclude = ['password', 'token', 'code', 'otp', 'jwt', 'pushtoken', 'accesstoken', 'access_token'];
+    const keysToExclude = [
+      'password',
+      'passwordhash',
+      'hash',
+      'jwt',
+      'token',
+      'accesstoken',
+      'access_token',
+      'refreshtoken',
+      'refresh_token',
+      'pushtoken',
+      'push_token',
+      'sessionversion',
+      'session_version',
+      'authorization',
+      'cookie',
+      'secret',
+      'apikey',
+      'api_key',
+      'code',
+      'otp',
+    ];
     const keysToMask = ['phone', 'telephone', 'instagram', 'telegram'];
 
     for (const key of Object.keys(clone)) {
@@ -76,7 +97,8 @@ export class LoggerService {
     const userId = store?.get('userId') || data?.userId;
 
     const { orderId, metadata, ...rest } = data;
-    const sanitizedData = this.sanitizeForLog(metadata || rest);
+    const targetData = metadata !== undefined ? metadata : rest;
+    const sanitizedData = this.sanitizeForLog(targetData);
 
     return JSON.stringify({
       timestamp: new Date().toISOString(),
