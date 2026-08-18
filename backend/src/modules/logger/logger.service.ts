@@ -10,6 +10,55 @@ export enum LogLevel {
   ERROR = 3,
 }
 
+/**
+ * Developer Guidelines for Log Sanitization:
+ * When adding new sensitive/PII data fields to DTOs or entities
+ * (e.g. payment_token, provider_secret, external_api_key),
+ * YOU MUST ADD THEM TO SENSITIVE_EXCLUDE_FIELDS OR SENSITIVE_MASK_FIELDS.
+ *
+ * Examples:
+ * - 'payment_token', 'provider_secret', 'external_api_key'
+ */
+export const SENSITIVE_EXCLUDE_FIELDS = [
+  'password',
+  'passwordhash',
+  'hash',
+  'token',
+  'accesstoken',
+  'access_token',
+  'refreshtoken',
+  'refresh_token',
+  'jwt',
+  'authorization',
+  'cookie',
+  'pushtoken',
+  'push_token',
+  'sessionversion',
+  'session_version',
+  'secret',
+  'apikey',
+  'api_key',
+  'payment_token',
+  'paymenttoken',
+  'provider_secret',
+  'providersecret',
+  'external_api_key',
+  'code',
+  'otp',
+] as const;
+
+export const SENSITIVE_MASK_FIELDS = [
+  'phone',
+  'telephone',
+  'instagram',
+  'telegram',
+] as const;
+
+export const SENSITIVE_LOG_FIELDS = [
+  ...SENSITIVE_EXCLUDE_FIELDS,
+  ...SENSITIVE_MASK_FIELDS,
+] as const;
+
 @Injectable({ scope: Scope.TRANSIENT })
 export class LoggerService {
   private serviceName: string = 'App';
@@ -39,52 +88,39 @@ export class LoggerService {
   }
 
   public sanitizeForLog(data: any): any {
-    if (!data) return data;
+    if (data === null || data === undefined) return data;
     if (typeof data !== 'object') return data;
 
-    const clone = Array.isArray(data) ? [...data] : { ...data };
+    if (Array.isArray(data)) {
+      return data.map((item) => this.sanitizeForLog(item));
+    }
 
-    const keysToExclude = [
-      'password',
-      'passwordhash',
-      'hash',
-      'jwt',
-      'token',
-      'accesstoken',
-      'access_token',
-      'refreshtoken',
-      'refresh_token',
-      'pushtoken',
-      'push_token',
-      'sessionversion',
-      'session_version',
-      'authorization',
-      'cookie',
-      'secret',
-      'apikey',
-      'api_key',
-      'code',
-      'otp',
-    ];
-    const keysToMask = ['phone', 'telephone', 'instagram', 'telegram'];
+    const clone: Record<string, any> = {};
 
-    for (const key of Object.keys(clone)) {
+    for (const key of Object.keys(data)) {
       const lowerKey = key.toLowerCase();
-      if (keysToExclude.includes(lowerKey)) {
-        delete clone[key];
-      } else if (keysToMask.includes(lowerKey)) {
-        if (typeof clone[key] === 'string') {
-          const val = clone[key];
+
+      if ((SENSITIVE_EXCLUDE_FIELDS as readonly string[]).includes(lowerKey)) {
+        continue;
+      }
+
+      if ((SENSITIVE_MASK_FIELDS as readonly string[]).includes(lowerKey)) {
+        const val = data[key];
+        if (typeof val === 'string') {
           if (lowerKey === 'phone' || lowerKey === 'telephone') {
             clone[key] = val.length > 4 ? '*'.repeat(val.length - 4) + val.slice(-4) : '****';
           } else {
             clone[key] = '********';
           }
-        } else {
-          delete clone[key];
         }
-      } else if (typeof clone[key] === 'object' && clone[key] !== null) {
-        clone[key] = this.sanitizeForLog(clone[key]);
+        continue;
+      }
+
+      const val = data[key];
+      if (typeof val === 'object' && val !== null) {
+        clone[key] = this.sanitizeForLog(val);
+      } else {
+        clone[key] = val;
       }
     }
 
