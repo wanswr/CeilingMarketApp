@@ -9,7 +9,7 @@ import { RequestOtpDto, VerifyOtpDto } from './dto/otp.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 2, ttl: 60000 } })
   @Post('request-otp')
   async requestOtp(@Body() dto: RequestOtpDto, @Req() req: any) {
     const ip = req.ip || req.headers['x-forwarded-for'];
