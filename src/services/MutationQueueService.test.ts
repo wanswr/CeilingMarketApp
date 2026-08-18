@@ -250,3 +250,69 @@ describe('MutationQueueService - Idempotency & Retry Policy', () => {
     expect(queue[0].error).toContain('Exceeded retry limit');
   });
 });
+
+describe('MutationQueueService - Independent vs Dependent Ordering', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    mutationQueueService.clearQueue();
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(true);
+  });
+
+  it('Test 1: Independent mutations - updateProfile 5xx error does NOT block sendMessage', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    mutationQueueService.add('updateProfile', { data: { name: 'Alice' } });
+    mutationQueueService.add('sendMessage', { chatId: 'chat-100', text: 'Hello' });
+
+    expect(mutationQueueService.getQueue().length).toBe(2);
+
+    const updateProfileSpy = jest.spyOn(apiService, 'updateProfile').mockRejectedValue({
+      response: { status: 500 },
+      message: 'Internal Server Error'
+    });
+
+    const sendMessageSpy = jest.spyOn(apiService, 'sendMessage').mockResolvedValue({
+      data: { success: true }
+    } as any);
+
+    netinfo.__setConnected(true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    expect(updateProfileSpy).toHaveBeenCalledTimes(1);
+    expect(sendMessageSpy).toHaveBeenCalledTimes(1);
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(1);
+    expect(queue[0].type).toBe('updateProfile');
+  });
+
+  it('Test 2: Dependent mutations - createOrder 5xx error blocks applyForOrder on same order', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    const tempId = 'temp_order_999';
+    mutationQueueService.add('createOrder', { tempId, data: { title: 'Order' } });
+    mutationQueueService.add('applyForOrder', { id: tempId, price: 500 });
+
+    expect(mutationQueueService.getQueue().length).toBe(2);
+
+    const createOrderSpy = jest.spyOn(apiService, 'createOrder').mockRejectedValue({
+      response: { status: 500 },
+      message: 'Internal Server Error'
+    });
+
+    const applyForOrderSpy = jest.spyOn(apiService, 'applyForOrder');
+
+    netinfo.__setConnected(true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    expect(createOrderSpy).toHaveBeenCalledTimes(1);
+    expect(applyForOrderSpy).not.toHaveBeenCalled();
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(2);
+  });
+});

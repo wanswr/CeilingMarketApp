@@ -11,12 +11,31 @@ export interface QueuedMutation {
   createdAt: number;
   retryCount: number;
   idempotencyKey?: string;
+  orderingKey?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   error?: string;
 }
 
 const STORAGE_KEY = 'mutation_queue';
 const MAX_RETRY_COUNT = 3;
+
+export function getOrderingKey(mutation: QueuedMutation): string {
+  if (mutation.orderingKey) return mutation.orderingKey;
+  const { type, payload } = mutation;
+  if (type === 'createOrder') {
+    return 'order_' + (payload.tempId || 'new');
+  }
+  if (type === 'applyForOrder') {
+    return 'order_' + (payload.id || 'new');
+  }
+  if (type === 'sendMessage') {
+    return 'chat_' + (payload.chatId || 'msg');
+  }
+  if (type === 'updateProfile') {
+    return 'profile';
+  }
+  return 'default';
+}
 
 class MutationQueueService {
   private queue: QueuedMutation[] = [];
@@ -59,7 +78,7 @@ class MutationQueueService {
     logger.info('[MutationQueueService] Queue cleared.');
   }
 
-  add(type: QueuedMutation['type'], payload: any, idempotencyKey?: string) {
+  add(type: QueuedMutation['type'], payload: any, idempotencyKey?: string, orderingKey?: string) {
     const now = Date.now();
 
     // 1. Handle updateProfile merging to prevent endless duplicates of identical field edits
@@ -91,6 +110,7 @@ class MutationQueueService {
       createdAt: now,
       retryCount: 0,
       idempotencyKey,
+      orderingKey,
       status: 'pending'
     };
 
@@ -124,10 +144,12 @@ class MutationQueueService {
     }
 
     this.isProcessing = true;
-    logger.info('[MutationQueueService] Starting sequential processing of active mutations:', { count: activeMutations.length });
+    logger.info('[MutationQueueService] Starting processing of active mutations:', { count: activeMutations.length });
 
     // Always sort by creation time to guarantee strict order (FIFO)
     activeMutations.sort((a, b) => a.createdAt - b.createdAt);
+
+    const pausedKeys = new Set<string>();
 
     for (const mutation of activeMutations) {
       // Re-verify network status before executing each item
@@ -136,7 +158,13 @@ class MutationQueueService {
         break;
       }
 
-      logger.info('[MutationQueueService] Processing mutation:', { id: mutation.id, type: mutation.type, attempt: mutation.retryCount + 1 });
+      const key = getOrderingKey(mutation);
+      if (pausedKeys.has(key)) {
+        logger.info('[MutationQueueService] Skipping mutation due to active pause on orderingKey:', { id: mutation.id, type: mutation.type, orderingKey: key });
+        continue;
+      }
+
+      logger.info('[MutationQueueService] Processing mutation:', { id: mutation.id, type: mutation.type, attempt: mutation.retryCount + 1, orderingKey: key });
       mutation.status = 'processing';
       this.persistQueue();
 
@@ -173,11 +201,12 @@ class MutationQueueService {
             logger.error('[MutationQueueService] Temporary mutation retry limit reached. Marking as failed:', { id: mutation.id });
             continue; // Move to next item
           } else {
-            // Under limit: leave status as failed (or revert to pending) but STOP entire queue to avoid execution order violations.
+            // Under limit: revert to pending and pause this orderingKey to preserve order for dependent items
             mutation.status = 'pending';
+            pausedKeys.add(key);
             this.persistQueue();
-            logger.warn('[MutationQueueService] Temporary network outage. Pausing queue processing to preserve order.');
-            break; // Pause the processing loop entirely
+            logger.warn('[MutationQueueService] Temporary outage on orderingKey. Pausing execution for this key:', { orderingKey: key });
+            continue; // Proceed to process mutations with different orderingKeys
           }
         }
       }
