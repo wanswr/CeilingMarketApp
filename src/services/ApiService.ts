@@ -23,6 +23,16 @@ const DEFAULT_API_URL = resolveDefaultApiUrl();
 class ApiService {
   public api: AxiosInstance;
   private baseURL: string;
+  private onUnauthorizedCallback: (() => Promise<void> | void) | null = null;
+  private isHandling401 = false;
+
+  setOnUnauthorizedCallback(cb: (() => Promise<void> | void) | null) {
+    this.onUnauthorizedCallback = cb;
+  }
+
+  reset401Guard() {
+    this.isHandling401 = false;
+  }
 
   constructor() {
     this.baseURL = DEFAULT_API_URL;
@@ -77,7 +87,7 @@ class ApiService {
         logger.logResponse(requestId, response.status, response.data);
         return response;
       },
-      (error) => {
+      async (error) => {
         const requestId = (error.config as any)?.requestId;
         if (requestId) {
             logger.logNetworkError(requestId, error);
@@ -89,6 +99,26 @@ class ApiService {
                 host: this.baseURL,
                 message: error.message
             });
+        }
+
+        const status = error.response?.status;
+        const url = error.config?.url || '';
+        const isAuthRoute = url.includes('auth/request-otp') ||
+                            url.includes('auth/verify-otp') ||
+                            url.includes('auth/login') ||
+                            url.includes('auth/register') ||
+                            url.includes('auth/logout');
+
+        if (status === 401 && !isAuthRoute && !this.isHandling401) {
+          this.isHandling401 = true;
+          logger.warn('[ApiService] HTTP 401 Unauthorized received. Triggering session cleanup/logout...');
+          if (this.onUnauthorizedCallback) {
+            try {
+              await this.onUnauthorizedCallback();
+            } catch (cbError: any) {
+              logger.error('[ApiService] Unauthorized callback error:', { error: cbError.message });
+            }
+          }
         }
 
         return Promise.reject(error);

@@ -316,3 +316,54 @@ describe('MutationQueueService - Independent vs Dependent Ordering', () => {
     expect(queue.length).toBe(2);
   });
 });
+
+describe('ApiService - Global HTTP 401 Interceptor & Loop Guard', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    apiService.reset401Guard();
+  });
+
+  it('A: Normal 200 response does not trigger 401 callback', async () => {
+    const callback = jest.fn();
+    apiService.setOnUnauthorizedCallback(callback);
+
+    jest.spyOn(apiService.api, 'get').mockResolvedValueOnce({ data: { success: true }, status: 200 } as any);
+
+    await apiService.getOrders({});
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('B & C: Non-auth 401 response triggers callback once even for concurrent 401 errors', async () => {
+    const callback = jest.fn().mockImplementation(() => Promise.resolve());
+    apiService.setOnUnauthorizedCallback(callback);
+
+    const err401 = {
+      response: { status: 401 },
+      config: { url: 'orders/my' }
+    };
+
+    const interceptor = (apiService.api.interceptors.response as any).handlers[0].rejected;
+
+    const req1 = interceptor(err401).catch(() => {});
+    const req2 = interceptor(err401).catch(() => {});
+    await Promise.all([req1, req2]);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it('D: Auth endpoints returning 401 do NOT trigger 401 callback (loop prevention)', async () => {
+    const callback = jest.fn();
+    apiService.setOnUnauthorizedCallback(callback);
+
+    const authErr401 = {
+      response: { status: 401 },
+      config: { url: 'auth/logout' }
+    };
+
+    const interceptor = (apiService.api.interceptors.response as any).handlers[0].rejected;
+
+    await interceptor(authErr401).catch(() => {});
+    expect(callback).not.toHaveBeenCalled();
+  });
+});

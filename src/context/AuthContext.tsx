@@ -38,6 +38,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   useEffect(() => {
+    apiService.setOnUnauthorizedCallback(async () => {
+      logger.info("[AuthContext] Global 401 interceptor triggered logout");
+      await logout();
+    });
+
     checkAuth();
 
     // V11: Handle app wakeup (foreground transition)
@@ -55,6 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
         subscription.remove();
+        apiService.setOnUnauthorizedCallback(null);
     };
   }, []);
 
@@ -104,6 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const login = async (phone: string, code: string) => {
+    apiService.reset401Guard();
     // 1. disconnect websocket
     socketService.disconnect();
 
