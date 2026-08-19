@@ -99,3 +99,69 @@ describe('OrdersService - canTransition state machine', () => {
     });
   });
 });
+
+describe('OrdersService.remove Atomic Order & Chat Cleanup', () => {
+  let service: OrdersService;
+  let mockPrisma: any;
+  let mockGateway: any;
+
+  beforeEach(() => {
+    mockPrisma = {
+      order: {
+        findUnique: jest.fn(),
+        delete: jest.fn(),
+      },
+      chat: {
+        findMany: jest.fn(),
+      },
+    };
+
+    mockGateway = {
+      broadcast: jest.fn(),
+    };
+
+    service = new OrdersService(
+      mockPrisma,
+      mockGateway as any,
+      { setService: jest.fn(), info: jest.fn(), debug: jest.fn() } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+  });
+
+  it('should throw ForbiddenException if user is not the order employer', async () => {
+    mockPrisma.order.findUnique.mockResolvedValueOnce({ id: 'order-1', employerId: 'employer-1' });
+
+    await expect(service.remove('order-1', 'other-user')).rejects.toThrow();
+    expect(mockPrisma.order.delete).not.toHaveBeenCalled();
+  });
+
+  it('should fetch associated chatIds, delete order (triggering DB cascade), and broadcast event', async () => {
+    const mockOrder = { id: 'order-1', employerId: 'employer-1', executorId: 'worker-1' };
+    mockPrisma.order.findUnique.mockResolvedValueOnce(mockOrder);
+    mockPrisma.chat.findMany.mockResolvedValueOnce([{ id: 'chat-100' }, { id: 'chat-200' }]);
+    mockPrisma.order.delete.mockResolvedValueOnce(mockOrder);
+
+    const result = await service.remove('order-1', 'employer-1');
+
+    expect(result).toEqual({ id: 'order-1' });
+    expect(mockPrisma.chat.findMany).toHaveBeenCalledWith({
+      where: { orderId: 'order-1' },
+      select: { id: true },
+    });
+    expect(mockPrisma.order.delete).toHaveBeenCalledWith({ where: { id: 'order-1' } });
+    expect(mockGateway.broadcast).toHaveBeenCalledWith(
+      'order.deleted',
+      expect.objectContaining({
+        data: {
+          id: 'order-1',
+          employerId: 'employer-1',
+          executorId: 'worker-1',
+          chatIds: ['chat-100', 'chat-200'],
+        },
+        userId: 'employer-1',
+      })
+    );
+  });
+});

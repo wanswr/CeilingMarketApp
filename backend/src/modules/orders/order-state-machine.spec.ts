@@ -192,3 +192,67 @@ describe('Order State Machine - Isolated Rules', () => {
       );
     });
   });
+
+  describe('Comprehensive Edge Cases & Reverse Transition Guards', () => {
+    const mockOrder = { id: 'order-1', employerId: 'employer-user', executorId: 'executor-user' };
+
+    it('should allow PENDING -> PUBLISHED for employer', () => {
+      const order = { ...mockOrder, status: OrderStatus.PENDING };
+      expect(() => validateTransition(order, OrderStatus.PUBLISHED, 'employer-user')).not.toThrow();
+    });
+
+    it('should BLOCK reverse transition PUBLISHED -> PENDING', () => {
+      const order = { ...mockOrder, status: OrderStatus.PUBLISHED };
+      expect(() => validateTransition(order, OrderStatus.PENDING, 'employer-user')).toThrow(
+        new ConflictException('Cannot transition from PUBLISHED to PENDING')
+      );
+    });
+
+    it('should BLOCK reverse transition COMPLETED -> IN_PROGRESS', () => {
+      const order = { ...mockOrder, status: OrderStatus.COMPLETED };
+      expect(() => validateTransition(order, OrderStatus.IN_PROGRESS, 'executor-user')).toThrow(
+        new ConflictException('Cannot transition from COMPLETED to IN_PROGRESS')
+      );
+    });
+
+    it('should BLOCK reverse transition IN_PROGRESS -> CLAIMED', () => {
+      const order = { ...mockOrder, status: OrderStatus.IN_PROGRESS };
+      expect(() => validateTransition(order, OrderStatus.CLAIMED, 'executor-user')).toThrow(
+        new ConflictException('Cannot transition from IN_PROGRESS to CLAIMED')
+      );
+    });
+
+    it('should BLOCK reverse transition CLAIMED -> PUBLISHED', () => {
+      const order = { ...mockOrder, status: OrderStatus.CLAIMED };
+      expect(() => validateTransition(order, OrderStatus.PUBLISHED, 'employer-user')).toThrow(
+        new ConflictException('Cannot transition from CLAIMED to PUBLISHED')
+      );
+    });
+
+    it('should BLOCK all outgoing transitions from terminal state CANCELLED', () => {
+      const order = { ...mockOrder, status: OrderStatus.CANCELLED };
+      Object.values(OrderStatus).forEach(targetStatus => {
+        expect(() => validateTransition(order, targetStatus, 'employer-user', true)).toThrow(
+          new ConflictException(`Cannot transition from CANCELLED to ${targetStatus}`)
+        );
+      });
+    });
+
+    it('should BLOCK all outgoing transitions from terminal state DISPUTE', () => {
+      const order = { ...mockOrder, status: OrderStatus.DISPUTE };
+      Object.values(OrderStatus).forEach(targetStatus => {
+        expect(() => validateTransition(order, targetStatus, 'employer-user', true)).toThrow(
+          new ConflictException(`Cannot transition from DISPUTE to ${targetStatus}`)
+        );
+      });
+    });
+
+    it('should BLOCK all outgoing transitions from terminal state REVIEWED', () => {
+      const order = { ...mockOrder, status: OrderStatus.REVIEWED };
+      Object.values(OrderStatus).forEach(targetStatus => {
+        expect(() => validateTransition(order, targetStatus, 'employer-user', true)).toThrow(
+          new ConflictException(`Cannot transition from REVIEWED to ${targetStatus}`)
+        );
+      });
+    });
+  });
