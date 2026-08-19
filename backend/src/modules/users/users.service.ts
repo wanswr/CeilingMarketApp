@@ -43,7 +43,7 @@ export class UsersService {
         isTrialUsed: true,
         createdAt: true,
         updatedAt: true,
-        subscription: true,
+        subscriptions: { include: { category: true } },
         portfolioItems: true,
         activeCategoryId: true,
         activeCategory: { select: { id: true, slug: true, name: true } },
@@ -53,7 +53,7 @@ export class UsersService {
 
     let categoryLocked = false;
     if (user.activeCategoryId) {
-      categoryLocked = await this.subscriptionService.checkActiveSubscription(id);
+      categoryLocked = await this.subscriptionService.checkActiveSubscription(id, user.activeCategoryId || undefined);
     }
 
     return {
@@ -195,7 +195,7 @@ export class UsersService {
     }
 
     if (user.activeCategoryId && user.activeCategoryId !== categoryId) {
-      const hasActiveSub = await this.subscriptionService.checkActiveSubscription(userId);
+      const hasActiveSub = await this.subscriptionService.checkActiveSubscription(userId, user.activeCategoryId || undefined);
       if (hasActiveSub) {
         throw new ForbiddenException(
           'Cannot change direction while subscription is active'
@@ -256,7 +256,7 @@ export class UsersService {
   async getDashboard(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { activeCategory: true, subscription: true }
+      include: { activeCategory: true, subscriptions: true }
     });
     if (!user || user.deletedAt) throw new NotFoundException('User not found');
 
@@ -373,7 +373,7 @@ export class UsersService {
         stats: {
           completedOrders: user.completedOrders,
           experience: user.experience,
-          subscriptionActive: user.subscription?.isActive && user.subscription.activeUntil > new Date()
+          subscriptionActive: await this.subscriptionService.checkActiveSubscription(userId, user.activeCategoryId || undefined)
         },
         actionRequired: {
           activeJobs,

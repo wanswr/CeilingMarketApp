@@ -369,10 +369,55 @@ export class OrdersService {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
     }
 
-    // Verify subscription status on backend
-    const sub = await this.prisma.subscription.findUnique({ where: { userId: executorId } });
-    if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
-        throw new ForbiddenException('Требуется активная подписка для отклика');
+    // Find target order and verify category subscription
+    const targetOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!targetOrder) throw new NotFoundException('Order not found');
+
+    const orderCategoryId = targetOrder.categoryId || executor.activeCategoryId;
+    if (orderCategoryId) {
+      const sub = await this.prisma.subscription.findUnique({
+        where: {
+          userId_categoryId: {
+            userId: executorId,
+            categoryId: orderCategoryId,
+          },
+        },
+      });
+
+      const isSubActive = sub && sub.isActive && new Date(sub.activeUntil) > new Date();
+
+      if (!isSubActive) {
+        if (!executor.freeCategoryUsed) {
+          // Grant first free category subscription for 30 days
+          const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          await this.prisma.$transaction(async (tx) => {
+            await tx.user.update({
+              where: { id: executorId },
+              data: { freeCategoryUsed: true },
+            });
+            await tx.subscription.upsert({
+              where: {
+                userId_categoryId: {
+                  userId: executorId,
+                  categoryId: orderCategoryId,
+                },
+              },
+              update: {
+                isActive: true,
+                activeUntil: until,
+              },
+              create: {
+                userId: executorId,
+                categoryId: orderCategoryId,
+                isActive: true,
+                activeUntil: until,
+              },
+            });
+          });
+        } else {
+          throw new ForbiddenException('Требуется активная подписка на категорию заказа для отклика');
+        }
+      }
     }
 
     if (idempotencyKey) {
