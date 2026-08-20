@@ -1,4 +1,54 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, MaxLength, Min, Max, ArrayMaxSize } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsArray,
+  MaxLength,
+  Min,
+  Max,
+  ArrayMaxSize,
+  IsDateString,
+  registerDecorator,
+  ValidationOptions,
+  ValidationArguments,
+} from 'class-validator';
+
+export function IsFutureOrTodayDate(validationOptions?: ValidationOptions) {
+  return function (object: Object, propertyName: string) {
+    registerDecorator({
+      name: 'isFutureOrTodayDate',
+      target: object.constructor,
+      propertyName: propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: any, args: ValidationArguments) {
+          if (typeof value !== 'string' || value.trim() === '') return false;
+          const parsed = new Date(value);
+          if (isNaN(parsed.getTime())) return false;
+
+          // 5-minute clock-skew tolerance buffer for current moment
+          const bufferMs = 5 * 60 * 1000;
+          const nowWithBuffer = new Date(Date.now() - bufferMs);
+
+          // Check if calendar date (UTC or local start of day)
+          const isMidnightUTC = parsed.getUTCHours() === 0 && parsed.getUTCMinutes() === 0 && parsed.getUTCSeconds() === 0;
+
+          if (isMidnightUTC) {
+            const startOfTodayUTC = new Date();
+            startOfTodayUTC.setUTCHours(0, 0, 0, 0);
+            return parsed.getTime() >= startOfTodayUTC.getTime();
+          }
+
+          return parsed.getTime() >= nowWithBuffer.getTime();
+        },
+        defaultMessage(args: ValidationArguments) {
+          return 'date must be a valid future or current date in ISO format';
+        },
+      },
+    });
+  };
+}
 
 export class CreateOrderDto {
   @IsString()
@@ -22,6 +72,9 @@ export class CreateOrderDto {
   longitude: number;
 
   @IsString()
+  @IsNotEmpty()
+  @IsDateString()
+  @IsFutureOrTodayDate()
   date: string;
 
   @IsNumber()
