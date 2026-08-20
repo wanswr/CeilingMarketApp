@@ -1,3 +1,4 @@
+import { SOCKET_URL } from '../constants/config';
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
@@ -30,7 +31,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user?.role) {
       const activeRole = user.role.toUpperCase() as 'WORKER' | 'EMPLOYER';
       useClientStore.getState().setActiveRole(activeRole);
-      socketService.connect(apiService.getBaseUrl(), 'auth_user_change');
+      socketService.connect(SOCKET_URL, 'auth_user_change');
     } else {
       useClientStore.setState({ activeRole: null });
       socketService.disconnect();
