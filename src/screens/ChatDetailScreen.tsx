@@ -1,3 +1,4 @@
+import { maskPhoneNumbers } from '../utils/security';
 import AppIcon from '../components/AppIcon';
 import React, { useState, useRef, useEffect } from 'react';
 import { logger } from '../services/logger/LoggerService';
@@ -166,7 +167,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
   const sendMessage = async () => {
     if (inputText.trim() === '' || !activeChatId) return;
 
-    const textToSend = inputText;
+    const textToSend = maskPhoneNumbers(inputText);
     setInputText('');
 
     const tempId = `temp-${Date.now()}`;

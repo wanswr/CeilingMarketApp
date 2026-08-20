@@ -1,3 +1,4 @@
+import { maskPhoneNumbers } from '../utils/security';
 import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect } from 'react';
 import { logger } from '../services/logger/LoggerService';
@@ -45,6 +46,8 @@ export default function EditOrderScreen({ navigation, route }: any) {
     try {
       await mapEngine.updateOrder(orderId, {
         ...form,
+        title: form.title ? maskPhoneNumbers(form.title) : "",
+        details: form.details ? maskPhoneNumbers(form.details) : "",
         price: Number(form.price)
       });
       Alert.alert("Успех", "Заказ обновлен");

@@ -4,17 +4,10 @@
 export const maskPhoneNumbers = (text: string): string => {
     if (!text) return '';
 
-    // Regex to find Russian phone numbers and generic sequences of digits
-    // Supports formats like 89991234567, +7 999 123-45-67, 9991234567
-    const phoneRegex = /(\+?7|8)?[\s-]?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}/g;
+    // Matches Russian phone numbers (+7/8 xxx xxx-xx-xx) and sequences of 7-11 digits
+    const phoneRegex = /(?:\+?7|8)[\s-]?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}|\b\d{7,11}\b/g;
 
-    // Also catch plain 7-11 digit sequences
-    const genericDigitsRegex = /\d{7,11}/g;
-
-    let masked = text.replace(phoneRegex, '[НОМЕР СКРЫТ]');
-    masked = masked.replace(genericDigitsRegex, '[ДАННЫЕ СКРЫТЫ]');
-
-    return masked;
+    return text.replace(phoneRegex, '[НОМЕР СКРЫТ]');
 };
 
 /**
