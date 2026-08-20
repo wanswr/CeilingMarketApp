@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, ApplicationStatus } from '@prisma/client';
 
 describe('ChatsService', () => {
   let service: ChatsService;
@@ -73,97 +73,130 @@ describe('ChatsService', () => {
     jest.clearAllMocks();
   });
 
-  describe('getOrCreateChat - Security & IDOR Cases', () => {
-    const mockOrderA = {
-      id: 'order-A',
+  describe('getOrCreateChat - Strict Order + Application Authorization Cases', () => {
+    const mockOrderAccepted = {
+      id: 'order-1',
       employerId: 'employer-A',
-      executorId: null,
-      status: OrderStatus.PUBLISHED,
+      executorId: 'worker-A',
+      status: OrderStatus.CLAIMED,
       applications: [
-        { id: 'app-1', executorId: 'worker-A' }
+        { id: 'app-1', executorId: 'worker-A', status: ApplicationStatus.ACCEPTED }
       ]
     };
 
-    const mockClosedOrder = {
-      id: 'order-closed',
-      employerId: 'employer-A',
-      executorId: null,
-      status: OrderStatus.CANCELLED,
-      applications: []
-    };
-
     const mockWorkerA = { id: 'worker-A', deletedAt: null };
-    const mockWorkerB = { id: 'worker-B', deletedAt: null };
 
-    it('Case 1: Employer A + Order A + Worker A (applicant) -> ALLOW', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderA);
+    it('employer -> allowed', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderAccepted);
       mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerA);
       mockPrismaService.chat.upsert.mockResolvedValue({
-        id: 'chat-A',
-        orderId: 'order-A',
+        id: 'chat-1',
+        orderId: 'order-1',
         employerId: 'employer-A',
         executorId: 'worker-A',
         messages: []
       });
 
-      const chat = await service.getOrCreateChat('order-A', 'worker-A', 'employer-A');
-      expect(chat.id).toBe('chat-A');
+      const chat = await service.getOrCreateChat('order-1', 'worker-A', 'employer-A');
+      expect(chat.id).toBe('chat-1');
       expect(mockPrismaService.chat.upsert).toHaveBeenCalled();
     });
 
-    it('Case 2: Employer A + Order A + Worker B (NOT associated with Order A) -> DENY', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderA);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerB);
-
-      await expect(
-        service.getOrCreateChat('order-A', 'worker-B', 'employer-A')
-      ).rejects.toThrow(new ForbiddenException('Cannot start a chat with an executor who has not applied to this order'));
-    });
-
-    it('Case 3: Worker A + Order A + executorId = Worker B -> DENY (substitution attempt)', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderA);
-
-      await expect(
-        service.getOrCreateChat('order-A', 'worker-B', 'worker-A')
-      ).rejects.toThrow(new ForbiddenException('You are not authorized to start this chat'));
-    });
-
-    it('Case 4: Worker A + Order Closed + executorId = Worker A (no relationship & not open) -> DENY', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(mockClosedOrder);
+    it('assigned executor + ACCEPTED -> allowed', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderAccepted);
       mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerA);
+      mockPrismaService.chat.upsert.mockResolvedValue({
+        id: 'chat-1',
+        orderId: 'order-1',
+        employerId: 'employer-A',
+        executorId: 'worker-A',
+        messages: []
+      });
 
-      await expect(
-        service.getOrCreateChat('order-closed', 'worker-A', 'worker-A')
-      ).rejects.toThrow(new ForbiddenException('Cannot start a chat on an order that is not open'));
+      const chat = await service.getOrCreateChat('order-1', 'worker-A', 'worker-A');
+      expect(chat.id).toBe('chat-1');
+      expect(mockPrismaService.chat.upsert).toHaveBeenCalled();
     });
 
-    it('Case 5: Worker A + Foreign Order B -> DENY if no relationship and not open', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(mockClosedOrder);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerA);
+    it('executor + PENDING -> 403 Forbidden', async () => {
+      const mockOrderPending = {
+        ...mockOrderAccepted,
+        applications: [{ id: 'app-1', executorId: 'worker-A', status: ApplicationStatus.PENDING }]
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderPending);
 
       await expect(
-        service.getOrCreateChat('order-closed', 'worker-A', 'worker-A')
-      ).rejects.toThrow(new ForbiddenException('Cannot start a chat on an order that is not open'));
+        service.getOrCreateChat('order-1', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('Chat is only permitted when executor application is ACCEPTED'));
     });
 
-        it('Case 7: Chat is NOT created/upserted when ForbiddenException is thrown', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderA);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerB);
+    it('executor + VIEWED -> 403 Forbidden', async () => {
+      const mockOrderViewed = {
+        ...mockOrderAccepted,
+        applications: [{ id: 'app-1', executorId: 'worker-A', status: ApplicationStatus.VIEWED }]
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderViewed);
 
       await expect(
-        service.getOrCreateChat('order-A', 'worker-B', 'employer-A')
-      ).rejects.toThrow(ForbiddenException);
-
-      expect(mockPrismaService.chat.upsert).not.toHaveBeenCalled();
+        service.getOrCreateChat('order-1', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('Chat is only permitted when executor application is ACCEPTED'));
     });
 
-    it('Case 6: Non-participant user attempting to get messages for existing foreign chat -> DENY', async () => {
-      const chat = { id: 'chat-foreign', employerId: 'employer-A', executorId: 'worker-A' };
-      mockPrismaService.chat.findUnique.mockResolvedValue(chat);
+    it('executor + REJECTED -> 403 Forbidden', async () => {
+      const mockOrderRejected = {
+        ...mockOrderAccepted,
+        applications: [{ id: 'app-1', executorId: 'worker-A', status: ApplicationStatus.REJECTED }]
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderRejected);
 
       await expect(
-        service.getMessages('chat-foreign', 'stranger-user')
-      ).rejects.toThrow(ForbiddenException);
+        service.getOrCreateChat('order-1', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('Chat is only permitted when executor application is ACCEPTED'));
+    });
+
+    it('executor with application, but not assigned -> 403 Forbidden', async () => {
+      const mockOrderUnassigned = {
+        ...mockOrderAccepted,
+        executorId: null,
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderUnassigned);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('You are not authorized to access chat for this order'));
+    });
+
+    it('user with no relation to order -> 403 Forbidden', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderAccepted);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-A', 'stranger-user')
+      ).rejects.toThrow(new ForbiddenException('You are not authorized to access chat for this order'));
+    });
+
+    it('substituted executorId in body -> 403 Forbidden', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderAccepted);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-substituted', 'employer-A')
+      ).rejects.toThrow(new ForbiddenException('Chat is only permitted with the assigned executor of the order'));
+    });
+
+    it('foreign orderId + own executorId -> 403 Forbidden', async () => {
+      const mockForeignOrder = {
+        id: 'foreign-order',
+        employerId: 'employer-B',
+        executorId: 'worker-B',
+        status: OrderStatus.CLAIMED,
+        applications: [
+          { id: 'app-2', executorId: 'worker-B', status: ApplicationStatus.ACCEPTED }
+        ]
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockForeignOrder);
+
+      await expect(
+        service.getOrCreateChat('foreign-order', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('You are not authorized to access chat for this order'));
     });
   });
 

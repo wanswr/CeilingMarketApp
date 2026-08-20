@@ -23,50 +23,46 @@ export class ChatsService {
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException("Order not found");
     }
 
-    // 1. Caller identity authorization check
+    // 1. User MUST be either the employer or the assigned executor of this order
     const isEmployer = order.employerId === userId;
-    const isSelfExecutor = executorId === userId;
+    const isAssignedExecutor = order.executorId !== null && order.executorId === userId;
 
-    if (!isEmployer && !isSelfExecutor) {
-      throw new ForbiddenException('You are not authorized to start this chat');
+    if (!isEmployer && !isAssignedExecutor) {
+      throw new ForbiddenException("You are not authorized to access chat for this order");
     }
 
-    // 2. Executor user validation check
-    const executor = await db.user.findUnique({ where: { id: executorId } });
+    // 2. Client executorId MUST match the order assigned executorId
+    if (!order.executorId || executorId !== order.executorId) {
+      throw new ForbiddenException("Chat is only permitted with the assigned executor of the order");
+    }
+
+    // 3. Assigned executor MUST have an ACCEPTED application
+    const executorApp = order.applications?.find(app => app.executorId === order.executorId);
+    if (!executorApp || executorApp.status !== "ACCEPTED") {
+      throw new ForbiddenException("Chat is only permitted when executor application is ACCEPTED");
+    }
+
+    // 4. Validate executor exists and is not soft-deleted
+    const executor = await db.user.findUnique({ where: { id: order.executorId } });
     if (!executor || executor.deletedAt) {
-      throw new NotFoundException('Executor not found');
-    }
-
-    // 3. Relationship verification between executorId and orderId
-    const isAssignedExecutor = order.executorId === executorId;
-    const hasApplied = order.applications?.some(app => app.executorId === executorId);
-
-    if (isEmployer && !isAssignedExecutor && !hasApplied) {
-      throw new ForbiddenException('Cannot start a chat with an executor who has not applied to this order');
-    }
-
-    if (isSelfExecutor && !isAssignedExecutor && !hasApplied) {
-      const openStatuses: OrderStatus[] = [OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES];
-      if (!openStatuses.includes(order.status)) {
-        throw new ForbiddenException('Cannot start a chat on an order that is not open');
-      }
+      throw new NotFoundException("Executor not found");
     }
 
     const chat = await db.chat.upsert({
       where: {
-        orderId_executorId: { orderId, executorId }
+        orderId_executorId: { orderId, executorId: order.executorId }
       },
       update: {},
       create: {
         orderId,
-        executorId,
-        employerId: order.employerId, // Always use the order's actual employer
+        executorId: order.executorId,
+        employerId: order.employerId,
       },
       include: {
-        messages: { orderBy: { createdAt: 'asc' }, take: 50 },
+        messages: { orderBy: { createdAt: "asc" }, take: 50 },
         order: true,
         employer: { select: { id: true, name: true, avatar: true } },
         executor: { select: { id: true, name: true, avatar: true } },
@@ -77,7 +73,7 @@ export class ChatsService {
       chat.messages = [];
     }
 
-    this.logger.info('CHAT_CREATED', `Chat initialized for order ${orderId}`, { orderId, userId });
+    this.logger.info("CHAT_CREATED", `Chat initialized for order ${orderId}`, { orderId, userId });
     return chat;
   }
 
