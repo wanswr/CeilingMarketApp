@@ -219,7 +219,8 @@ describe('MutationQueueService - Idempotency & Retry Policy', () => {
     expect(apiSpy).toHaveBeenCalledTimes(1);
     expect(mutationQueueService.getQueue()[0].retryCount).toBe(1);
 
-    // Attempt 2 succeeds using the EXACT SAME idempotencyKey
+    // Advance time past backoff delay
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 10000);
     await mutationQueueService.processQueue();
     expect(apiSpy).toHaveBeenCalledTimes(2);
     expect(mutationQueueService.getQueue().length).toBe(0);
@@ -239,10 +240,16 @@ describe('MutationQueueService - Idempotency & Retry Policy', () => {
     netinfo.__setConnected(true);
     await new Promise(resolve => setTimeout(resolve, 100)); // Attempt 1
 
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 10000);
     await mutationQueueService.processQueue(); // Attempt 2
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 20000);
     await mutationQueueService.processQueue(); // Attempt 3
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 40000);
+    await mutationQueueService.processQueue(); // Attempt 4
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 80000);
+    await mutationQueueService.processQueue(); // Attempt 5
 
-    expect(apiSpy).toHaveBeenCalledTimes(3);
+    expect(apiSpy).toHaveBeenCalledTimes(5);
 
     const queue = mutationQueueService.getQueue();
     expect(queue.length).toBe(1);
@@ -365,5 +372,39 @@ describe('ApiService - Global HTTP 401 Interceptor & Loop Guard', () => {
 
     await interceptor(authErr401).catch(() => {});
     expect(callback).not.toHaveBeenCalled();
+  });
+});
+
+describe('MutationQueueService - Manual Retry & Stale Lease Recovery', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    mutationQueueService.clearQueue();
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(true);
+  });
+
+  it('Manual retry resets failed status to pending and clears error while preserving idempotencyKey', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    mutationQueueService.add('sendMessage', { chatId: 'chat-1', text: 'Hello' }, 'idem-msg-777');
+    const queue = mutationQueueService.getQueue();
+    const item = queue[0];
+
+    // Force to failed status
+    item.status = 'failed';
+    item.error = 'Permanent error (400)';
+
+    expect(mutationQueueService.getQueue()[0].status).toBe('failed');
+
+    const result = mutationQueueService.manualRetry(item.id);
+    expect(result).toBe(true);
+
+    const updatedQueue = mutationQueueService.getQueue();
+    expect(updatedQueue[0].status).toBe('pending');
+    expect(updatedQueue[0].retryCount).toBe(0);
+    expect(updatedQueue[0].error).toBeUndefined();
+    expect(updatedQueue[0].idempotencyKey).toBe('idem-msg-777');
   });
 });
