@@ -234,8 +234,14 @@ export class UsersService {
 
   async deleteProfile(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
+    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
 
+    // Idempotency: if already requested deletion, preserve original deletion date
+    if (user.deletedAt) {
+      return { success: true, deletedAt: user.deletedAt };
+    }
+
+    // 1. Guard against active orders
     const activeOrdersCount = await this.prisma.order.count({
       where: {
         OR: [
@@ -247,10 +253,34 @@ export class UsersService {
     });
 
     if (activeOrdersCount > 0) {
-      throw new ConflictException('Нельзя удалить аккаунт при наличии активных заказов в работе');
+      throw new ConflictException('Cannot delete account with active orders in progress');
     }
 
-    await this.prisma.user.update({
+    // 2. Guard against active disputes
+    const activeDisputesCount = await this.prisma.dispute.count({
+      where: {
+        OR: [{ openedById: id }, { respondentId: id }],
+        status: { in: ['OPEN', 'IN_REVIEW', 'UNDER_REVIEW', 'WAITING_FOR_PARTY', 'APPEALED'] }
+      }
+    });
+
+    if (activeDisputesCount > 0) {
+      throw new ConflictException('Cannot delete account with active disputes');
+    }
+
+    // 3. Guard against pending payments
+    const pendingPaymentsCount = await this.prisma.payment.count({
+      where: {
+        userId: id,
+        status: { in: ['PENDING', 'PROCESSING'] }
+      }
+    });
+
+    if (pendingPaymentsCount > 0) {
+      throw new ConflictException('Cannot delete account with pending financial obligations');
+    }
+
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data: {
         name: 'Удалённый пользователь',
@@ -264,7 +294,70 @@ export class UsersService {
         deletedAt: new Date(),
       },
     });
-    return { success: true };
+
+    // Revoke all active sessions
+    await this.prisma.session.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+
+    return { success: true, deletedAt: updatedUser.deletedAt };
+  }
+
+    async restoreProfile(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
+
+    if (!user.deletedAt) {
+      return { success: true, message: "Account is already active" };
+    }
+
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const elapsed = Date.now() - user.deletedAt.getTime();
+
+    if (elapsed > thirtyDaysMs) {
+      throw new ConflictException("Account recovery period of 30 days has expired");
+    }
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        deletedAt: null,
+      },
+    });
+
+    return { success: true, message: "Account successfully restored" };
+  }
+
+  async permanentDeleteExpiredAccounts() {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const expiredUsers = await this.prisma.user.findMany({
+      where: {
+        deletedAt: {
+          lt: thirtyDaysAgo
+        }
+      },
+      select: { id: true }
+    });
+
+    let count = 0;
+    for (const u of expiredUsers) {
+      // Soft-anonymize PII for retention compliance while preserving historical Orders/Reviews/Disputes
+      await this.prisma.user.update({
+        where: { id: u.id },
+        data: {
+          name: "Anonymized User",
+          phone: `anonymized_${u.id}`,
+          instagram: null,
+          telegram: null,
+          pushToken: null,
+        }
+      });
+      count++;
+    }
+
+    return { count };
   }
 
   async getDashboard(userId: string) {

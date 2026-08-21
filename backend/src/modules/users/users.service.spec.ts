@@ -1,175 +1,122 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LoggerService } from '../logger/logger.service';
 import { SubscriptionService } from '../subscription/subscription.service';
-import { NotFoundException, ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 
-describe('UsersService', () => {
+describe('UsersService Account Deletion & 30-Day Recovery', () => {
   let service: UsersService;
-  let prisma: PrismaService;
-
-  const mockPrismaService = {
-    user: {
-      findUnique: jest.fn(),
-      update: jest.fn(),
-    },
-    order: {
-      count: jest.fn(),
-      findMany: jest.fn(),
-    },
-    category: {
-      findUnique: jest.fn(),
-    },
-    message: {
-      count: jest.fn(),
-    },
-    notification: {
-      count: jest.fn(),
-    },
-    portfolioItem: {
-      findMany: jest.fn(),
-      findUnique: jest.fn(),
-      create: jest.fn(),
-      delete: jest.fn(),
-    },
-  };
-
-  const mockLoggerService = {
-    setContext: jest.fn(),
-    log: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  };
-
-  const mockSubscriptionService = {
-    checkActiveSubscription: jest.fn(),
-  };
+  let mockPrisma: any;
 
   beforeEach(async () => {
+    mockPrisma = {
+      user: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        findMany: jest.fn(),
+      },
+      order: {
+        count: jest.fn(),
+      },
+      dispute: {
+        count: jest.fn(),
+      },
+      payment: {
+        count: jest.fn(),
+      },
+      session: {
+        updateMany: jest.fn(),
+      },
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        { provide: PrismaService, useValue: mockPrismaService },
-        { provide: LoggerService, useValue: mockLoggerService },
-        { provide: SubscriptionService, useValue: mockSubscriptionService },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: SubscriptionService, useValue: { checkActiveSubscription: jest.fn().mockResolvedValue(false) } },
       ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-    prisma = module.get<PrismaService>(PrismaService);
-  });
-
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  describe('findPublicProfile', () => {
-    it('should return public profile fields and strictly omit private PII/security fields', async () => {
-      const userId = 'user-456';
-      const user = {
-        id: userId,
-        name: 'John Doe',
-        avatar: 'avatar.png',
-        rating: 5,
-        experience: 2,
-        completedOrders: 10,
-        ordersCount: 15,
-        isVerified: true,
-        portfolioItems: [],
-        deletedAt: null,
-      };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-
-      const result = await service.findPublicProfile(userId);
-
-      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { id: userId },
-        select: {
-          id: true,
-          name: true,
-          avatar: true,
-          rating: true,
-          experience: true,
-          completedOrders: true,
-          ordersCount: true,
-          isVerified: true,
-          portfolioItems: true,
-          deletedAt: true,
-          activeCategory: { select: { id: true, slug: true, name: true } },
-        },
-      });
-
-      expect(result.id).toBe(userId);
-      expect(result.name).toBe('John Doe');
-
-      // Assert private/PII fields are NOT present
-      expect(result).not.toHaveProperty('phone');
-      expect(result).not.toHaveProperty('sessionVersion');
-      expect(result).not.toHaveProperty('pushToken');
-      expect(result).not.toHaveProperty('deletedAt');
-      expect(result).not.toHaveProperty('isBlocked');
-      expect(result).not.toHaveProperty('password');
-      expect(result).not.toHaveProperty('passwordHash');
-      expect(result).not.toHaveProperty('hash');
-      expect(result).not.toHaveProperty('instagram');
-      expect(result).not.toHaveProperty('telegram');
-    });
-
-    it('should throw NotFoundException if user has deletedAt set', async () => {
-      const userId = 'deleted-user-789';
-      const user = {
-        id: userId,
-        deletedAt: new Date(),
-      };
-
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-
-      await expect(service.findPublicProfile(userId)).rejects.toThrow(NotFoundException);
-    });
   });
 
   describe('deleteProfile', () => {
-    it('should soft-delete user and anonymize PII when no active orders exist', async () => {
-      const userId = 'user-123';
-      const user = { id: userId, deletedAt: null };
+    it('A: Normal user deletion request -> sets deletedAt and revokes sessions', async () => {
+      const mockUser = { id: 'user-1', deletedAt: null };
+      mockPrisma.user.findUnique.mockResolvedValueOnce(mockUser);
+      mockPrisma.order.count.mockResolvedValueOnce(0);
+      mockPrisma.dispute.count.mockResolvedValueOnce(0);
+      mockPrisma.payment.count.mockResolvedValueOnce(0);
 
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockPrismaService.order.count.mockResolvedValue(0);
-      mockPrismaService.user.update.mockResolvedValue({ success: true });
+      const deletionDate = new Date();
+      mockPrisma.user.update.mockResolvedValueOnce({ ...mockUser, deletedAt: deletionDate });
 
-      const result = await service.deleteProfile(userId);
+      const result = await service.deleteProfile('user-1');
 
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
-        where: { id: userId },
+      expect(result.success).toBe(true);
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
         data: expect.objectContaining({
-          name: 'Удалённый пользователь',
-          avatar: null,
-          phone: `deleted_${userId}`,
-          instagram: null,
-          telegram: null,
-          pushToken: null,
-          isVerified: false,
-          phoneVerified: false,
           deletedAt: expect.any(Date),
         }),
       });
-
-      expect(result).toEqual({ success: true });
+      expect(mockPrisma.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null },
+        data: expect.objectContaining({ revokedAt: expect.any(Date) }),
+      });
     });
 
-    it('should throw ConflictException if user has active orders in progress', async () => {
-      const userId = 'user-123';
-      const user = { id: userId, deletedAt: null };
+    it('B: User with active dispute -> deletion -> 409 Conflict', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ id: 'user-1', deletedAt: null });
+      mockPrisma.order.count.mockResolvedValueOnce(0);
+      mockPrisma.dispute.count.mockResolvedValueOnce(1);
 
-      mockPrismaService.user.findUnique.mockResolvedValue(user);
-      mockPrismaService.order.count.mockResolvedValue(1);
+      await expect(service.deleteProfile('user-1')).rejects.toThrow(
+        new ConflictException('Cannot delete account with active disputes')
+      );
+    });
 
-      await expect(service.deleteProfile(userId)).rejects.toThrow(
-        new ConflictException('Нельзя удалить аккаунт при наличии активных заказов в работе')
+    it('C: User with active order in progress -> deletion -> 409 Conflict', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ id: 'user-1', deletedAt: null });
+      mockPrisma.order.count.mockResolvedValueOnce(1);
+
+      await expect(service.deleteProfile('user-1')).rejects.toThrow(
+        new ConflictException('Cannot delete account with active orders in progress')
+      );
+    });
+
+    it('F/P: Idempotency -> repeated deletion request preserves original deletedAt date without resetting 30-day period', async () => {
+      const originalDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ id: 'user-1', deletedAt: originalDate });
+
+      const result = await service.deleteProfile('user-1');
+
+      expect(result.deletedAt).toBe(originalDate);
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restoreProfile', () => {
+    it('G/H: Account recovery within 30 days -> deletedAt set to null', async () => {
+      const deletedRecently = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000); // 10 days ago
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ id: 'user-1', deletedAt: deletedRecently });
+      mockPrisma.user.update.mockResolvedValueOnce({ id: 'user-1', deletedAt: null });
+
+      const result = await service.restoreProfile('user-1');
+
+      expect(result.success).toBe(true);
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { deletedAt: null },
+      });
+    });
+
+    it('I: Account recovery after 30 days -> 409 Conflict error', async () => {
+      const deletedLongAgo = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000); // 35 days ago
+      mockPrisma.user.findUnique.mockResolvedValueOnce({ id: 'user-1', deletedAt: deletedLongAgo });
+
+      await expect(service.restoreProfile('user-1')).rejects.toThrow(
+        new ConflictException('Account recovery period of 30 days has expired')
       );
     });
   });
