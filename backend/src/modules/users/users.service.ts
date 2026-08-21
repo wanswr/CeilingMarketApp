@@ -17,6 +17,20 @@ export class UsersService {
     return Math.max(0, Math.min(100, score));
   }
 
+    async assertUserCanMutate(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isBlocked: true, deletedAt: true }
+    });
+    if (!user || user.deletedAt) {
+      throw new ForbiddenException("User account is deleted or non-existent");
+    }
+    if (user.isBlocked) {
+      throw new ForbiddenException("Blocked users cannot perform this action");
+    }
+    return user;
+  }
+
   constructor(
     private prisma: PrismaService,
     private readonly subscriptionService: SubscriptionService,
