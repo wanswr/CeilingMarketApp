@@ -333,26 +333,74 @@ export class OrdersService {
   }
 
   async remove(id: string, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order || order.employerId !== userId) throw new ForbiddenException();
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: {
+        disputes: {
+          where: {
+            status: { in: ["OPEN", "IN_REVIEW", "WAITING_FOR_PARTY", "APPEALED"] }
+          }
+        },
+        payments: {
+          where: { status: "COMPLETED" }
+        }
+      }
+    });
 
-    // Fetch chat IDs before deleting
+    if (!order) throw new NotFoundException("Order not found");
+    if (order.employerId !== userId) throw new ForbiddenException("Only employer can remove order");
+
+    // Idempotency: if already CANCELLED, return safely without duplicating history or throwing error
+    if (order.status === OrderStatus.CANCELLED) {
+      return { id, status: OrderStatus.CANCELLED };
+    }
+
+    // Guard: Block cancellation if there are active disputes
+    if (order.disputes && order.disputes.length > 0) {
+      throw new ConflictException("Cannot cancel order with an active dispute");
+    }
+
+    // Guard: Block cancellation if there are completed payment obligations
+    if (order.payments && order.payments.length > 0) {
+      throw new ConflictException("Cannot cancel order with completed payment obligation");
+    }
+
+    // Validate state machine transition to CANCELLED
+    this.validateTransition(order, OrderStatus.CANCELLED, userId, false);
+
     const chats = await this.prisma.chat.findMany({
-        where: { orderId: id },
-        select: { id: true }
+      where: { orderId: id },
+      select: { id: true }
     });
     const chatIds = chats.map(c => c.id);
 
-    await this.prisma.order.delete({ where: { id } });
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.order.update({
+        where: { id },
+        data: { status: OrderStatus.CANCELLED }
+      });
 
-    await this.broadcast('order.deleted', {
-        id,
-        employerId: order.employerId,
-        executorId: order.executorId,
-        chatIds
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: id,
+          oldStatus: order.status,
+          newStatus: OrderStatus.CANCELLED,
+          changedById: userId
+        }
+      });
+
+      return result;
+    });
+
+    await this.broadcast("order.status.changed", updatedOrder, userId);
+    await this.broadcast("order.deleted", {
+      id,
+      employerId: order.employerId,
+      executorId: order.executorId,
+      chatIds
     }, userId);
 
-    return { id };
+    return { id, status: OrderStatus.CANCELLED };
   }
 
   async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
