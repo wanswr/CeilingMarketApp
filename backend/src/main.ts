@@ -1,3 +1,4 @@
+import { validateEnvironment } from "./common/config/env-validation";
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
@@ -18,9 +19,7 @@ async function bootstrap() {
 
   (app as any).useBodyParser('json', { limit: '2mb' });
 
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET is not set. Refusing to start.');
-  }
+  validateEnvironment();
 
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,

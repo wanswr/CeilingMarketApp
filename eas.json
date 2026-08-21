@@ -26,6 +26,13 @@
         "API_URL": "https://api.ceilingsapp.com/api/",
         "SOCKET_URL": "https://api.ceilingsapp.com"
       }
+    },
+    "staging": {
+      "distribution": "internal",
+      "env": {
+        "API_URL": "https://staging-api.ceilingsapp.com/api/",
+        "SOCKET_URL": "https://staging-api.ceilingsapp.com"
+      }
     }
   }
 }
