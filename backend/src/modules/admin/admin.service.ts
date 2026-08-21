@@ -1,3 +1,4 @@
+import { DISPUTE_STATE_MACHINE, validateDisputeTransition } from "./dispute-state-machine";
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role, ReportStatus, DisputeStatus, ResolutionType, OrderStatus } from '@prisma/client';
@@ -305,11 +306,13 @@ export class AdminService {
     });
     if (!dispute) throw new NotFoundException(`Dispute with ID ${disputeId} not found`);
 
-    if (dispute.status === DisputeStatus.RESOLVED || dispute.status === DisputeStatus.REJECTED) {
-      throw new ConflictException('Dispute is already resolved or rejected');
-    }
-
     const nextStatus = dto.status || DisputeStatus.RESOLVED;
+
+    try {
+      validateDisputeTransition(dispute.status, nextStatus, Role.ADMIN);
+    } catch (err: any) {
+      throw new ConflictException(err.message);
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const res = await tx.dispute.update({
@@ -364,8 +367,17 @@ export class AdminService {
       throw new ForbiddenException('Only dispute participants can file an appeal');
     }
 
-    if (dispute.status !== DisputeStatus.RESOLVED && dispute.status !== DisputeStatus.REJECTED) {
-      throw new ConflictException('Can only appeal resolved or rejected disputes');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const userRole = user?.role || Role.WORKER;
+
+    if (dispute.appealedAt) {
+      throw new ConflictException("Dispute has already been appealed once");
+    }
+
+    try {
+      validateDisputeTransition(dispute.status, DisputeStatus.APPEALED, userRole);
+    } catch (err: any) {
+      throw new ConflictException(err.message);
     }
 
     const updated = await this.prisma.dispute.update({
@@ -387,8 +399,10 @@ export class AdminService {
     const dispute = await this.prisma.dispute.findUnique({ where: { id: disputeId } });
     if (!dispute) throw new NotFoundException(`Dispute with ID ${disputeId} not found`);
 
-    if (dispute.status !== DisputeStatus.APPEALED) {
-      throw new ConflictException('Dispute is not under appeal');
+    try {
+      validateDisputeTransition(dispute.status, dto.finalStatus, Role.ADMIN);
+    } catch (err: any) {
+      throw new ConflictException(err.message);
     }
 
     const updated = await this.prisma.dispute.update({
