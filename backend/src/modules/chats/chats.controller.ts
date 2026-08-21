@@ -1,3 +1,4 @@
+import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { Controller, Get, Post, Body, Param, UseGuards, Req, Patch, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ChatsService } from './chats.service';
@@ -13,13 +14,9 @@ export class ChatsController {
   @Get()
   async getMyChats(
     @Req() req: any,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string
+    @Query() query: PaginationQueryDto
   ) {
-    return this.chatsService.getMyChats(req.user.id, {
-      skip: skip !== undefined ? Number(skip) : undefined,
-      take: take !== undefined ? Number(take) : undefined
-    });
+    return this.chatsService.getMyChats(req.user.id, query);
   }
 
   @Post()

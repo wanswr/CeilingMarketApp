@@ -1,3 +1,4 @@
+import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req, UsePipes, ValidationPipe } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { OrderSpatialService } from './order-spatial.service';
@@ -22,13 +23,9 @@ export class OrdersController {
   @Get('my')
   findMyOrders(
     @Req() req: any,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string
+    @Query() query: PaginationQueryDto
   ) {
-    return this.ordersService.findMyOrders(req.user.id, {
-      skip: skip !== undefined ? Number(skip) : undefined,
-      take: take !== undefined ? Number(take) : undefined
-    });
+    return this.ordersService.findMyOrders(req.user.id, query);
   }
 
   @SkipThrottle()
