@@ -95,12 +95,17 @@ export class UsersService {
         ordersCount: true,
         isVerified: true,
         portfolioItems: true,
+        isBlocked: true,
         deletedAt: true,
         activeCategory: { select: { id: true, slug: true, name: true } },
       }
     });
-    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
-    const { deletedAt, ...publicProfile } = user;
+
+    if (!user || user.deletedAt || user.isBlocked) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+
+    const { deletedAt, isBlocked, ...publicProfile } = user;
     return {
       ...publicProfile,
       trustScore: this.calculateTrustScore({
@@ -158,13 +163,26 @@ export class UsersService {
   }
 
   async getPortfolio(userId: string, params?: { skip?: number; take?: number }) {
-    const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
-    const take = Math.min(params?.take !== undefined ? Number(params.take) : 50, 100);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isBlocked: true, deletedAt: true }
+    });
+
+    if (!user || user.deletedAt || user.isBlocked) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    const rawSkip = params?.skip !== undefined ? Number(params.skip) : 0;
+    const skip = Math.max(0, isNaN(rawSkip) ? 0 : rawSkip);
+
+    const rawTake = params?.take !== undefined ? Number(params.take) : 50;
+    const clampedTake = isNaN(rawTake) ? 50 : Math.max(1, Math.min(rawTake, 100));
+
     return this.prisma.portfolioItem.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       skip,
-      take
+      take: clampedTake
     });
   }
 
