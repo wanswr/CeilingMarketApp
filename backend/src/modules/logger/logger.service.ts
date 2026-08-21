@@ -15,15 +15,13 @@ export enum LogLevel {
  * When adding new sensitive/PII data fields to DTOs or entities
  * (e.g. payment_token, provider_secret, external_api_key),
  * YOU MUST ADD THEM TO SENSITIVE_EXCLUDE_FIELDS OR SENSITIVE_MASK_FIELDS.
- *
- * Examples:
- * - 'payment_token', 'provider_secret', 'external_api_key'
  */
 export const SENSITIVE_EXCLUDE_FIELDS = [
   'password',
   'passwordhash',
   'hash',
   'token',
+  'usertoken',
   'accesstoken',
   'access_token',
   'refreshtoken',
@@ -45,11 +43,18 @@ export const SENSITIVE_EXCLUDE_FIELDS = [
   'external_api_key',
   'code',
   'otp',
+  'message',
+  'messagecontent',
+  'message_content',
+  'content',
 ] as const;
 
 export const SENSITIVE_MASK_FIELDS = [
   'phone',
   'telephone',
+  'address',
+  'fulladdress',
+  'full_address',
   'instagram',
   'telegram',
 ] as const;
@@ -76,10 +81,11 @@ export class LoggerService {
     if (logLevelEnv === 'error') return LogLevel.ERROR;
 
     const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
+    const appEnv = (process.env.APP_ENV || nodeEnv).toLowerCase();
     const debugEnabled = process.env.DEBUG === 'true';
 
-    // Production defaults to INFO
-    if (nodeEnv === 'production') {
+    // Production or Staging defaults to INFO
+    if (appEnv === 'production' || appEnv === 'staging') {
       return debugEnabled ? LogLevel.DEBUG : LogLevel.INFO;
     }
 
