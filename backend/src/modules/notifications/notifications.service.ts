@@ -1,13 +1,17 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationDeliveryService } from './notification-delivery.service';
+import { LoggerService } from '../logger/logger.service';
 
 @Injectable()
 export class NotificationsService {
   constructor(
     private prisma: PrismaService,
     private deliveryService: NotificationDeliveryService,
-  ) {}
+    private logger: LoggerService,
+  ) {
+    this.logger.setService('NotificationsService');
+  }
 
   async findAll(userId: string, params?: { skip?: number; take?: number }) {
     const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
@@ -42,11 +46,26 @@ export class NotificationsService {
       }
     });
 
+    // Fire and forget push delivery asynchronously without blocking in-app notification creation
     this.deliveryService.sendPushNotification(userId, {
       title: data.title,
       body: data.message,
       data: { notificationId: notification.id, type: data.type },
-    }).catch(() => {});
+    }).then(result => {
+      if (!result.success) {
+        this.logger.warn('PUSH_DELIVERY_FAILED', `Push notification was not delivered: ${result.reason}`, {
+          userId,
+          notificationId: notification.id,
+          reason: result.reason,
+        });
+      }
+    }).catch(err => {
+      this.logger.error('PUSH_DELIVERY_UNHANDLED_ERROR', `Unhandled error during push notification delivery: ${err.message}`, {
+        userId,
+        notificationId: notification.id,
+        error: err.message,
+      });
+    });
 
     return notification;
   }
