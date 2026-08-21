@@ -758,9 +758,22 @@ export class OrdersService {
 
     this.validateTransition(order, OrderStatus.DISPUTE, userId, false);
 
-    const result = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.DISPUTE }
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.DISPUTE }
+      });
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          oldStatus: order.status,
+          newStatus: OrderStatus.DISPUTE,
+          changedById: userId
+        }
+      });
+
+      return updated;
     });
 
     this.logger.info('ORDER_DISPUTED', `Dispute opened by user ${userId} for reason: ${reason}`, { orderId, userId });

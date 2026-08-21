@@ -260,15 +260,33 @@ export class AdminService {
       throw new ConflictException('An active dispute already exists for this order');
     }
 
-    const dispute = await this.prisma.dispute.create({
-      data: {
-        orderId: dto.orderId,
-        openedById: userId,
-        respondentId: respondentId,
-        reason: dto.reason,
-        description: dto.description,
-        status: DisputeStatus.OPEN,
-      },
+    const dispute = await this.prisma.$transaction(async (tx) => {
+      const createdDispute = await tx.dispute.create({
+        data: {
+          orderId: dto.orderId,
+          openedById: userId,
+          respondentId: respondentId,
+          reason: dto.reason,
+          description: dto.description,
+          status: DisputeStatus.OPEN,
+        },
+      });
+
+      await tx.order.update({
+        where: { id: dto.orderId },
+        data: { status: OrderStatus.DISPUTE },
+      });
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: dto.orderId,
+          oldStatus: order.status,
+          newStatus: OrderStatus.DISPUTE,
+          changedById: userId,
+        },
+      });
+
+      return createdDispute;
     });
 
     this.logger.info('DISPUTE_OPENED', `Dispute ${dispute.id} opened for order ${dto.orderId}`, { disputeId: dispute.id, orderId: dto.orderId, userId });

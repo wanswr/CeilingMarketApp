@@ -213,7 +213,7 @@ describe('AdminService', () => {
   });
 
   describe('disputes', () => {
-    it('should allow a participant user to open a dispute on CLAIMED order', async () => {
+    it('should allow a participant user to open a dispute on CLAIMED order and update Order status + statusHistory atomically', async () => {
       mockPrismaService.order.findUnique.mockResolvedValueOnce(mockOrder);
       mockPrismaService.dispute.findFirst.mockResolvedValueOnce(null);
       mockPrismaService.dispute.create.mockResolvedValueOnce({
@@ -232,6 +232,18 @@ describe('AdminService', () => {
 
       expect(result.id).toBe('dispute-1');
       expect(mockPrismaService.dispute.create).toHaveBeenCalled();
+      expect(mockPrismaService.order.update).toHaveBeenCalledWith({
+        where: { id: 'order-1' },
+        data: { status: OrderStatus.DISPUTE },
+      });
+      expect(mockPrismaService.orderStatusHistory.create).toHaveBeenCalledWith({
+        data: {
+          orderId: 'order-1',
+          oldStatus: OrderStatus.CLAIMED,
+          newStatus: OrderStatus.DISPUTE,
+          changedById: 'user-1',
+        },
+      });
     });
 
     it('should throw ConflictException if attempting to open dispute on order without assigned respondent', async () => {
