@@ -14,6 +14,9 @@ describe('AppGateway', () => {
     user: {
       findUnique: jest.fn(),
     },
+    session: {
+      findUnique: jest.fn(),
+    },
     order: {
       findUnique: jest.fn(),
     },
@@ -71,7 +74,7 @@ describe('AppGateway', () => {
 
       process.env.JWT_SECRET = 'test-secret';
       (jwt.verify as jest.Mock).mockReturnValue({ id: 'user-deleted' });
-      mockPrismaService.user.findUnique.mockResolvedValue({ id: 'user-deleted', deletedAt: new Date() }); // Soft-deleted
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: 'user-deleted', deletedAt: new Date() });
 
       await gateway.handleConnection(mockSocket);
 
@@ -79,19 +82,79 @@ describe('AppGateway', () => {
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-deleted' } });
     });
 
-    it('should reject connection if token is passed only in query string', async () => {
+    it('should disconnect client if user is blocked', async () => {
       const mockSocket = {
-        id: 'socket-2',
+        id: 'socket-blocked',
         handshake: {
-          auth: null,
-          query: { token: 'query-token' },
+          auth: { token: 'Bearer valid-token' },
         },
         disconnect: jest.fn(),
       } as any;
 
+      process.env.JWT_SECRET = 'test-secret';
+      (jwt.verify as jest.Mock).mockReturnValue({ id: 'user-blocked' });
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: 'user-blocked', deletedAt: null, isBlocked: true });
+
       await gateway.handleConnection(mockSocket);
 
       expect(mockSocket.disconnect).toHaveBeenCalled();
+    });
+
+    it('should disconnect client if sessionVersion mismatch occurs', async () => {
+      const mockSocket = {
+        id: 'socket-mismatch',
+        handshake: {
+          auth: { token: 'Bearer valid-token' },
+        },
+        disconnect: jest.fn(),
+      } as any;
+
+      process.env.JWT_SECRET = 'test-secret';
+      (jwt.verify as jest.Mock).mockReturnValue({ id: 'user-1', sessionVersion: 1 });
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null, isBlocked: false, sessionVersion: 2 });
+
+      await gateway.handleConnection(mockSocket);
+
+      expect(mockSocket.disconnect).toHaveBeenCalled();
+    });
+
+    it('should disconnect client if session is revoked or expired', async () => {
+      const mockSocket = {
+        id: 'socket-revoked',
+        handshake: {
+          auth: { token: 'Bearer valid-token' },
+        },
+        disconnect: jest.fn(),
+      } as any;
+
+      process.env.JWT_SECRET = 'test-secret';
+      (jwt.verify as jest.Mock).mockReturnValue({ id: 'user-1', sessionVersion: 1, sessionId: 'sess-1' });
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null, isBlocked: false, sessionVersion: 1 });
+      mockPrismaService.session.findUnique.mockResolvedValue({ id: 'sess-1', revokedAt: new Date(), expiresAt: new Date(Date.now() + 10000) });
+
+      await gateway.handleConnection(mockSocket);
+
+      expect(mockSocket.disconnect).toHaveBeenCalled();
+    });
+
+    it('should authenticate client successfully when user and session are valid', async () => {
+      const mockSocket = {
+        id: 'socket-ok',
+        handshake: {
+          auth: { token: 'Bearer valid-token' },
+        },
+        disconnect: jest.fn(),
+      } as any;
+
+      process.env.JWT_SECRET = 'test-secret';
+      (jwt.verify as jest.Mock).mockReturnValue({ id: 'user-1', sessionVersion: 1, sessionId: 'sess-1' });
+      mockPrismaService.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null, isBlocked: false, sessionVersion: 1 });
+      mockPrismaService.session.findUnique.mockResolvedValue({ id: 'sess-1', revokedAt: null, expiresAt: new Date(Date.now() + 10000) });
+
+      await gateway.handleConnection(mockSocket);
+
+      expect(mockSocket.disconnect).not.toHaveBeenCalled();
+      expect((mockSocket as any).userId).toBe('user-1');
     });
   });
 
