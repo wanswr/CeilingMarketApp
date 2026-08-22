@@ -245,3 +245,90 @@ describe('OrdersService.remove Safe Removal (Soft Cancel, History Retention)', (
     expect(mockPrisma.orderStatusHistory.create).not.toHaveBeenCalled();
   });
 });
+
+describe('OrdersService.acceptApplication Response Contract', () => {
+  it('should return { order, chat } response structure upon accepting an application', async () => {
+    const mockOrder = {
+      id: 'order-1',
+      employerId: 'emp-1',
+      status: OrderStatus.PUBLISHED,
+      isFrozen: false,
+    };
+    const mockApp = {
+      id: 'app-1',
+      orderId: 'order-1',
+      executorId: 'exec-1',
+      order: mockOrder,
+      executor: { id: 'exec-1', deletedAt: null },
+    };
+    const mockChat = {
+      id: 'chat-1',
+      orderId: 'order-1',
+      employerId: 'emp-1',
+      executorId: 'exec-1',
+    };
+    const mockUpdatedOrder = {
+      ...mockOrder,
+      status: OrderStatus.CLAIMED,
+      executorId: 'exec-1',
+      employer: { id: 'emp-1', name: 'Emp' },
+      executor: { id: 'exec-1', name: 'Exec' },
+    };
+
+    const mockPrismaTx = {
+      order: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue(mockUpdatedOrder),
+      },
+      orderStatusHistory: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      application: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+
+    const mockPrismaService = {
+      application: {
+        findUnique: jest.fn().mockResolvedValue(mockApp),
+      },
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(mockPrismaTx)),
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ role: 'EMPLOYER' }),
+      },
+    };
+
+    const mockChatsService = {
+      getOrCreateChat: jest.fn().mockResolvedValue(mockChat),
+    };
+
+    const mockGateway = {
+      broadcast: jest.fn(),
+    };
+
+    const mockLogger = {
+      setService: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+
+    const service = new OrdersService(
+      mockPrismaService as any,
+      mockGateway as any,
+      mockLogger as any,
+      mockChatsService as any,
+      {} as any,
+      {} as any,
+    );
+
+    const result = await service.acceptApplication('app-1', 'emp-1');
+
+    expect(result).toHaveProperty('order');
+    expect(result).toHaveProperty('chat');
+    expect(result.order.id).toBe('order-1');
+    expect(result.order.status).toBe(OrderStatus.CLAIMED);
+    expect(result.chat.id).toBe('chat-1');
+  });
+});

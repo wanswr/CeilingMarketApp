@@ -246,8 +246,6 @@ export class OrdersService {
     return order;
   }
 
-
-
   async findOne(id: string, requesterId?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
@@ -350,22 +348,18 @@ export class OrdersService {
     if (!order) throw new NotFoundException("Order not found");
     if (order.employerId !== userId) throw new ForbiddenException("Only employer can remove order");
 
-    // Idempotency: if already CANCELLED, return safely without duplicating history or throwing error
     if (order.status === OrderStatus.CANCELLED) {
       return { id, status: OrderStatus.CANCELLED };
     }
 
-    // Guard: Block cancellation if there are active disputes
     if (order.disputes && order.disputes.length > 0) {
       throw new ConflictException("Cannot cancel order with an active dispute");
     }
 
-    // Guard: Block cancellation if there are completed payment obligations
     if (order.payments && order.payments.length > 0) {
       throw new ConflictException("Cannot cancel order with completed payment obligation");
     }
 
-    // Validate state machine transition to CANCELLED
     this.validateTransition(order, OrderStatus.CANCELLED, userId, false);
 
     const chats = await this.prisma.chat.findMany({
@@ -404,7 +398,6 @@ export class OrdersService {
   }
 
   async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
-    // Validate executor role (must be WORKER to apply)
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
     if (!executor || executor.deletedAt) {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
@@ -417,7 +410,6 @@ export class OrdersService {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
     }
 
-    // Find target order and verify category subscription
     const targetOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!targetOrder) throw new NotFoundException('Order not found');
 
@@ -436,7 +428,6 @@ export class OrdersService {
 
       if (!isSubActive) {
         if (!executor.freeCategoryUsed) {
-          // Grant first free category subscription for 30 days
           const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
           await this.prisma.$transaction(async (tx) => {
             await tx.user.update({
@@ -486,19 +477,15 @@ export class OrdersService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-        // Read actual status from database INSIDE the transaction
         const order = await tx.order.findUnique({ where: { id: orderId } });
         if (!order) throw new NotFoundException('Order not found');
 
-        // Check if the order status is open for applications
         if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
             throw new ConflictException('Order is no longer open for applications');
         }
 
-        // Row-level lock on parent Order row to eliminate concurrent application race conditions
         await tx.$executeRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
 
-        // Limit maximum applications to 10
         const appCount = await tx.application.count({
           where: { orderId }
         });
@@ -565,7 +552,6 @@ export class OrdersService {
          throw new ConflictException('Executor account is deleted');
      }
 
-     // Conflict Check: Is order already claimed or in progress?
      this.validateTransition(app.order, OrderStatus.CLAIMED, userId, true);
 
      const result = await this.prisma.$transaction(async (tx) => {
@@ -586,7 +572,11 @@ export class OrdersService {
          }
 
          const updatedOrder = await tx.order.findUnique({
-             where: { id: app.orderId }
+             where: { id: app.orderId },
+             include: {
+                 employer: { select: { id: true, name: true, rating: true, avatar: true } },
+                 executor: { select: { id: true, name: true, rating: true, avatar: true } },
+             }
          });
 
          if (!updatedOrder) {
@@ -600,7 +590,6 @@ export class OrdersService {
              data: { status: 'ACCEPTED' }
          });
 
-         // V12: Auto-reject all other applications for this order
          await tx.application.updateMany({
              where: {
                  orderId: app.orderId,
@@ -609,15 +598,14 @@ export class OrdersService {
              data: { status: 'REJECTED' }
          });
 
-         // Auto-create chat
-         await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId, tx);
+         const chat = await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId, tx);
 
-         return updatedOrder;
+         return { order: updatedOrder, chat };
      });
 
-     this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.id}`, { orderId: result.id, userId });
-     await this.broadcast('order.status.changed', result, userId);
-     await this.broadcast('application.accepted', { orderId: result.id, executorId: app.executorId }, userId);
+     this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.order.id}`, { orderId: result.order.id, userId });
+     await this.broadcast('order.status.changed', result.order, userId);
+     await this.broadcast('application.accepted', { orderId: result.order.id, executorId: app.executorId }, userId);
      return result;
   }
 
@@ -710,7 +698,6 @@ export class OrdersService {
       where: { orderId_executorId: { orderId, executorId } }
     });
     if (!app) {
-        // Idempotent: already cancelled or not found
         return { success: true };
     }
 
@@ -718,7 +705,6 @@ export class OrdersService {
       throw new ForbiddenException('Нельзя отменить уже принятую заявку — используйте отмену заказа');
     }
     if (app.status === 'REJECTED') {
-      // уже отклонена, ничего не делать, вернуть success как для idempotent-случая
       return { success: true };
     }
 
@@ -736,7 +722,6 @@ export class OrdersService {
           where: { id: app.id }
         });
       } catch (err: any) {
-        // Already deleted by a parallel process
         return null;
       }
 

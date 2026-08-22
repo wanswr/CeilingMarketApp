@@ -37,7 +37,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const fetchOrderDetails = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-        // V11: Bypass cache to ensure UI is always fresh when entering Detail screen
         const updated = await mapEngine.syncOrder(orderId, true);
         if (updated) {
             setOrder(updated);
@@ -192,12 +191,28 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             setSubmitting(true);
             try {
               const res = await mapEngine.acceptApplication(applicationId);
-              if (res.data?.order) setOrder(res.data.order);
+              const updatedOrder = res.data?.order || res.data;
+              const createdChat = res.data?.chat;
+
+              if (updatedOrder) setOrder(updatedOrder);
 
               logger.endAction('ACCEPT_APPLICATION', { aid });
               setShowApplications(false);
+
+              const chatId = createdChat?.id;
+              const executorName = updatedOrder?.executor?.name || createdChat?.executor?.name || 'Мастер';
+
               Alert.alert('Успех', 'Исполнитель выбран. Чат создан.', [
-                  { text: 'В чат', onPress: () => navigation.navigate('ChatDetail', { chatId: res.data.chat.id, name: res.data.order.executor.name }) },
+                  {
+                    text: 'В чат',
+                    onPress: () => {
+                      if (chatId) {
+                        navigation.navigate('ChatDetail', { chatId, name: executorName });
+                      } else {
+                        navigation.navigate('MainTabs', { screen: 'Chats' });
+                      }
+                    }
+                  },
                   { text: 'ОК' }
               ]);
             } catch (e: any) {
@@ -235,7 +250,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     setSubmitting(true);
     try {
       const res = await mapEngine.startOrder(orderId);
-      // V11: Immediate local update to satisfy UI even before subscription fires
       if (res.data) setOrder(res.data);
 
       logger.logStateTransition('START_WORK', statusBefore, 'IN_PROGRESS', { orderId, actionId: aid });
@@ -307,15 +321,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               orderId
           });
 
-          // Force invalidate cache to prevent status rollback
           mapEngine.requestRouter.invalidate(`order:${orderId}`);
 
-          // Update local state immediately with the new review
           const newReview = res.data;
           setOrder(prev => {
               if (!prev) return prev;
               const reviews = prev.reviews || [];
-              // Avoid duplicates
               if (reviews.some(r => normalizeId(r.authorId) === nid)) return prev;
               const updatedOrder = { ...prev, reviews: [...reviews, newReview] };
               return updatedOrder;
@@ -323,7 +334,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
           logger.logStateTransition('SUBMIT_REVIEW', statusBefore, 'COMPLETED', { orderId, actionId: aid });
 
-          // Also sync from server to be sure
           mapEngine.syncOrder(orderId, true).then(updated => {
               if (updated) setOrder(updated);
           });
@@ -449,7 +459,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           <Text style={styles.sectionTitle}>Описание задачи</Text>
           <Text style={styles.description}>{order.details || 'Описание отсутствует'}</Text>
 
-          {/* Milestones timeline */}
           {(() => {
             if (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES' || order.status === 'CANCELLED') {
               return null;
@@ -485,7 +494,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 <Text style={styles.sectionTitle}>Ход выполнения</Text>
 
                 <View style={styles.milestonesContainer}>
-                  {/* Milestone 1: CLAIMED */}
                   <View style={styles.milestoneRow}>
                     <AppIcon name={isClaimed ? "status-done" : "status-incomplete"}
                       size={22}
@@ -503,7 +511,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     </View>
                   </View>
 
-                  {/* Milestone 2: IN_PROGRESS */}
                   <View style={styles.milestoneRow}>
                     <AppIcon name={isInProgress ? "status-done" : "status-incomplete"}
                       size={22}
@@ -521,7 +528,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     </View>
                   </View>
 
-                  {/* Milestone 3: COMPLETED */}
                   <View style={styles.milestoneRow}>
                     <AppIcon name={isCompleted ? "status-done" : "status-incomplete"}
                       size={22}
