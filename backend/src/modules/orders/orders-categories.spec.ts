@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { OrderParserService } from './order-parser.service';
 import { OrderSpatialService } from './order-spatial.service';
 import { OrderStatus } from '@prisma/client';
@@ -50,13 +51,14 @@ describe('OrdersService - Categories & Filters', () => {
   };
 
   const mockChatsService = {};
+  const mockNotificationsService = { create: jest.fn().mockResolvedValue({}) };
+  const mockOrderParserService = {};
+  const mockOrderSpatialService = { findSpatial: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
-        OrderParserService,
-        OrderSpatialService,
         {
           provide: PrismaService,
           useValue: mockPrismaService,
@@ -72,6 +74,18 @@ describe('OrdersService - Categories & Filters', () => {
         {
           provide: ChatsService,
           useValue: mockChatsService,
+        },
+        {
+          provide: NotificationsService,
+          useValue: mockNotificationsService,
+        },
+        {
+          provide: OrderParserService,
+          useValue: mockOrderParserService,
+        },
+        {
+          provide: OrderSpatialService,
+          useValue: mockOrderSpatialService,
         },
       ],
     }).compile();
@@ -165,49 +179,14 @@ describe('OrdersService - Categories & Filters', () => {
     });
   });
 
-
-
   describe('findSpatial', () => {
     it('should filter by categoryId if passed', async () => {
       const params = { lat: 55.7, lng: 37.6, radius: 10, categoryId: 'cat-123' };
-      mockPrismaService.order.findMany.mockResolvedValue([]);
+      mockOrderSpatialService.findSpatial.mockResolvedValue([]);
 
       await service.findSpatial(params);
 
-      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({
-          categoryId: 'cat-123',
-        }),
-      }));
-    });
-
-    it('should not filter by categoryId if omitted', async () => {
-      const params = { lat: 55.7, lng: 37.6, radius: 10 };
-      mockPrismaService.order.findMany.mockResolvedValue([]);
-
-      await service.findSpatial(params);
-
-      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({
-          categoryId: undefined,
-        }),
-      }));
-    });
-
-    it('should select applications count via _count and never select raw applications details', async () => {
-      const params = { lat: 55.7, lng: 37.6, radius: 10 };
-      mockPrismaService.order.findMany.mockResolvedValue([]);
-
-      await service.findSpatial(params);
-
-      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        select: expect.objectContaining({
-          _count: { select: { applications: true } }
-        }),
-      }));
-      expect(mockPrismaService.order.findMany).toHaveBeenCalledWith(expect.not.objectContaining({
-        applications: expect.any(Object),
-      }));
+      expect(mockOrderSpatialService.findSpatial).toHaveBeenCalledWith(params);
     });
   });
 
@@ -224,7 +203,7 @@ describe('OrdersService - Categories & Filters', () => {
         };
 
         mockPrismaService.application.findUnique.mockResolvedValue(app);
-        mockPrismaService.order.updateMany.mockResolvedValue({ count: 0 }); // Represents order already claimed by someone else
+        mockPrismaService.order.updateMany.mockResolvedValue({ count: 0 });
 
         await expect(service.acceptApplication(applicationId, userId)).rejects.toThrow(ConflictException);
         expect(mockPrismaService.order.updateMany).toHaveBeenCalledWith({
@@ -264,8 +243,8 @@ describe('OrdersService - Categories & Filters', () => {
         const existingOrder = { id: 'order-123', title: 'New Order', categoryId: 'cat-123', idempotencyKey: 'idem-order-2' };
 
         mockPrismaService.order.findUnique
-          .mockResolvedValueOnce(null) // First check: no existing order
-          .mockResolvedValueOnce(existingOrder); // After catch: returns duplicate
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(existingOrder);
 
         const dbError = new Error('Unique constraint failed') as any;
         dbError.code = 'P2002';

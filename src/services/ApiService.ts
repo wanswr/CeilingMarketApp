@@ -236,6 +236,7 @@ class ApiService {
   };
 
   cancelApplication = (id: string) => this.api.delete('orders/' + id + '/apply');
+  cancelOrderAsExecutor = (id: string, reason: string) => this.api.post('orders/' + id + '/executor-cancel', { reason });
   acceptApplication = (applicationId: string) => this.api.post('orders/applications/' + applicationId + '/accept');
   markApplicationViewed = (applicationId: string) => this.api.patch('orders/applications/' + applicationId + '/view');
   startOrder = (id: string) => this.api.post('orders/' + id + '/start');

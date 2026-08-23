@@ -9,6 +9,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { GetOrdersSpatialDto } from './dto/get-orders-spatial.dto';
 import { ParseOrderTextDto } from './dto/parse-order-text.dto';
 import { FindAllOrdersDto } from './dto/find-all-orders.dto';
+import { CancelExecutorOrderDto } from './dto/cancel-executor-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 
@@ -86,6 +87,17 @@ export class OrdersController {
     @Req() req: any
   ) {
     return this.ordersService.apply(id, req.user.id, dto.price, dto.idempotencyKey);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/executor-cancel')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  cancelByExecutor(
+    @Param('id') id: string,
+    @Body() dto: CancelExecutorOrderDto,
+    @Req() req: any
+  ) {
+    return this.ordersService.cancelByExecutor(id, req.user.id, dto.reason);
   }
 
   @UseGuards(JwtAuthGuard)

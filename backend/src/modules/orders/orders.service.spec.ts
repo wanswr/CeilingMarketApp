@@ -1,11 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OrdersService } from './orders.service';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, ApplicationStatus } from '@prisma/client';
 import { ORDER_STATE_MACHINE } from './order-state-machine';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { OrderParserService } from './order-parser.service';
 import { OrderSpatialService } from './order-spatial.service';
 import { ForbiddenException, ConflictException, NotFoundException } from '@nestjs/common';
@@ -102,6 +103,7 @@ describe('OrdersService.remove Safe Removal (Soft Cancel, History Retention)', (
   let mockGateway: any;
   let mockLogger: any;
   let mockChats: any;
+  let mockNotificationsService: any;
   let mockParser: any;
   let mockSpatial: any;
 
@@ -136,6 +138,7 @@ describe('OrdersService.remove Safe Removal (Soft Cancel, History Retention)', (
     };
 
     mockChats = {};
+    mockNotificationsService = { create: jest.fn().mockResolvedValue({}) };
     mockParser = {};
     mockSpatial = {};
 
@@ -146,6 +149,7 @@ describe('OrdersService.remove Safe Removal (Soft Cancel, History Retention)', (
         { provide: AppGateway, useValue: mockGateway },
         { provide: LoggerService, useValue: mockLogger },
         { provide: ChatsService, useValue: mockChats },
+        { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: OrderParserService, useValue: mockParser },
         { provide: OrderSpatialService, useValue: mockSpatial },
       ],
@@ -168,9 +172,9 @@ describe('OrdersService.remove Safe Removal (Soft Cancel, History Retention)', (
     const mockUpdatedOrder = { ...mockOrder, status: OrderStatus.CANCELLED };
 
     mockPrisma.order.findUnique
-      .mockResolvedValueOnce(mockOrder) // first query in remove()
-      .mockResolvedValueOnce(mockUpdatedOrder) // lightweight order query in broadcast("order.status.changed")
-      .mockResolvedValueOnce(mockUpdatedOrder); // lightweight order query in broadcast("order.deleted")
+      .mockResolvedValueOnce(mockOrder)
+      .mockResolvedValueOnce(mockUpdatedOrder)
+      .mockResolvedValueOnce(mockUpdatedOrder);
 
     mockPrisma.order.update.mockResolvedValueOnce(mockUpdatedOrder);
 
@@ -321,6 +325,7 @@ describe('OrdersService.acceptApplication Response Contract', () => {
       mockChatsService as any,
       {} as any,
       {} as any,
+      {} as any,
     );
 
     const result = await service.acceptApplication('app-1', 'emp-1');
@@ -358,6 +363,7 @@ describe('OrdersService.update Server-Side Edit Policy', () => {
       mockPrisma as any,
       mockGateway as any,
       mockLogger as any,
+      {} as any,
       {} as any,
       {} as any,
       {} as any,
@@ -478,6 +484,211 @@ describe('OrdersService.update Server-Side Edit Policy', () => {
 
     await expect(service.update('ord-1', { title: 'Hacked Title' }, 'other-user')).rejects.toThrow(
       new ForbiddenException('Only the employer can modify this order')
+    );
+  });
+});
+
+describe('OrdersService.cancelByExecutor Controlled Flow', () => {
+  let service: OrdersService;
+  let mockPrisma: any;
+  let mockNotificationsService: any;
+  let mockGateway: any;
+
+  beforeEach(() => {
+    mockPrisma = {
+      order: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      application: {
+        count: jest.fn(),
+        updateMany: jest.fn(),
+      },
+      orderStatusHistory: {
+        create: jest.fn(),
+      },
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(mockPrisma)),
+    };
+
+    mockNotificationsService = {
+      create: jest.fn().mockResolvedValue({}),
+    };
+
+    mockGateway = {
+      broadcast: jest.fn(),
+    };
+
+    const mockLogger = {
+      setService: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+
+    service = new OrdersService(
+      mockPrisma as any,
+      mockGateway as any,
+      mockLogger as any,
+      {} as any,
+      mockNotificationsService as any,
+      {} as any,
+      {} as any,
+    );
+  });
+
+  it('assigned executor + CLAIMED with remaining applications -> HAS_RESPONSES and sends notification to employer', async () => {
+    const mockOrder = {
+      id: 'ord-10',
+      employerId: 'emp-10',
+      executorId: 'exec-20',
+      status: OrderStatus.CLAIMED,
+      title: 'Order Ceiling',
+      isFrozen: false,
+      executor: { id: 'exec-20', name: 'Master' },
+      employer: { id: 'emp-10', name: 'Boss' },
+    };
+
+    mockPrisma.order.findUnique.mockResolvedValue(mockOrder);
+    mockPrisma.application.count.mockResolvedValue(2);
+
+    const updatedOrder = {
+      ...mockOrder,
+      status: OrderStatus.HAS_RESPONSES,
+      executorId: null,
+      claimedAt: null,
+    };
+    mockPrisma.order.update.mockResolvedValue(updatedOrder);
+
+    const result = await service.cancelByExecutor('ord-10', 'exec-20', 'Unforeseen vehicle breakdown');
+
+    expect(result.status).toBe(OrderStatus.HAS_RESPONSES);
+    expect(result.executorId).toBeNull();
+    expect(mockPrisma.application.updateMany).toHaveBeenCalledWith({
+      where: {
+        orderId: 'ord-10',
+        executorId: 'exec-20',
+        status: ApplicationStatus.ACCEPTED,
+      },
+      data: {
+        status: ApplicationStatus.CANCELLED_BY_EXECUTOR,
+      },
+    });
+    expect(mockNotificationsService.create).toHaveBeenCalledWith(
+      'emp-10',
+      expect.objectContaining({
+        type: 'EXECUTOR_CANCELLED',
+        title: expect.any(String),
+        message: expect.stringContaining('Unforeseen vehicle breakdown')
+      })
+    );
+  });
+
+  it('assigned executor + CLAIMED without remaining applications -> PUBLISHED', async () => {
+    const mockOrder = {
+      id: 'ord-10',
+      employerId: 'emp-10',
+      executorId: 'exec-20',
+      status: OrderStatus.CLAIMED,
+      title: 'Order Ceiling',
+      isFrozen: false,
+      executor: { id: 'exec-20', name: 'Master' },
+      employer: { id: 'emp-10', name: 'Boss' },
+    };
+
+    mockPrisma.order.findUnique.mockResolvedValue(mockOrder);
+    mockPrisma.application.count.mockResolvedValue(0);
+
+    const updatedOrder = {
+      ...mockOrder,
+      status: OrderStatus.PUBLISHED,
+      executorId: null,
+      claimedAt: null,
+    };
+    mockPrisma.order.update.mockResolvedValue(updatedOrder);
+
+    const result = await service.cancelByExecutor('ord-10', 'exec-20', 'Schedule conflict');
+
+    expect(result.status).toBe(OrderStatus.PUBLISHED);
+    expect(result.executorId).toBeNull();
+  });
+
+  it('unrelated executor attempting to cancel -> ForbiddenException', async () => {
+    const mockOrder = {
+      id: 'ord-10',
+      employerId: 'emp-10',
+      executorId: 'exec-20',
+      status: OrderStatus.CLAIMED,
+      isFrozen: false,
+    };
+
+    mockPrisma.order.findUnique.mockResolvedValue(mockOrder);
+
+    await expect(service.cancelByExecutor('ord-10', 'stranger-30', 'Reason')).rejects.toThrow(
+      new ForbiddenException('Only the assigned executor can cancel participation for this order')
+    );
+  });
+
+  it('employer attempting to use executor-cancel endpoint -> ForbiddenException', async () => {
+    const mockOrder = {
+      id: 'ord-10',
+      employerId: 'emp-10',
+      executorId: 'exec-20',
+      status: OrderStatus.CLAIMED,
+      isFrozen: false,
+    };
+
+    mockPrisma.order.findUnique.mockResolvedValue(mockOrder);
+
+    await expect(service.cancelByExecutor('ord-10', 'emp-10', 'Reason')).rejects.toThrow(
+      new ForbiddenException('Only the assigned executor can cancel participation for this order')
+    );
+  });
+
+  it('IN_PROGRESS order cancellation -> ConflictException', async () => {
+    const mockOrder = {
+      id: 'ord-10',
+      employerId: 'emp-10',
+      executorId: 'exec-20',
+      status: OrderStatus.IN_PROGRESS,
+      isFrozen: false,
+    };
+
+    mockPrisma.order.findUnique.mockResolvedValue(mockOrder);
+
+    await expect(service.cancelByExecutor('ord-10', 'exec-20', 'Reason')).rejects.toThrow(
+      new ConflictException('Cannot cancel participation when order is in IN_PROGRESS status')
+    );
+  });
+
+  it('COMPLETED order cancellation -> ConflictException', async () => {
+    const mockOrder = {
+      id: 'ord-10',
+      employerId: 'emp-10',
+      executorId: 'exec-20',
+      status: OrderStatus.COMPLETED,
+      isFrozen: false,
+    };
+
+    mockPrisma.order.findUnique.mockResolvedValue(mockOrder);
+
+    await expect(service.cancelByExecutor('ord-10', 'exec-20', 'Reason')).rejects.toThrow(
+      new ConflictException('Cannot cancel participation when order is in COMPLETED status')
+    );
+  });
+
+  it('REVIEWED order cancellation -> ConflictException', async () => {
+    const mockOrder = {
+      id: 'ord-10',
+      employerId: 'emp-10',
+      executorId: 'exec-20',
+      status: OrderStatus.REVIEWED,
+      isFrozen: false,
+    };
+
+    mockPrisma.order.findUnique.mockResolvedValue(mockOrder);
+
+    await expect(service.cancelByExecutor('ord-10', 'exec-20', 'Reason')).rejects.toThrow(
+      new ConflictException('Cannot cancel participation when order is in REVIEWED status')
     );
   });
 });

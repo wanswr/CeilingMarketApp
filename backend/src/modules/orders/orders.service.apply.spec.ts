@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { OrderParserService } from './order-parser.service';
 import { OrderSpatialService } from './order-spatial.service';
 import { ForbiddenException } from '@nestjs/common';
@@ -37,6 +38,7 @@ describe('OrdersService - apply category-bound subscription checks', () => {
   const mockGateway = { broadcast: jest.fn() };
   const mockLogger = { setService: jest.fn(), info: jest.fn(), error: jest.fn() };
   const mockChats = {};
+  const mockNotifications = {};
   const mockParser = {};
   const mockSpatial = {};
 
@@ -51,6 +53,7 @@ describe('OrdersService - apply category-bound subscription checks', () => {
         { provide: AppGateway, useValue: mockGateway },
         { provide: LoggerService, useValue: mockLogger },
         { provide: ChatsService, useValue: mockChats },
+        { provide: NotificationsService, useValue: mockNotifications },
         { provide: OrderParserService, useValue: mockParser },
         { provide: OrderSpatialService, useValue: mockSpatial },
       ],

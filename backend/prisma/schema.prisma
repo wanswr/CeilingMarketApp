@@ -31,6 +31,7 @@ enum ApplicationStatus {
   VIEWED
   ACCEPTED
   REJECTED
+  CANCELLED_BY_EXECUTOR
 }
 
 enum WorkType {

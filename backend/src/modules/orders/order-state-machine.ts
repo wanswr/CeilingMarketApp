@@ -49,6 +49,14 @@ export const ORDER_STATE_MACHINE: Record<OrderStatus, Partial<Record<OrderStatus
       requiresParticipant: 'executor',
       description: 'Executor starts the work',
     },
+    [OrderStatus.PUBLISHED]: {
+      requiresParticipant: 'executor',
+      description: 'Executor cancels participation and order has no remaining active applications',
+    },
+    [OrderStatus.HAS_RESPONSES]: {
+      requiresParticipant: 'executor',
+      description: 'Executor cancels participation and order has remaining active applications',
+    },
     [OrderStatus.CANCELLED]: {
       requiresParticipant: 'employer',
       description: 'Employer cancels the order before work starts',

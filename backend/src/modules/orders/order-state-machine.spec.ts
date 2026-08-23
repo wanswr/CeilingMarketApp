@@ -222,10 +222,10 @@ describe('Order State Machine - Isolated Rules', () => {
       );
     });
 
-    it('should BLOCK reverse transition CLAIMED -> PUBLISHED', () => {
+    it('should BLOCK employer transition CLAIMED -> PUBLISHED', () => {
       const order = { ...mockOrder, status: OrderStatus.CLAIMED };
       expect(() => validateTransition(order, OrderStatus.PUBLISHED, 'employer-user')).toThrow(
-        new ConflictException('Cannot transition from CLAIMED to PUBLISHED')
+        new ForbiddenException('Only the executor can transition this order to PUBLISHED')
       );
     });
 

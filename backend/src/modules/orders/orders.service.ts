@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { OrderStatus, Prisma, Role } from '@prisma/client';
+import { OrderStatus, ApplicationStatus, Prisma, Role } from '@prisma/client';
 import { ORDER_STATE_MACHINE } from './order-state-machine';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { OrderParserService } from './order-parser.service';
 import { OrderSpatialService } from './order-spatial.service';
 import { randomUUID } from 'crypto';
@@ -16,6 +17,7 @@ export class OrdersService {
     private gateway: AppGateway,
     private logger: LoggerService,
     private chats: ChatsService,
+    private notificationsService: NotificationsService,
     private orderParserService: OrderParserService,
     private orderSpatialService: OrderSpatialService,
   ) {
@@ -43,7 +45,7 @@ export class OrdersService {
   }
 
   private async logStatusHistory(tx: any, orderId: string, oldStatus: OrderStatus, newStatus: OrderStatus, changedById?: string) {
-    const targetStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
+    const targetStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES];
     if (targetStatuses.includes(newStatus)) {
       await tx.orderStatusHistory.create({
         data: {
@@ -371,6 +373,78 @@ export class OrdersService {
 
     await this.broadcast('order.status.changed', result, userId);
     return result;
+  }
+
+  async cancelByExecutor(orderId: string, executorId: string, reason: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        executor: { select: { id: true, name: true } },
+        employer: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.executorId !== executorId) {
+      throw new ForbiddenException('Only the assigned executor can cancel participation for this order');
+    }
+
+    if (order.status !== OrderStatus.CLAIMED) {
+      throw new ConflictException(`Cannot cancel participation when order is in ${order.status} status`);
+    }
+
+    const remainingActiveAppsCount = await this.prisma.application.count({
+      where: {
+        orderId,
+        executorId: { not: executorId },
+        status: { in: [ApplicationStatus.PENDING, ApplicationStatus.VIEWED] },
+      },
+    });
+
+    const targetStatus = remainingActiveAppsCount > 0 ? OrderStatus.HAS_RESPONSES : OrderStatus.PUBLISHED;
+
+    this.validateTransition(order, targetStatus, executorId, false);
+
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      await tx.application.updateMany({
+        where: {
+          orderId,
+          executorId,
+          status: ApplicationStatus.ACCEPTED,
+        },
+        data: {
+          status: ApplicationStatus.CANCELLED_BY_EXECUTOR,
+        },
+      });
+
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: targetStatus,
+          executorId: null,
+          claimedAt: null,
+        },
+        include: {
+          employer: { select: { id: true, name: true, rating: true, avatar: true } },
+        },
+      });
+
+      await this.logStatusHistory(tx, orderId, OrderStatus.CLAIMED, targetStatus, executorId);
+
+      return updated;
+    });
+
+    const executorName = order.executor?.name || 'Исполнитель';
+    await this.notificationsService.create(order.employerId, {
+      type: 'EXECUTOR_CANCELLED',
+      title: 'Исполнитель отказался от заказа',
+      message: `Исполнитель ${executorName} отказался от выполнения заказа "${order.title}". Причина: ${reason}`
+    });
+
+    this.logger.info('ORDER_EXECUTOR_CANCELLED', `Executor ${executorId} cancelled participation for order ${orderId}. Reason: ${reason}`, { orderId, executorId, reason });
+    await this.broadcast('order.status.changed', updatedOrder, executorId);
+
+    return updatedOrder;
   }
 
   async remove(id: string, userId: string) {

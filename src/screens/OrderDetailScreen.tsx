@@ -28,6 +28,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [showApplications, setShowApplications] = useState(false);
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [offerPrice, setOfferPrice] = useState('');
@@ -108,6 +110,33 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         }
       ]
     );
+  };
+
+  const handleExecutorCancelOrder = async () => {
+    if (!cancelReason.trim()) {
+      Alert.alert('Ошибка', 'Укажите причину отказа от заказа');
+      return;
+    }
+
+    if (submitting) return;
+    setSubmitting(true);
+    const aid = logger.startAction('EXECUTOR_CANCEL_ORDER', { orderId });
+    try {
+      const res = await apiService.cancelOrderAsExecutor(orderId, cancelReason.trim());
+      setShowCancelModal(false);
+      setCancelReason('');
+      if (res.data) setOrder(res.data);
+      mapEngine.syncOrder(orderId, true).then(updated => {
+        if (updated) setOrder(updated);
+      });
+      logger.endAction('EXECUTOR_CANCEL_ORDER', { aid });
+      Alert.alert('Успех', 'Вы отказались от выполнения заказа');
+    } catch (e: any) {
+      logger.logNetworkError(aid, e, { orderId });
+      Alert.alert('Ошибка', e.response?.data?.message || 'Не удалось отказаться от заказа');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleApply = async () => {
@@ -701,14 +730,25 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               </TouchableOpacity>
 
               {order.status === 'CLAIMED' && (
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  style={[styles.applyBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
-                  onPress={handleStartWork}
-                  disabled={submitting}
-                >
-                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Начать работу</Text>}
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={[styles.applyBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
+                    onPress={handleStartWork}
+                    disabled={submitting}
+                  >
+                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Начать работу</Text>}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={[styles.applyBtn, { flex: 1, backgroundColor: '#FF4757' }]}
+                    onPress={() => setShowCancelModal(true)}
+                    disabled={submitting}
+                  >
+                    <Text style={styles.applyBtnText}>Отказаться</Text>
+                  </TouchableOpacity>
+                </>
               )}
 
               {order.status === 'IN_PROGRESS' && (
@@ -792,6 +832,42 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.modalApplyBtn} onPress={submitOffer}>
                         <Text style={styles.modalApplyBtnText}>Откликнуться</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showCancelModal}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalOverlayCenter}>
+            <BlurView intensity={30} style={StyleSheet.absoluteFill}>
+                <TouchableOpacity style={{flex: 1}} onPress={() => setShowCancelModal(false)} />
+            </BlurView>
+            <View style={styles.priceModalContent}>
+                <Text style={styles.modalTitleSmall}>Отказ от заказа</Text>
+                <Text style={styles.modalSubtitleSmall}>Укажите причину отмены заказа</Text>
+                <TextInput
+                    style={[styles.priceInput, { height: 90, textAlignVertical: 'top' }]}
+                    value={cancelReason}
+                    onChangeText={setCancelReason}
+                    placeholder="Причина отказа..."
+                    multiline
+                    autoFocus
+                />
+                <View style={styles.modalActionsRow}>
+                    <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowCancelModal(false)}>
+                        <Text style={styles.modalCancelBtnText}>Назад</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalApplyBtn, { backgroundColor: '#FF4757' }, submitting && { opacity: 0.6 }]}
+                      onPress={handleExecutorCancelOrder}
+                      disabled={submitting}
+                    >
+                        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalApplyBtnText}>Отказаться</Text>}
                     </TouchableOpacity>
                 </View>
             </View>
