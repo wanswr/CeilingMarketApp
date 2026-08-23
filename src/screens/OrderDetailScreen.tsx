@@ -670,7 +670,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   >
                     <Text style={styles.applyBtnText}>Оставить отзыв</Text>
                   </TouchableOpacity>
-              ) : (
+              ) : order.executorId ? (
                 <TouchableOpacity
                   style={styles.chatButtonFooter}
                   onPress={async () => {
@@ -679,18 +679,14 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                           navigation.navigate('Login');
                           return;
                       }
-                      if (order.executorId) {
-                        const res = await apiService.getOrCreateChat(order.id, order.executorId);
-                        navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.executor?.name });
-                      } else {
-                        navigation.navigate('MainTabs', { screen: 'Chats' });
-                      }
+                      const res = await apiService.getOrCreateChat(order.id, order.executorId);
+                      navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.executor?.name });
                   }}
                 >
                   <AppIcon name="tab-chats" size={24} color={COLORS.primary} />
                   <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
                 </TouchableOpacity>
-              )
+              ) : null
           ) : isExecutor ? (
             <>
               <TouchableOpacity
@@ -746,21 +742,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             </>
           ) : (
             <>
-              <TouchableOpacity
-                style={styles.iconChatBtn}
-                onPress={async () => {
-                    logger.logClick('OpenChat', 'OrderDetail', { orderId, isExecutor: false });
-                    if (!currentUser) {
-                        navigation.navigate('Login');
-                        return;
-                    }
-                    const res = await apiService.getOrCreateChat(order.id, myId!);
-                    navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.employer?.name });
-                }}
-              >
-                <AppIcon name="tab-chats" size={24} color={COLORS.primary} />
-              </TouchableOpacity>
-
               <TouchableOpacity
                 activeOpacity={0.9}
                 style={[
@@ -901,19 +882,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
                   <View style={styles.appActions}>
                      <TouchableOpacity
-                      style={styles.appChatBtn}
-                      onPress={async () => {
-                        logger.logClick('OpenChatWithApplicant', 'OrderDetail', { orderId: order.id, masterId: app.executorId });
-                        setShowApplications(false);
-                        const res = await apiService.getOrCreateChat(order.id, app.executorId);
-                        navigation.navigate('ChatDetail', { chatId: res.data.id, name: app.executor?.name });
-                      }}
-                     >
-                       <AppIcon name="action-chat" size={20} color={COLORS.primary} />
-                       <Text style={styles.appChatText}>Чат</Text>
-                     </TouchableOpacity>
-
-                     <TouchableOpacity
                       style={[styles.selectBtn, submitting && { opacity: 0.5 }]}
                       onPress={() => {
                           markViewed(app.id, app.status);
@@ -921,7 +889,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                       }}
                       disabled={submitting}
                      >
-                       <Text style={styles.selectBtnText}>Выбрать</Text>
+                       <Text style={styles.selectBtnText}>Выбрать исполнителя</Text>
                      </TouchableOpacity>
                   </View>
                 </View>
