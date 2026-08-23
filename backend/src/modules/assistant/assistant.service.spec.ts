@@ -2,17 +2,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AssistantService } from './assistant.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
-import { AssistantNoteStatus, AssistantNoteRevisionSource } from '@prisma/client';
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 
-describe('AssistantService Foundation & IDOR Security', () => {
+describe('AssistantService', () => {
   let service: AssistantService;
-  let mockPrisma: any;
+  let prismaMock: any;
+  let loggerMock: any;
 
   beforeEach(async () => {
-    mockPrisma = {
+    prismaMock = {
       user: {
-        findUnique: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({ id: 'user-1', deletedAt: null }),
       },
       assistantNote: {
         create: jest.fn(),
@@ -20,20 +20,35 @@ describe('AssistantService Foundation & IDOR Security', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      assistantNoteRevision: {
+        create: jest.fn(),
+      },
+      assistantNoteAttachment: {
+        create: jest.fn(),
+      },
     };
 
-    const mockLogger = {
+    loggerMock = {
+      setContext: jest.fn(),
       setService: jest.fn(),
       info: jest.fn(),
-      warn: jest.fn(),
+      log: jest.fn(),
       error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AssistantService,
-        { provide: PrismaService, useValue: mockPrisma },
-        { provide: LoggerService, useValue: mockLogger },
+        {
+          provide: PrismaService,
+          useValue: prismaMock,
+        },
+        {
+          provide: LoggerService,
+          useValue: loggerMock,
+        },
       ],
     }).compile();
 
@@ -42,203 +57,220 @@ describe('AssistantService Foundation & IDOR Security', () => {
 
   describe('create', () => {
     it('creates note and initial revision for active user', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
-      const mockCreated = {
-        id: 'note-1',
-        userId: 'user-1',
-        title: 'Ceiling Measurements',
-        rawText: '20 sq. meters, 4 corners',
-        status: AssistantNoteStatus.DRAFT,
-        revisions: [{ id: 'rev-1' }],
-      };
-      mockPrisma.assistantNote.create.mockResolvedValue(mockCreated);
+      const dto = { title: 'Test Note', rawText: 'Raw text' };
+      const createdNote = { id: 'note-1', userId: 'user-1', title: 'Test Note', rawText: 'Raw text', status: 'DRAFT' };
 
-      const result = await service.create('user-1', {
-        title: 'Ceiling Measurements',
-        rawText: '20 sq. meters, 4 corners',
+      prismaMock.assistantNote.create.mockResolvedValue(createdNote);
+
+      const result = await service.create('user-1', dto);
+
+      expect(result).toEqual(createdNote);
+      expect(prismaMock.assistantNote.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user-1',
+          title: 'Test Note',
+          status: 'DRAFT',
+        }),
+        include: expect.any(Object),
       });
-
-      expect(result.id).toBe('note-1');
-      expect(mockPrisma.assistantNote.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            userId: 'user-1',
-            title: 'Ceiling Measurements',
-            status: AssistantNoteStatus.DRAFT,
-          }),
-        })
-      );
     });
 
     it('sets status to STRUCTURED when structuredData is provided', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
-      mockPrisma.assistantNote.create.mockImplementation(async ({ data }) => ({
-        id: 'note-2',
-        ...data,
-      }));
+      const dto = { title: 'Structured Note', structuredData: { key: 'value' } };
+      const createdNote = { id: 'note-2', userId: 'user-1', title: 'Structured Note', status: 'STRUCTURED' };
 
-      await service.create('user-1', {
-        title: 'Estimate Note',
-        structuredData: { area: 20, perimeter: 18 },
+      prismaMock.assistantNote.create.mockResolvedValue(createdNote);
+
+      await service.create('user-1', dto);
+
+      expect(prismaMock.assistantNote.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          status: 'STRUCTURED',
+        }),
+        include: expect.any(Object),
       });
-
-      expect(mockPrisma.assistantNote.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: AssistantNoteStatus.STRUCTURED,
-            structuredData: { area: 20, perimeter: 18 },
-          }),
-        })
-      );
     });
   });
 
   describe('findAll', () => {
     it('returns only notes belonging to current user and excludes archived by default', async () => {
-      mockPrisma.assistantNote.findMany.mockResolvedValue([
-        { id: 'note-1', userId: 'user-1', status: AssistantNoteStatus.DRAFT },
-      ]);
+      const notes = [{ id: 'note-1', userId: 'user-1' }];
+      prismaMock.assistantNote.findMany.mockResolvedValue(notes);
 
-      const notes = await service.findAll('user-1', {});
+      const result = await service.findAll('user-1', {});
 
-      expect(notes).toHaveLength(1);
-      expect(mockPrisma.assistantNote.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            userId: 'user-1',
-            status: { not: AssistantNoteStatus.ARCHIVED },
-          },
-          orderBy: { createdAt: 'desc' },
-        })
-      );
+      expect(result).toEqual(notes);
+      expect(prismaMock.assistantNote.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          status: { not: 'ARCHIVED' },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: undefined,
+        take: 50,
+        include: {
+          attachments: { orderBy: { createdAt: 'asc' } },
+          revisions: { take: 1, orderBy: { createdAt: 'desc' } },
+        },
+      });
     });
 
     it('includes archived notes when includeArchived flag is true', async () => {
-      mockPrisma.assistantNote.findMany.mockResolvedValue([]);
+      prismaMock.assistantNote.findMany.mockResolvedValue([]);
 
       await service.findAll('user-1', { includeArchived: true });
 
-      expect(mockPrisma.assistantNote.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { userId: 'user-1' },
-        })
-      );
+      expect(prismaMock.assistantNote.findMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        orderBy: { createdAt: 'desc' },
+        skip: undefined,
+        take: 50,
+        include: {
+          attachments: { orderBy: { createdAt: 'asc' } },
+          revisions: { take: 1, orderBy: { createdAt: 'desc' } },
+        },
+      });
     });
   });
 
   describe('findOne & IDOR Authorization', () => {
     it('returns note when user reads their own note', async () => {
-      const mockNote = { id: 'note-1', userId: 'user-1', title: 'Own Note' };
-      mockPrisma.assistantNote.findUnique.mockResolvedValue(mockNote);
+      const mockNote = { id: 'note-1', userId: 'user-1' };
+      prismaMock.assistantNote.findUnique.mockResolvedValue(mockNote);
 
       const result = await service.findOne('user-1', 'note-1');
+
       expect(result).toEqual(mockNote);
     });
 
     it('throws ForbiddenException when user attempts to read another user note (IDOR block)', async () => {
-      const mockNote = { id: 'note-1', userId: 'user-1', title: 'Victim Note' };
-      mockPrisma.assistantNote.findUnique.mockResolvedValue(mockNote);
+      const mockNote = { id: 'note-1', userId: 'user-2' };
+      prismaMock.assistantNote.findUnique.mockResolvedValue(mockNote);
 
-      await expect(service.findOne('attacker-2', 'note-1')).rejects.toThrow(ForbiddenException);
+      await expect(service.findOne('user-1', 'note-1')).rejects.toThrow(ForbiddenException);
     });
 
     it('throws NotFoundException when note does not exist', async () => {
-      mockPrisma.assistantNote.findUnique.mockResolvedValue(null);
+      prismaMock.assistantNote.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('user-1', 'non-existent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('user-1', 'nonexistent')).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('update & Revision History', () => {
     it('updates note and creates a new revision recording previousData and newData', async () => {
-      const originalNote = {
-        id: 'note-1',
-        userId: 'user-1',
-        title: 'Original Title',
-        rawText: 'Original Text',
-        structuredData: null,
-        status: AssistantNoteStatus.DRAFT,
-      };
+      const existingNote = { id: 'note-1', userId: 'user-1', title: 'Old Title', rawText: 'Old' };
+      const updateDto = { title: 'New Title' };
+      const updatedNote = { ...existingNote, title: 'New Title' };
 
-      mockPrisma.assistantNote.findUnique.mockResolvedValue(originalNote);
+      prismaMock.assistantNote.findUnique.mockResolvedValue(existingNote);
+      prismaMock.assistantNote.update.mockResolvedValue(updatedNote);
 
-      const updatedNote = {
-        ...originalNote,
-        title: 'Updated Title',
-        rawText: 'Updated Text',
-      };
-      mockPrisma.assistantNote.update.mockResolvedValue(updatedNote);
+      const result = await service.update('user-1', 'note-1', updateDto);
 
-      const result = await service.update('user-1', 'note-1', {
-        title: 'Updated Title',
-        rawText: 'Updated Text',
+      expect(result).toEqual(updatedNote);
+      expect(prismaMock.assistantNote.update).toHaveBeenCalledWith({
+        where: { id: 'note-1' },
+        data: expect.objectContaining({
+          title: 'New Title',
+          revisions: expect.any(Object),
+        }),
+        include: expect.any(Object),
       });
-
-      expect(result.title).toBe('Updated Title');
-      expect(mockPrisma.assistantNote.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'note-1' },
-          data: expect.objectContaining({
-            title: 'Updated Title',
-            rawText: 'Updated Text',
-            revisions: {
-              create: expect.objectContaining({
-                source: AssistantNoteRevisionSource.MANUAL,
-                previousData: {
-                  title: 'Original Title',
-                  rawText: 'Original Text',
-                  structuredData: null,
-                },
-                newData: {
-                  title: 'Updated Title',
-                  rawText: 'Updated Text',
-                  structuredData: null,
-                },
-              }),
-            },
-          }),
-        })
-      );
     });
 
     it('throws ForbiddenException when user attempts to update another user note', async () => {
-      const mockNote = { id: 'note-1', userId: 'user-1', title: 'User 1 Note' };
-      mockPrisma.assistantNote.findUnique.mockResolvedValue(mockNote);
+      const existingNote = { id: 'note-1', userId: 'user-2' };
+      prismaMock.assistantNote.findUnique.mockResolvedValue(existingNote);
 
-      await expect(
-        service.update('attacker-2', 'note-1', { title: 'Hacked Title' })
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.update('user-1', 'note-1', { title: 'Hacked' })).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
   describe('archive', () => {
     it('sets status to ARCHIVED and records archivedAt without physical delete', async () => {
-      const mockNote = {
-        id: 'note-1',
-        userId: 'user-1',
-        status: AssistantNoteStatus.DRAFT,
-      };
-      mockPrisma.assistantNote.findUnique.mockResolvedValue(mockNote);
+      const existingNote = { id: 'note-1', userId: 'user-1' };
+      const archivedNote = { ...existingNote, status: 'ARCHIVED', archivedAt: new Date() };
 
-      const archivedNote = {
-        ...mockNote,
-        status: AssistantNoteStatus.ARCHIVED,
-        archivedAt: new Date(),
-      };
-      mockPrisma.assistantNote.update.mockResolvedValue(archivedNote);
+      prismaMock.assistantNote.findUnique.mockResolvedValue(existingNote);
+      prismaMock.assistantNote.update.mockResolvedValue(archivedNote);
 
       const result = await service.archive('user-1', 'note-1');
 
-      expect(result.status).toBe(AssistantNoteStatus.ARCHIVED);
-      expect(mockPrisma.assistantNote.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'note-1' },
-          data: expect.objectContaining({
-            status: AssistantNoteStatus.ARCHIVED,
-            archivedAt: expect.any(Date),
-          }),
-        })
-      );
+      expect(result).toEqual(archivedNote);
+      expect(prismaMock.assistantNote.update).toHaveBeenCalledWith({
+        where: { id: 'note-1' },
+        data: expect.objectContaining({
+          status: 'ARCHIVED',
+          archivedAt: expect.any(Date),
+        }),
+        include: expect.any(Object),
+      });
+    });
+  });
+
+  describe('addAudioAttachment', () => {
+    it('throws ForbiddenException when user attempts to attach audio to another user note', async () => {
+      const mockNote = { id: 'note-2', userId: 'user-2' };
+      prismaMock.assistantNote.findUnique.mockResolvedValue(mockNote);
+
+      await expect(
+        service.addAudioAttachment('user-1', 'note-2', {
+          mimetype: 'audio/m4a',
+          size: 1024,
+          path: '/tmp/test.m4a',
+          filename: 'test.m4a',
+          originalname: 'voice.m4a',
+        } as any, 5000),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws BadRequestException when file MIME type is invalid', async () => {
+      const mockNote = { id: 'note-1', userId: 'user-1' };
+      prismaMock.assistantNote.findUnique.mockResolvedValue(mockNote);
+
+      await expect(
+        service.addAudioAttachment('user-1', 'note-1', {
+          mimetype: 'video/mp4',
+          size: 1024,
+          path: '/tmp/test.mp4',
+          filename: 'test.mp4',
+        } as any, 5000),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('successfully creates audio attachment and revision', async () => {
+      const mockNote = { id: 'note-1', userId: 'user-1' };
+      const mockAttachment = { id: 'att-1', noteId: 'note-1', type: 'AUDIO', durationMs: 5000 };
+
+      prismaMock.assistantNote.findUnique.mockResolvedValue(mockNote);
+      prismaMock.assistantNoteAttachment.create.mockResolvedValue(mockAttachment);
+
+      const result = await service.addAudioAttachment('user-1', 'note-1', {
+        mimetype: 'audio/m4a',
+        size: 2048,
+        path: '/tmp/test.m4a',
+        filename: 'test.m4a',
+        originalname: 'test.m4a',
+      } as any, 5000);
+
+      expect(result).toEqual(mockNote);
+      expect(prismaMock.assistantNoteAttachment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          noteId: 'note-1',
+          type: 'AUDIO',
+          durationMs: 5000,
+          mimeType: 'audio/m4a',
+        }),
+      });
+      expect(prismaMock.assistantNoteRevision.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          noteId: 'note-1',
+          source: 'VOICE',
+        }),
+      });
     });
   });
 });

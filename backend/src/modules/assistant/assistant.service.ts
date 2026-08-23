@@ -1,10 +1,26 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AssistantNoteStatus, AssistantNoteRevisionSource } from '@prisma/client';
+import { AssistantNoteStatus, AssistantNoteRevisionSource, AssistantNoteAttachmentType } from '@prisma/client';
 import { CreateAssistantNoteDto } from './dto/create-assistant-note.dto';
 import { UpdateAssistantNoteDto } from './dto/update-assistant-note.dto';
 import { AssistantNotesQueryDto } from './dto/assistant-notes-query.dto';
 import { LoggerService } from '../logger/logger.service';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export const MAX_AUDIO_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+export const ALLOWED_AUDIO_MIME_TYPES = [
+  'audio/m4a',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/webm',
+  'audio/aac',
+  'audio/ogg',
+  'audio/x-m4a',
+  'application/octet-stream',
+];
 
 @Injectable()
 export class AssistantService {
@@ -43,6 +59,7 @@ export class AssistantService {
         },
       },
       include: {
+        attachments: true,
         revisions: {
           orderBy: { createdAt: 'desc' },
           take: 5,
@@ -72,6 +89,7 @@ export class AssistantService {
       skip,
       take,
       include: {
+        attachments: { orderBy: { createdAt: 'asc' } },
         revisions: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -84,6 +102,7 @@ export class AssistantService {
     const note = await this.prisma.assistantNote.findUnique({
       where: { id },
       include: {
+        attachments: { orderBy: { createdAt: 'asc' } },
         revisions: {
           orderBy: { createdAt: 'desc' },
         },
@@ -152,6 +171,7 @@ export class AssistantService {
         },
       },
       include: {
+        attachments: { orderBy: { createdAt: 'asc' } },
         revisions: {
           orderBy: { createdAt: 'desc' },
         },
@@ -160,6 +180,71 @@ export class AssistantService {
 
     this.logger.info('ASSISTANT_NOTE_UPDATED', `Updated assistant note ${id}`, { userId, noteId: id });
     return updatedNote;
+  }
+
+  async addAudioAttachment(
+    userId: string,
+    id: string,
+    file: Express.Multer.File,
+    durationMs?: number,
+  ) {
+    const note = await this.findOne(userId, id);
+
+    if (!file) {
+      throw new BadRequestException('Audio file is required');
+    }
+
+    if (file.size > MAX_AUDIO_FILE_SIZE_BYTES) {
+      throw new BadRequestException(`File size exceeds maximum allowed limit of ${MAX_AUDIO_FILE_SIZE_BYTES / (1024 * 1024)}MB`);
+    }
+
+    const mime = (file.mimetype || '').toLowerCase();
+    if (!ALLOWED_AUDIO_MIME_TYPES.includes(mime)) {
+      throw new BadRequestException(`Unsupported audio MIME type: ${file.mimetype}`);
+    }
+
+    const uploadDir = path.join(process.cwd(), 'uploads', 'assistant-audio');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const ext = path.extname(file.originalname) || '.m4a';
+    const filename = `${id}_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
+    const filePath = path.join(uploadDir, filename);
+
+    if (file.buffer) {
+      fs.writeFileSync(filePath, file.buffer);
+    }
+
+    const fileUrl = `/uploads/assistant-audio/${filename}`;
+
+    const attachment = await this.prisma.assistantNoteAttachment.create({
+      data: {
+        noteId: id,
+        type: AssistantNoteAttachmentType.AUDIO,
+        url: fileUrl,
+        mimeType: file.mimetype || 'audio/m4a',
+        size: file.size,
+        durationMs: durationMs ? Number(durationMs) : undefined,
+      },
+    });
+
+    await this.prisma.assistantNoteRevision.create({
+      data: {
+        noteId: id,
+        source: AssistantNoteRevisionSource.VOICE,
+        newData: {
+          attachmentId: attachment.id,
+          url: fileUrl,
+          durationMs: attachment.durationMs,
+          mimeType: attachment.mimeType,
+        },
+      },
+    });
+
+    this.logger.info('ASSISTANT_NOTE_AUDIO_ADDED', `Added audio attachment ${attachment.id} to note ${id}`, { userId, noteId: id });
+
+    return this.findOne(userId, id);
   }
 
   async archive(userId: string, id: string) {
@@ -176,6 +261,7 @@ export class AssistantService {
         archivedAt: new Date(),
       },
       include: {
+        attachments: { orderBy: { createdAt: 'asc' } },
         revisions: {
           orderBy: { createdAt: 'desc' },
         },

@@ -1,93 +1,54 @@
 import { OrderStatus } from '@prisma/client';
 
-export interface TransitionRule {
-  requiresParticipant: 'employer' | 'executor' | 'any' | 'system';
-  description: string;
+export type StateMachineInitiator = 'employer' | 'executor' | 'system' | 'any';
+
+export interface AllowedTransition {
+  to: OrderStatus;
+  initiator: StateMachineInitiator;
 }
 
-export const ORDER_STATE_MACHINE: Record<OrderStatus, Partial<Record<OrderStatus, TransitionRule>>> = {
-  [OrderStatus.PENDING]: {
-    [OrderStatus.PUBLISHED]: {
-      requiresParticipant: 'employer',
-      description: 'Publishing a pending draft order',
-    },
-    [OrderStatus.CANCELLED]: {
-      requiresParticipant: 'employer',
-      description: 'Cancelling a pending draft order',
-    },
-  },
-  [OrderStatus.PUBLISHED]: {
-    [OrderStatus.HAS_RESPONSES]: {
-      requiresParticipant: 'system',
-      description: 'System transition when first application is submitted',
-    },
-    [OrderStatus.CLAIMED]: {
-      requiresParticipant: 'system',
-      description: 'System transition when application is accepted',
-    },
-    [OrderStatus.CANCELLED]: {
-      requiresParticipant: 'employer',
-      description: 'Employer cancels the published order',
-    },
-  },
-  [OrderStatus.HAS_RESPONSES]: {
-    [OrderStatus.PUBLISHED]: {
-      requiresParticipant: 'system',
-      description: 'System transition when last application is removed',
-    },
-    [OrderStatus.CLAIMED]: {
-      requiresParticipant: 'system',
-      description: 'System transition when application is accepted',
-    },
-    [OrderStatus.CANCELLED]: {
-      requiresParticipant: 'employer',
-      description: 'Employer cancels the order with responses',
-    },
-  },
-  [OrderStatus.CLAIMED]: {
-    [OrderStatus.IN_PROGRESS]: {
-      requiresParticipant: 'executor',
-      description: 'Executor starts the work',
-    },
-    [OrderStatus.PUBLISHED]: {
-      requiresParticipant: 'executor',
-      description: 'Executor cancels participation and order has no remaining active applications',
-    },
-    [OrderStatus.HAS_RESPONSES]: {
-      requiresParticipant: 'executor',
-      description: 'Executor cancels participation and order has remaining active applications',
-    },
-    [OrderStatus.CANCELLED]: {
-      requiresParticipant: 'employer',
-      description: 'Employer cancels the order before work starts',
-    },
-    [OrderStatus.DISPUTE]: {
-      requiresParticipant: 'any',
-      description: 'Dispute is opened on the claimed order',
-    },
-  },
-  [OrderStatus.IN_PROGRESS]: {
-    [OrderStatus.COMPLETED]: {
-      requiresParticipant: 'executor',
-      description: 'Executor completes the work',
-    },
-    [OrderStatus.DISPUTE]: {
-      requiresParticipant: 'any',
-      description: 'Dispute is opened on the in-progress order',
-    },
-  },
-  [OrderStatus.COMPLETED]: {
-    [OrderStatus.REVIEWED]: {
-      requiresParticipant: 'system',
-      description: 'Mutual reviews are completed',
-    },
-    [OrderStatus.DISPUTE]: {
-      requiresParticipant: 'any',
-      description: 'Dispute is opened on the completed order',
-    },
-  },
-  [OrderStatus.CANCELLED]: {},
-  [OrderStatus.DISPUTE]: {},
-  [OrderStatus.REVIEWED]: {},
-  [OrderStatus.FROZEN]: {},
+export const ORDER_STATE_MACHINE: Record<OrderStatus, AllowedTransition[]> = {
+  [OrderStatus.DRAFT]: [
+    { to: OrderStatus.PUBLISHED, initiator: 'employer' },
+    { to: OrderStatus.CANCELLED, initiator: 'employer' },
+  ],
+  [OrderStatus.PUBLISHED]: [
+    { to: OrderStatus.FROZEN, initiator: 'system' },
+    { to: OrderStatus.HAS_RESPONSES, initiator: 'system' },
+    { to: OrderStatus.CLAIMED, initiator: 'employer' },
+    { to: OrderStatus.CANCELLED, initiator: 'employer' },
+  ],
+  [OrderStatus.HAS_RESPONSES]: [
+    { to: OrderStatus.FROZEN, initiator: 'system' },
+    { to: OrderStatus.CLAIMED, initiator: 'employer' },
+    { to: OrderStatus.CANCELLED, initiator: 'employer' },
+  ],
+  [OrderStatus.CLAIMED]: [
+    { to: OrderStatus.FROZEN, initiator: 'system' },
+    { to: OrderStatus.IN_PROGRESS, initiator: 'executor' },
+    { to: OrderStatus.DISPUTE, initiator: 'any' },
+    { to: OrderStatus.CANCELLED, initiator: 'employer' },
+  ],
+  [OrderStatus.IN_PROGRESS]: [
+    { to: OrderStatus.FROZEN, initiator: 'system' },
+    { to: OrderStatus.COMPLETED, initiator: 'executor' },
+    { to: OrderStatus.DISPUTE, initiator: 'any' },
+    { to: OrderStatus.CANCELLED, initiator: 'employer' },
+  ],
+  [OrderStatus.COMPLETED]: [
+    { to: OrderStatus.REVIEWED, initiator: 'system' },
+    { to: OrderStatus.DISPUTE, initiator: 'any' },
+  ],
+  [OrderStatus.REVIEWED]: [],
+  [OrderStatus.CANCELLED]: [],
+  [OrderStatus.DISPUTE]: [
+    { to: OrderStatus.FROZEN, initiator: 'system' },
+  ],
+  [OrderStatus.FROZEN]: [
+    { to: OrderStatus.PUBLISHED, initiator: 'system' },
+    { to: OrderStatus.HAS_RESPONSES, initiator: 'system' },
+    { to: OrderStatus.CLAIMED, initiator: 'system' },
+    { to: OrderStatus.IN_PROGRESS, initiator: 'system' },
+    { to: OrderStatus.DISPUTE, initiator: 'system' },
+  ],
 };

@@ -12,7 +12,10 @@ import {
   ParseUUIDPipe,
   UsePipes,
   ValidationPipe,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AssistantService } from './assistant.service';
 import { CreateAssistantNoteDto } from './dto/create-assistant-note.dto';
@@ -48,6 +51,22 @@ export class AssistantController {
     @Req() req: any,
   ) {
     return this.assistantService.update(req.user.id, id, dto);
+  }
+
+  @Post(':id/audio')
+  @UseInterceptors(FileInterceptor('file'))
+  addAudioAttachment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('durationMs') durationMs: string,
+    @Req() req: any,
+  ) {
+    return this.assistantService.addAudioAttachment(
+      req.user.id,
+      id,
+      file,
+      durationMs ? Number(durationMs) : undefined,
+    );
   }
 
   @Delete(':id')
