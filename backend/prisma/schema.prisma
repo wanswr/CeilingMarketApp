@@ -216,19 +216,21 @@ model Chat {
 }
 
 model Message {
-  id        String        @id @default(uuid())
-  chatId    String
-  senderId  String
-  text      String
-  isRead    Boolean       @default(false)
-  type      MessageType   @default(TEXT)
-  status    MessageStatus @default(SENT)
-  fileUrl   String?
-  createdAt DateTime      @default(now())
+  id              String        @id @default(uuid())
+  chatId          String
+  senderId        String
+  text            String
+  clientMessageId String?
+  isRead          Boolean       @default(false)
+  type            MessageType   @default(TEXT)
+  status          MessageStatus @default(SENT)
+  fileUrl         String?
+  createdAt       DateTime      @default(now())
 
   chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
+  @@unique([chatId, clientMessageId])
   @@index([chatId, createdAt])
 }
 

@@ -43,7 +43,7 @@ export class ChatsController {
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Post(':id/messages')
   async sendMessage(@Param('id') id: string, @Body() body: SendMessageDto, @Req() req: any) {
-    return this.chatsService.sendMessage(id, req.user.id, body.text);
+    return this.chatsService.sendMessage(id, req.user.id, body.text, body.clientMessageId);
   }
 
   @Patch(':id/read')

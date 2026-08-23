@@ -340,3 +340,142 @@ describe('ChatsService', () => {
     });
   });
 });
+
+describe('ChatsService.sendMessage Idempotency', () => {
+  let service: ChatsService;
+  let mockPrisma: any;
+  let mockGateway: any;
+
+  beforeEach(() => {
+    mockPrisma = {
+      user: {
+        findUnique: jest.fn(),
+      },
+      chat: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      message: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+      },
+      $transaction: jest.fn(),
+    };
+
+    mockGateway = {
+      server: {
+        to: jest.fn().mockReturnValue({
+          emit: jest.fn(),
+        }),
+      },
+    };
+
+    const mockLogger = {
+      setService: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+
+    service = new ChatsService(
+      mockPrisma as any,
+      mockGateway as any,
+      mockLogger as any,
+    );
+  });
+
+  it('creates new Message when new clientMessageId is supplied', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
+    mockPrisma.chat.findUnique.mockResolvedValue({ id: 'chat-1', employerId: 'user-1', executorId: 'user-2' });
+    mockPrisma.message.findUnique.mockResolvedValue(null);
+
+    const mockCreatedMessage = {
+      id: 'msg-1',
+      chatId: 'chat-1',
+      senderId: 'user-1',
+      text: 'Hello world',
+      clientMessageId: 'client-uuid-1',
+      createdAt: new Date(),
+    };
+
+    mockPrisma.$transaction.mockResolvedValue([mockCreatedMessage, {}]);
+
+    const result = await service.sendMessage('chat-1', 'user-1', 'Hello world', 'client-uuid-1');
+
+    expect(result.id).toBe('msg-1');
+    expect(mockPrisma.message.findUnique).toHaveBeenCalledWith({
+      where: {
+        chatId_clientMessageId: {
+          chatId: 'chat-1',
+          clientMessageId: 'client-uuid-1',
+        },
+      },
+      include: expect.any(Object),
+    });
+    expect(mockGateway.server.to).toHaveBeenCalledWith('chat:chat-1');
+  });
+
+  it('returns existing Message idempotently on duplicate retry with same clientMessageId and skips duplicate WebSocket broadcast', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
+    mockPrisma.chat.findUnique.mockResolvedValue({ id: 'chat-1', employerId: 'user-1', executorId: 'user-2' });
+
+    const existingMessage = {
+      id: 'msg-1',
+      chatId: 'chat-1',
+      senderId: 'user-1',
+      text: 'Hello world',
+      clientMessageId: 'client-uuid-1',
+      createdAt: new Date(),
+    };
+
+    mockPrisma.message.findUnique.mockResolvedValue(existingMessage);
+
+    const result = await service.sendMessage('chat-1', 'user-1', 'Hello world', 'client-uuid-1');
+
+    expect(result.id).toBe('msg-1');
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockGateway.server.to).not.toHaveBeenCalled();
+  });
+
+  it('creates two distinct messages when same text is sent with different clientMessageIds', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
+    mockPrisma.chat.findUnique.mockResolvedValue({ id: 'chat-1', employerId: 'user-1', executorId: 'user-2' });
+    mockPrisma.message.findUnique.mockResolvedValue(null);
+
+    const msg1 = { id: 'msg-1', chatId: 'chat-1', text: 'Repeat text', clientMessageId: 'uuid-1' };
+    const msg2 = { id: 'msg-2', chatId: 'chat-1', text: 'Repeat text', clientMessageId: 'uuid-2' };
+
+    mockPrisma.$transaction
+      .mockResolvedValueOnce([msg1, {}])
+      .mockResolvedValueOnce([msg2, {}]);
+
+    const res1 = await service.sendMessage('chat-1', 'user-1', 'Repeat text', 'uuid-1');
+    const res2 = await service.sendMessage('chat-1', 'user-1', 'Repeat text', 'uuid-2');
+
+    expect(res1.id).toBe('msg-1');
+    expect(res2.id).toBe('msg-2');
+    expect(res1.id).not.toBe(res2.id);
+  });
+
+  it('allows same clientMessageId across different chats (composite unique key test)', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
+    mockPrisma.chat.findUnique.mockResolvedValue({ id: 'chat-2', employerId: 'user-1', executorId: 'user-2' });
+    mockPrisma.message.findUnique.mockResolvedValue(null);
+
+    const msgInChat2 = { id: 'msg-20', chatId: 'chat-2', text: 'Hello', clientMessageId: 'client-uuid-1' };
+    mockPrisma.$transaction.mockResolvedValue([msgInChat2, {}]);
+
+    const result = await service.sendMessage('chat-2', 'user-1', 'Hello', 'client-uuid-1');
+
+    expect(result.id).toBe('msg-20');
+    expect(mockPrisma.message.findUnique).toHaveBeenCalledWith({
+      where: {
+        chatId_clientMessageId: {
+          chatId: 'chat-2',
+          clientMessageId: 'client-uuid-1',
+        },
+      },
+      include: expect.any(Object),
+    });
+  });
+});

@@ -2,9 +2,6 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { logger } from './logger/LoggerService';
 
-/**
- * ApiService V11: Safe connection configuration without production fallbacks.
- */
 // @ts-ignore
 import { API_URL } from '@env';
 
@@ -302,16 +299,16 @@ class ApiService {
   getChatMessages = (chatId: string, cursor?: string) => this.api.get('chats/' + chatId + '/messages', { params: { cursor } });
   getOrCreateChat = (orderId: string, executorId: string) => this.api.post('chats', { orderId, executorId });
 
-  sendMessage = async (chatId: string, text: string) => {
+  sendMessage = async (chatId: string, text: string, clientMessageId?: string) => {
     const { networkService } = require('./NetworkService');
     if (!networkService.isOnline()) {
       logger.info('[ApiService] Offline detected for sendMessage. Queueing...');
       const { mutationQueueService } = require('./MutationQueueService');
 
-      mutationQueueService.add('sendMessage', { chatId, text });
+      mutationQueueService.add('sendMessage', { chatId, text, clientMessageId }, clientMessageId);
       return { data: { success: true }, status: 201 };
     }
-    return this.api.post('chats/' + chatId + '/messages', { text });
+    return this.api.post('chats/' + chatId + '/messages', { text, clientMessageId });
   };
 
   markChatAsRead = (chatId: string) => this.api.patch('chats/' + chatId + '/read');
