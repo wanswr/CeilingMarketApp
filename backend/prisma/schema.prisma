@@ -49,6 +49,19 @@ enum VerificationStatus {
   EXPIRED
 }
 
+enum AssistantNoteStatus {
+  DRAFT
+  STRUCTURED
+  ARCHIVED
+}
+
+enum AssistantNoteRevisionSource {
+  TEXT
+  VOICE
+  AI_PATCH
+  MANUAL
+}
+
 model User {
   id               String    @id @default(uuid())
   phone            String    @unique
@@ -110,6 +123,7 @@ model User {
   payments             Payment[]
   notificationPreference NotificationPreference?
   verificationEvidence UserVerificationEvidence[]
+  assistantNotes       AssistantNote[]
 
   @@index([role])
   @@index([rating])
@@ -123,6 +137,40 @@ model Admin {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AssistantNote {
+  id             String              @id @default(uuid())
+  userId         String
+  title          String
+  rawText        String?
+  structuredData Json?
+  status         AssistantNoteStatus @default(DRAFT)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  archivedAt     DateTime?
+
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revisions AssistantNoteRevision[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AssistantNoteRevision {
+  id           String                      @id @default(uuid())
+  noteId       String
+  source       AssistantNoteRevisionSource @default(MANUAL)
+  rawInput     String?
+  previousData Json?
+  newData      Json?
+  createdAt    DateTime                    @default(now())
+
+  note AssistantNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@index([createdAt])
 }
 
 model Order {
@@ -145,7 +193,6 @@ model Order {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  // Freeze metadata
   isFrozen       Boolean   @default(false)
   frozenAt       DateTime?
   frozenReason   String?
