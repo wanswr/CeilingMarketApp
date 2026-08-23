@@ -2,12 +2,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AssistantService } from './assistant.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
+import { AiService } from '../ai/ai.service';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 
 describe('AssistantService', () => {
   let service: AssistantService;
   let prismaMock: any;
   let loggerMock: any;
+  let aiServiceMock: any;
 
   beforeEach(async () => {
     prismaMock = {
@@ -38,6 +40,10 @@ describe('AssistantService', () => {
       debug: jest.fn(),
     };
 
+    aiServiceMock = {
+      transcribeAudio: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AssistantService,
@@ -48,6 +54,10 @@ describe('AssistantService', () => {
         {
           provide: LoggerService,
           useValue: loggerMock,
+        },
+        {
+          provide: AiService,
+          useValue: aiServiceMock,
         },
       ],
     }).compile();

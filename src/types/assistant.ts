@@ -16,6 +16,13 @@ export enum AssistantNoteAttachmentType {
   FILE = 'FILE',
 }
 
+export enum AssistantNoteTranscriptionStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+}
+
 export interface AssistantNoteAttachment {
   id: string;
   noteId: string;
@@ -25,6 +32,9 @@ export interface AssistantNoteAttachment {
   fileSize?: number | null;
   mimeType?: string | null;
   durationMs?: number | null;
+  transcriptionStatus: AssistantNoteTranscriptionStatus;
+  transcriptionText?: string | null;
+  transcriptionError?: string | null;
   createdAt: string;
 }
 

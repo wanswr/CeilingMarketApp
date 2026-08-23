@@ -69,6 +69,15 @@ export class AssistantController {
     );
   }
 
+  @Post(':noteId/audio/:attachmentId/transcribe')
+  transcribeAttachment(
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Req() req: any,
+  ) {
+    return this.assistantService.transcribeAttachment(req.user.id, noteId, attachmentId);
+  }
+
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     return this.assistantService.archive(req.user.id, id);

@@ -1,0 +1,7 @@
+
+enum AssistantNoteTranscriptionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
