@@ -113,6 +113,24 @@ export default function DashboardScreen({ navigation }: any) {
           </View>
         </View>
 
+        {/* Assistant Entry Card */}
+        <TouchableOpacity
+          style={[styles.card, styles.assistantCard]}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('Assistant')}
+        >
+          <View style={styles.assistantRow}>
+            <View style={styles.assistantIconBg}>
+              <AppIcon name="action-attach" size={24} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.assistantTitle}>Ассистент</Text>
+              <Text style={styles.assistantSubtitle}>Запишите мысль, замер или данные по объекту</Text>
+            </View>
+            <AppIcon name="nav-forward" size={18} color={COLORS.primary} />
+          </View>
+        </TouchableOpacity>
+
         {/* Unread Chats Banner */}
         {unreadChatsCount > 0 && (
           <TouchableOpacity
@@ -355,6 +373,34 @@ const styles = StyleSheet.create({
   },
   welcomeCard: {
     backgroundColor: '#fff'
+  },
+  assistantCard: {
+    backgroundColor: COLORS.primary + '08',
+    borderColor: COLORS.primary + '25',
+    paddingVertical: 16,
+  },
+  assistantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  assistantIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary + '18',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  assistantTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.dark,
+  },
+  assistantSubtitle: {
+    fontSize: 12,
+    color: COLORS.gray,
+    marginTop: 2,
+    fontWeight: '500',
   },
   welcomeRow: {
     flexDirection: 'row',

@@ -110,3 +110,30 @@ export interface Order {
   claimedAt?: string | Date;
   categoryId?: string;
 }
+
+export type AssistantNoteStatus = 'DRAFT' | 'STRUCTURED' | 'ARCHIVED';
+
+export interface AssistantNote {
+  id: string;
+  userId: string;
+  title: string;
+  rawText?: string | null;
+  structuredData?: Record<string, any> | null;
+  status: AssistantNoteStatus;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string | null;
+  revisions?: any[];
+}
+
+export interface CreateAssistantNoteInput {
+  title: string;
+  rawText?: string;
+  structuredData?: Record<string, any>;
+}
+
+export interface UpdateAssistantNoteInput {
+  title?: string;
+  rawText?: string;
+  structuredData?: Record<string, any>;
+}

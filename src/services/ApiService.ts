@@ -323,6 +323,14 @@ class ApiService {
   // Subscriptions
   activateSubscription = (days: number) => this.api.post('subscriptions/activate', { days });
 
+
+  // Assistant Notes
+  getAssistantNotes = (includeArchived?: boolean) => this.api.get("assistant/notes", { params: { includeArchived } });
+  getAssistantNote = (id: string) => this.api.get("assistant/notes/" + id);
+  createAssistantNote = (data: { title: string; rawText?: string; structuredData?: any }) => this.api.post("assistant/notes", data);
+  updateAssistantNote = (id: string, data: { title?: string; rawText?: string; structuredData?: any }) => this.api.patch("assistant/notes/" + id, data);
+  archiveAssistantNote = (id: string) => this.api.post("assistant/notes/" + id + "/archive");
+
   getBaseUrl = () => this.baseURL;
 }
 
