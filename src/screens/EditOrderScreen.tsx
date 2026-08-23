@@ -19,6 +19,7 @@ export default function EditOrderScreen({ navigation, route }: any) {
     workType: 'INSTALLATION'
   });
   const [loading, setLoading] = useState(true);
+  const [initialOrder, setInitialOrder] = useState<any>(null);
 
   useEffect(() => {
     fetchOrder();
@@ -27,6 +28,7 @@ export default function EditOrderScreen({ navigation, route }: any) {
   const fetchOrder = async () => {
     try {
       const order = await mapEngine.syncOrder(orderId);
+      setInitialOrder(order);
       setForm({
         title: order.title || '',
         address: order.address || '',
@@ -42,7 +44,16 @@ export default function EditOrderScreen({ navigation, route }: any) {
     }
   };
 
+  const isClaimed = initialOrder?.status === 'CLAIMED';
+  const isInProgress = initialOrder?.status === 'IN_PROGRESS';
+  const isTerminal = ['COMPLETED', 'REVIEWED', 'CANCELLED', 'FROZEN', 'DISPUTE'].includes(initialOrder?.status);
+
   const handleSave = async () => {
+    if (isTerminal) {
+      Alert.alert("Ошибка", "Заказ в текущем статусе нельзя редактировать.");
+      return;
+    }
+
     try {
       await mapEngine.updateOrder(orderId, {
         ...form,
@@ -52,8 +63,9 @@ export default function EditOrderScreen({ navigation, route }: any) {
       });
       Alert.alert("Успех", "Заказ обновлен");
       navigation.goBack();
-    } catch (e) {
-      Alert.alert("Ошибка", "Не удалось сохранить");
+    } catch (e: any) {
+      const serverMessage = e.response?.data?.message || e.message || "Не удалось сохранить";
+      Alert.alert("Ошибка редактирования", serverMessage);
     }
   };
 
@@ -74,7 +86,28 @@ export default function EditOrderScreen({ navigation, route }: any) {
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <AppInput label="Заголовок" value={form.title} onChangeText={(t:any)=>setForm({...form, title:t})} />
+        {isClaimed && (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningBannerText}>
+              Исполнитель выбран. Изменение цены, адреса и ключевых условий заблокировано.
+            </Text>
+          </View>
+        )}
+
+        {isInProgress && (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningBannerText}>
+              Работа по заказу уже началась. Редактирование заблокировано.
+            </Text>
+          </View>
+        )}
+
+        <AppInput
+          label="Заголовок"
+          value={form.title}
+          disabled={isInProgress || isTerminal}
+          onChangeText={(t:any)=>setForm({...form, title:t})}
+        />
 
         <Text style={styles.label}>Тип работы</Text>
         <View style={styles.workTypeGrid}>
@@ -87,7 +120,12 @@ export default function EditOrderScreen({ navigation, route }: any) {
           ].map(type => (
             <TouchableOpacity
               key={type.id}
-              style={[styles.workTypeBtn, form.workType === type.id && styles.workTypeBtnActive]}
+              disabled={isClaimed || isInProgress || isTerminal}
+              style={[
+                styles.workTypeBtn,
+                form.workType === type.id && styles.workTypeBtnActive,
+                (isClaimed || isInProgress || isTerminal) && { opacity: 0.5 }
+              ]}
               onPress={() => setForm({ ...form, workType: type.id as any })}
             >
               <Text style={[styles.workTypeBtnText, form.workType === type.id && styles.workTypeBtnTextActive]}>
@@ -97,19 +135,33 @@ export default function EditOrderScreen({ navigation, route }: any) {
           ))}
         </View>
 
-        <AppInput label="Адрес" value={form.address} onChangeText={(t:any)=>setForm({...form, address:t})} />
-        <AppInput label="Цена (₽)" value={form.price} keyboardType="numeric" onChangeText={(t:any)=>setForm({...form, price:t})} />
+        <AppInput
+          label="Адрес"
+          value={form.address}
+          disabled={isClaimed || isInProgress || isTerminal}
+          onChangeText={(t:any)=>setForm({...form, address:t})}
+        />
+        <AppInput
+          label="Цена (₽)"
+          value={form.price}
+          keyboardType="numeric"
+          disabled={isClaimed || isInProgress || isTerminal}
+          onChangeText={(t:any)=>setForm({...form, price:t})}
+        />
         <AppInput
             label="Детали"
             value={form.details}
             multiline
+            disabled={isInProgress || isTerminal}
             style={{ height: 120, textAlignVertical: 'top' }}
             onChangeText={(t:any)=>setForm({...form, details:t})}
         />
 
-        <TouchableOpacity style={styles.btn} onPress={handleSave}>
-          <Text style={styles.btnText}>СОХРАНИТЬ ИЗМЕНЕНИЯ</Text>
-        </TouchableOpacity>
+        {!isInProgress && !isTerminal && (
+          <TouchableOpacity style={styles.btn} onPress={handleSave}>
+            <Text style={styles.btnText}>СОХРАНИТЬ ИЗМЕНЕНИЯ</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -131,6 +183,19 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: COLORS.dark },
+  warningBanner: {
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F59E0B'
+  },
+  warningBannerText: {
+    color: '#92400E',
+    fontSize: 13,
+    fontWeight: '600'
+  },
   label: {
     fontSize: 14,
     fontWeight: '700',

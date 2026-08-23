@@ -303,8 +303,51 @@ export class OrdersService {
 
   async update(id: string, dto: any, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException();
-    if (order.employerId !== userId) throw new ForbiddenException();
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.employerId !== userId) throw new ForbiddenException('Only the employer can modify this order');
+
+    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+      throw new ForbiddenException('Order is frozen and cannot be modified');
+    }
+
+    const currentStatus: any = order.status;
+
+    if ([OrderStatus.COMPLETED, OrderStatus.REVIEWED, OrderStatus.CANCELLED].includes(currentStatus)) {
+      throw new ConflictException(`Cannot edit order in ${order.status} status`);
+    }
+
+    if (currentStatus === OrderStatus.CLAIMED) {
+      const isCriticalFieldUpdated =
+        dto.price !== undefined ||
+        dto.address !== undefined ||
+        dto.latitude !== undefined ||
+        dto.longitude !== undefined ||
+        dto.date !== undefined ||
+        dto.categoryId !== undefined ||
+        dto.workType !== undefined;
+
+      if (isCriticalFieldUpdated) {
+        throw new ConflictException('Cannot modify critical terms (price, address, date, category, workType) after worker is assigned');
+      }
+    }
+
+    if (currentStatus === OrderStatus.IN_PROGRESS) {
+      const isAnyFieldUpdated =
+        dto.price !== undefined ||
+        dto.address !== undefined ||
+        dto.latitude !== undefined ||
+        dto.longitude !== undefined ||
+        dto.date !== undefined ||
+        dto.categoryId !== undefined ||
+        dto.workType !== undefined ||
+        dto.title !== undefined ||
+        dto.details !== undefined ||
+        dto.images !== undefined;
+
+      if (isAnyFieldUpdated) {
+        throw new ConflictException('Cannot modify order terms or content while work is in progress');
+      }
+    }
 
     if (dto.status && dto.status !== order.status) {
       this.validateTransition(order, dto.status, userId, false);

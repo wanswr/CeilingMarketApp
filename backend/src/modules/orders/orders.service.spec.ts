@@ -332,3 +332,152 @@ describe('OrdersService.acceptApplication Response Contract', () => {
     expect(result.chat.id).toBe('chat-1');
   });
 });
+
+describe('OrdersService.update Server-Side Edit Policy', () => {
+  let service: OrdersService;
+  let mockPrisma: any;
+
+  beforeEach(() => {
+    mockPrisma = {
+      order: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+    const mockLogger = {
+      setService: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const mockGateway = {
+      broadcast: jest.fn(),
+    };
+
+    service = new OrdersService(
+      mockPrisma as any,
+      mockGateway as any,
+      mockLogger as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+  });
+
+  it('allows editing non-critical fields in PUBLISHED status', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.PUBLISHED,
+      isFrozen: false,
+    });
+    mockPrisma.order.update.mockResolvedValue({ id: 'ord-1', title: 'New Title' });
+
+    const result = await service.update('ord-1', { title: 'New Title' }, 'emp-1');
+    expect(result.title).toBe('New Title');
+  });
+
+  it('allows editing non-critical fields in HAS_RESPONSES status', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.HAS_RESPONSES,
+      isFrozen: false,
+    });
+    mockPrisma.order.update.mockResolvedValue({ id: 'ord-1', details: 'New Details' });
+
+    const result = await service.update('ord-1', { details: 'New Details' }, 'emp-1');
+    expect(result.details).toBe('New Details');
+  });
+
+  it('blocks price modification when order is CLAIMED', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.CLAIMED,
+      isFrozen: false,
+    });
+
+    await expect(service.update('ord-1', { price: 20000 }, 'emp-1')).rejects.toThrow(
+      new ConflictException('Cannot modify critical terms (price, address, date, category, workType) after worker is assigned')
+    );
+  });
+
+  it('blocks address modification when order is CLAIMED', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.CLAIMED,
+      isFrozen: false,
+    });
+
+    await expect(service.update('ord-1', { address: 'New Street 10' }, 'emp-1')).rejects.toThrow(
+      new ConflictException('Cannot modify critical terms (price, address, date, category, workType) after worker is assigned')
+    );
+  });
+
+  it('blocks date modification when order is CLAIMED', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.CLAIMED,
+      isFrozen: false,
+    });
+
+    await expect(service.update('ord-1', { date: '2026-10-10' }, 'emp-1')).rejects.toThrow(
+      new ConflictException('Cannot modify critical terms (price, address, date, category, workType) after worker is assigned')
+    );
+  });
+
+  it('blocks critical update when order is IN_PROGRESS', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.IN_PROGRESS,
+      isFrozen: false,
+    });
+
+    await expect(service.update('ord-1', { title: 'Updated Title' }, 'emp-1')).rejects.toThrow(
+      new ConflictException('Cannot modify order terms or content while work is in progress')
+    );
+  });
+
+  it('blocks update when order is COMPLETED', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.COMPLETED,
+      isFrozen: false,
+    });
+
+    await expect(service.update('ord-1', { title: 'Updated Title' }, 'emp-1')).rejects.toThrow(
+      new ConflictException('Cannot edit order in COMPLETED status')
+    );
+  });
+
+  it('blocks update when order is REVIEWED', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.REVIEWED,
+      isFrozen: false,
+    });
+
+    await expect(service.update('ord-1', { title: 'Updated Title' }, 'emp-1')).rejects.toThrow(
+      new ConflictException('Cannot edit order in REVIEWED status')
+    );
+  });
+
+  it('blocks editing by non-owner user (ForbiddenException)', async () => {
+    mockPrisma.order.findUnique.mockResolvedValue({
+      id: 'ord-1',
+      employerId: 'emp-1',
+      status: OrderStatus.PUBLISHED,
+      isFrozen: false,
+    });
+
+    await expect(service.update('ord-1', { title: 'Hacked Title' }, 'other-user')).rejects.toThrow(
+      new ForbiddenException('Only the employer can modify this order')
+    );
+  });
+});
