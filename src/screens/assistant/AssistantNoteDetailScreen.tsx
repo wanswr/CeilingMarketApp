@@ -367,7 +367,15 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
         <View style={styles.structuredCard}>
           <View style={styles.structuredHeaderRow}>
             <Text style={styles.structuredCardHeader}>Ассистент разобрал заметку</Text>
+
             <TouchableOpacity
+              style={styles.tableNavButton}
+              onPress={() => navigation.navigate('AssistantNoteTable', { id })}
+            >
+              <Text style={styles.tableNavButtonText}>📊 Таблица</Text>
+            </TouchableOpacity>
+
+<TouchableOpacity
               style={styles.editAssistantButton}
               onPress={() => setEditModalVisible(true)}
             >
@@ -1065,4 +1073,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modalApplyText: { fontSize: 14, color: '#FFF', fontWeight: '600' },
+
+  tableNavButton: {
+    backgroundColor: '#34C759',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  tableNavButtonText: { fontSize: 12, fontWeight: '600', color: '#FFF' },
+
 });

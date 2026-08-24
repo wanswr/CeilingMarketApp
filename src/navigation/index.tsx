@@ -62,6 +62,7 @@ export default function Navigation() {
           <Stack.Screen name="Assistant" component={AssistantScreen} />
           <Stack.Screen name="AssistantNoteEditor" component={AssistantNoteEditorScreen} />
           <Stack.Screen name="AssistantNoteDetail" component={AssistantNoteDetailScreen} />
+        <Stack.Screen name="AssistantNoteTable" component={AssistantNoteTableScreen} />
         </>
       )}
     </Stack.Navigator>
