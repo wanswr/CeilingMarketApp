@@ -32,6 +32,14 @@ export enum AssistantNoteAnalysisStatus {
   STALE = 'STALE',
 }
 
+export enum AssistantNoteEditProposalStatus {
+  PENDING = 'PENDING',
+  APPLIED = 'APPLIED',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
+  STALE = 'STALE',
+}
+
 export interface AssistantNoteAttachment {
   id: string;
   noteId: string;
@@ -58,6 +66,7 @@ export interface AssistantNoteRevision {
 }
 
 export interface AssistantNoteStructuredItem {
+  id?: string;
   name: string;
   quantity?: number | null;
   unit?: string | null;
@@ -67,23 +76,27 @@ export interface AssistantNoteStructuredItem {
 }
 
 export interface AssistantNoteStructuredSection {
+  id?: string;
   name: string;
   items: AssistantNoteStructuredItem[];
 }
 
 export interface AssistantNoteStructuredDate {
+  id?: string;
   text: string;
   resolvedDate?: string | null;
   confidence?: number | null;
 }
 
 export interface AssistantNoteStructuredTask {
+  id?: string;
   text: string;
   dateText?: string | null;
   confidence?: number | null;
 }
 
 export interface AssistantNoteStructuredUncertainty {
+  id?: string;
   question: string;
   sourceText?: string | null;
 }
@@ -107,6 +120,43 @@ export interface AssistantNoteStructuredOutput {
   suggestedActions?: AssistantNoteSuggestedAction[];
 }
 
+export interface AssistantNoteEditOperation {
+  operation:
+    | 'UPDATE_ITEM'
+    | 'ADD_ITEM'
+    | 'REMOVE_ITEM'
+    | 'ADD_TASK'
+    | 'UPDATE_TASK'
+    | 'REMOVE_TASK'
+    | 'ADD_DATE'
+    | 'UPDATE_DATE'
+    | 'UPDATE_TITLE';
+  targetId?: string | null;
+  section?: string | null;
+  field?: string | null;
+  oldValue?: any;
+  newValue?: any;
+  item?: AssistantNoteStructuredItem | null;
+  task?: AssistantNoteStructuredTask | null;
+  date?: AssistantNoteStructuredDate | null;
+  title?: string | null;
+  reason: string;
+}
+
+export interface AssistantNoteEditProposal {
+  id: string;
+  noteId: string;
+  userId: string;
+  baseVersion: number;
+  inputType: 'TEXT' | 'VOICE';
+  rawInput: string;
+  operations: AssistantNoteEditOperation[];
+  uncertainties?: AssistantNoteStructuredUncertainty[];
+  summary?: string;
+  status: AssistantNoteEditProposalStatus;
+  createdAt: string;
+}
+
 export interface AssistantNote {
   id: string;
   userId: string;
@@ -114,6 +164,7 @@ export interface AssistantNote {
   rawText?: string | null;
   structuredData?: AssistantNoteStructuredOutput | Record<string, any> | null;
   status: AssistantNoteStatus;
+  version: number;
   analysisStatus: AssistantNoteAnalysisStatus;
   analysisInputHash?: string | null;
   analyzedAt?: string | null;

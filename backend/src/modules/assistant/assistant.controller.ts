@@ -21,6 +21,8 @@ import { AssistantService } from './assistant.service';
 import { CreateAssistantNoteDto } from './dto/create-assistant-note.dto';
 import { UpdateAssistantNoteDto } from './dto/update-assistant-note.dto';
 import { AssistantNotesQueryDto } from './dto/assistant-notes-query.dto';
+import { ProposeEditDto } from './dto/propose-edit.dto';
+import { ApplyEditDto } from './dto/apply-edit.dto';
 
 @Controller('assistant/notes')
 @UseGuards(JwtAuthGuard)
@@ -81,6 +83,26 @@ export class AssistantController {
   @Post(':id/analyze')
   analyzeNote(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     return this.assistantService.analyzeNote(req.user.id, id);
+  }
+
+  @Post(':id/propose-edit')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  proposeEdit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ProposeEditDto,
+    @Req() req: any,
+  ) {
+    return this.assistantService.proposeEdit(req.user.id, id, dto);
+  }
+
+  @Post(':id/apply-edit')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  applyEdit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApplyEditDto,
+    @Req() req: any,
+  ) {
+    return this.assistantService.applyEdit(req.user.id, id, dto.proposalId);
   }
 
   @Delete(':id')

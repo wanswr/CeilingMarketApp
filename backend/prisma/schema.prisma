@@ -13,3 +13,32 @@ enum AssistantNoteAnalysisStatus {
   FAILED
   STALE
 }
+
+enum AssistantNoteEditProposalStatus {
+  PENDING
+  APPLIED
+  CANCELLED
+  EXPIRED
+  STALE
+}
+
+model AssistantNoteEditProposal {
+  id          String                            @id @default(uuid())
+  noteId      String
+  userId      String
+  baseVersion Int
+  inputType   String                            @default("TEXT")
+  rawInput    String
+  operations  Json
+  uncertainties Json?
+  summary     String?
+  status      AssistantNoteEditProposalStatus   @default(PENDING)
+  createdAt   DateTime                          @default(now())
+  appliedAt   DateTime?
+
+  note        AssistantNote                     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  user        User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@index([userId])
+}

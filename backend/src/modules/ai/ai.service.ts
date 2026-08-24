@@ -260,3 +260,32 @@ export class AiService {
     }
   }
 }
+
+export interface AssistantNoteEditOperation {
+  operation:
+    | 'UPDATE_ITEM'
+    | 'ADD_ITEM'
+    | 'REMOVE_ITEM'
+    | 'ADD_TASK'
+    | 'UPDATE_TASK'
+    | 'REMOVE_TASK'
+    | 'ADD_DATE'
+    | 'UPDATE_DATE'
+    | 'UPDATE_TITLE';
+  targetId?: string | null;
+  section?: string | null;
+  field?: string | null;
+  oldValue?: any;
+  newValue?: any;
+  item?: AssistantNoteStructuredItem | null;
+  task?: AssistantNoteStructuredTask | null;
+  date?: AssistantNoteStructuredDate | null;
+  title?: string | null;
+  reason: string;
+}
+
+export interface AssistantNoteEditProposalOutput {
+  summary: string;
+  operations: AssistantNoteEditOperation[];
+  uncertainties?: AssistantNoteStructuredUncertainty[];
+}

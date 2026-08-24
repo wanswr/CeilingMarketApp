@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
@@ -10,6 +11,7 @@ import { AiService } from '../ai/ai.service';
 import { CreateAssistantNoteDto } from './dto/create-assistant-note.dto';
 import { UpdateAssistantNoteDto } from './dto/update-assistant-note.dto';
 import { AssistantNotesQueryDto } from './dto/assistant-notes-query.dto';
+import { ProposeEditDto } from './dto/propose-edit.dto';
 import { ConfigService } from '@nestjs/config';
 import {
   AssistantNoteStatus,
@@ -17,10 +19,12 @@ import {
   AssistantNoteAttachmentType,
   AssistantNoteTranscriptionStatus,
   AssistantNoteAnalysisStatus,
+  AssistantNoteEditProposalStatus,
 } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 
 const ALLOWED_AUDIO_MIME_TYPES = [
   'audio/m4a',
@@ -60,6 +64,48 @@ export class AssistantService {
     return crypto.createHash('sha256').update(combinedPayload).digest('hex');
   }
 
+  private ensureStableIds(structuredData: any): any {
+    if (!structuredData) return {};
+    const copy = JSON.parse(JSON.stringify(structuredData));
+
+    if (Array.isArray(copy.sections)) {
+      copy.sections.forEach((sec: any) => {
+        if (!sec.id) sec.id = uuidv4();
+        if (Array.isArray(sec.items)) {
+          sec.items.forEach((item: any) => {
+            if (!item.id) item.id = uuidv4();
+          });
+        }
+      });
+    }
+
+    if (Array.isArray(copy.items)) {
+      copy.items.forEach((item: any) => {
+        if (!item.id) item.id = uuidv4();
+      });
+    }
+
+    if (Array.isArray(copy.tasks)) {
+      copy.tasks.forEach((task: any) => {
+        if (!task.id) task.id = uuidv4();
+      });
+    }
+
+    if (Array.isArray(copy.dates)) {
+      copy.dates.forEach((date: any) => {
+        if (!date.id) date.id = uuidv4();
+      });
+    }
+
+    if (Array.isArray(copy.uncertainties)) {
+      copy.uncertainties.forEach((unc: any) => {
+        if (!unc.id) unc.id = uuidv4();
+      });
+    }
+
+    return copy;
+  }
+
   private markAnalysisStaleIfCompleted(existingStatus: AssistantNoteAnalysisStatus): AssistantNoteAnalysisStatus {
     if (
       existingStatus === AssistantNoteAnalysisStatus.COMPLETED ||
@@ -85,8 +131,9 @@ export class AssistantService {
         userId,
         title: dto.title,
         rawText: dto.rawText,
-        structuredData: dto.structuredData,
+        structuredData: dto.structuredData ? this.ensureStableIds(dto.structuredData) : null,
         status: initialStatus,
+        version: 1,
         analysisStatus: dto.structuredData
           ? AssistantNoteAnalysisStatus.COMPLETED
           : AssistantNoteAnalysisStatus.IDLE,
@@ -175,10 +222,11 @@ export class AssistantService {
       }
     }
     if (dto.structuredData !== undefined) {
-      updatedData.structuredData = dto.structuredData;
+      updatedData.structuredData = this.ensureStableIds(dto.structuredData);
       if (!existingNote.status || existingNote.status === AssistantNoteStatus.DRAFT) {
         updatedData.status = AssistantNoteStatus.STRUCTURED;
       }
+      isContentChanged = true;
     }
     if (dto.status !== undefined) updatedData.status = dto.status;
 
@@ -186,6 +234,7 @@ export class AssistantService {
       updatedData.analysisStatus = this.markAnalysisStaleIfCompleted(
         existingNote.analysisStatus,
       );
+      updatedData.version = existingNote.version + 1;
     }
 
     const updatedNote = await this.prisma.assistantNote.update({
@@ -275,6 +324,13 @@ export class AssistantService {
       },
     });
 
+    await this.prisma.assistantNote.update({
+      where: { id },
+      data: {
+        version: note.version + 1,
+      },
+    });
+
     await this.prisma.assistantNoteRevision.create({
       data: {
         noteId: id,
@@ -351,12 +407,13 @@ export class AssistantService {
       });
 
       const nextAnalysisStatus = this.markAnalysisStaleIfCompleted(note.analysisStatus);
-      if (nextAnalysisStatus !== note.analysisStatus) {
-        await this.prisma.assistantNote.update({
-          where: { id: noteId },
-          data: { analysisStatus: nextAnalysisStatus },
-        });
-      }
+      await this.prisma.assistantNote.update({
+        where: { id: noteId },
+        data: {
+          analysisStatus: nextAnalysisStatus,
+          version: note.version + 1,
+        },
+      });
 
       await this.prisma.assistantNoteRevision.create({
         data: {
@@ -411,7 +468,6 @@ export class AssistantService {
       completedTranscriptions,
     );
 
-    // Cost & Idempotency guard: Skip OpenAI call if input hash matches completed analysis
     if (
       note.analysisInputHash === currentHash &&
       note.analysisStatus === AssistantNoteAnalysisStatus.COMPLETED
@@ -423,7 +479,6 @@ export class AssistantService {
       return note;
     }
 
-    // Concurrency lock guard: Prevent concurrent analysis requests
     if (note.analysisStatus === AssistantNoteAnalysisStatus.PROCESSING) {
       this.logger.warn(
         'ASSISTANT_ANALYSIS_CONCURRENT_BLOCKED',
@@ -433,7 +488,6 @@ export class AssistantService {
       return note;
     }
 
-    // Atomically transition to PROCESSING
     await this.prisma.assistantNote.update({
       where: { id: noteId },
       data: {
@@ -451,16 +505,19 @@ export class AssistantService {
         transcriptions: completedTranscriptions,
       });
 
+      const structuredWithIds = this.ensureStableIds(structuredOutput);
+
       const updatedNote = await this.prisma.assistantNote.update({
         where: { id: noteId },
         data: {
-          structuredData: structuredOutput as any,
+          structuredData: structuredWithIds,
           status: AssistantNoteStatus.STRUCTURED,
           analysisStatus: AssistantNoteAnalysisStatus.COMPLETED,
           analysisInputHash: currentHash,
           analyzedAt: new Date(),
           analysisModel: modelName,
           analysisError: null,
+          version: note.version + 1,
         },
         include: {
           attachments: { orderBy: { createdAt: 'asc' } },
@@ -472,7 +529,7 @@ export class AssistantService {
         data: {
           noteId,
           source: AssistantNoteRevisionSource.AI_PATCH,
-          newData: structuredOutput as any,
+          newData: structuredWithIds,
         },
       });
 
@@ -488,7 +545,6 @@ export class AssistantService {
         `Analysis failed for note ${noteId}: ${safeError}`,
       );
 
-      // Transition to FAILED while preserving existing structuredData
       await this.prisma.assistantNote.update({
         where: { id: noteId },
         data: {
@@ -499,6 +555,160 @@ export class AssistantService {
 
       return this.findOne(userId, noteId);
     }
+  }
+
+  async proposeEdit(userId: string, noteId: string, dto: ProposeEditDto) {
+    const note = await this.findOne(userId, noteId);
+
+    const currentStructured = this.ensureStableIds(note.structuredData || {});
+
+    const proposalOutput = await this.aiService.proposeNoteEdit(
+      currentStructured,
+      dto.text,
+    );
+
+    const proposal = await this.prisma.assistantNoteEditProposal.create({
+      data: {
+        noteId,
+        userId,
+        baseVersion: note.version,
+        inputType: dto.attachmentId ? 'VOICE' : 'TEXT',
+        rawInput: dto.text,
+        operations: proposalOutput.operations as any,
+        uncertainties: proposalOutput.uncertainties as any,
+        summary: proposalOutput.summary,
+        status: AssistantNoteEditProposalStatus.PENDING,
+      },
+    });
+
+    this.logger.info('ASSISTANT_PROPOSAL_CREATED', `Created edit proposal ${proposal.id}`, {
+      userId,
+      noteId,
+    });
+    return proposal;
+  }
+
+  async applyEdit(userId: string, noteId: string, proposalId: string) {
+    const note = await this.findOne(userId, noteId);
+
+    const proposal = await this.prisma.assistantNoteEditProposal.findUnique({
+      where: { id: proposalId },
+    });
+
+    if (!proposal || proposal.noteId !== noteId) {
+      throw new NotFoundException('Edit proposal not found for this note');
+    }
+
+    if (proposal.userId !== userId) {
+      throw new ForbiddenException('You do not have permission to apply this proposal');
+    }
+
+    if (proposal.status !== AssistantNoteEditProposalStatus.PENDING) {
+      throw new ConflictException('Proposal has already been applied or invalidated');
+    }
+
+    // Optimistic concurrency check: verify baseVersion matches current note version
+    if (proposal.baseVersion !== note.version) {
+      await this.prisma.assistantNoteEditProposal.update({
+        where: { id: proposalId },
+        data: { status: AssistantNoteEditProposalStatus.STALE },
+      });
+      throw new ConflictException(
+        'Note content has changed. Please refresh and retry editing.',
+      );
+    }
+
+    const currentStructured = this.ensureStableIds(note.structuredData || {});
+    const operations: any[] = (proposal.operations as any[]) || [];
+
+    // Apply delta operations onto structuredData
+    operations.forEach((op) => {
+      if (op.operation === 'UPDATE_ITEM' && op.targetId) {
+        if (Array.isArray(currentStructured.sections)) {
+          currentStructured.sections.forEach((sec: any) => {
+            if (Array.isArray(sec.items)) {
+              sec.items.forEach((item: any) => {
+                if (item.id === op.targetId) {
+                  if (op.field && op.newValue !== undefined) {
+                    item[op.field] = op.newValue;
+                  } else if (op.item) {
+                    Object.assign(item, op.item);
+                  }
+                }
+              });
+            }
+          });
+        }
+      } else if (op.operation === 'ADD_ITEM') {
+        const newItem = op.item || { name: 'Новая позиция' };
+        if (!newItem.id) newItem.id = uuidv4();
+
+        if (!currentStructured.sections) currentStructured.sections = [];
+        const targetSecName = op.section || 'Общее';
+        let section = currentStructured.sections.find((s: any) => s.name === targetSecName);
+        if (!section) {
+          section = { id: uuidv4(), name: targetSecName, items: [] };
+          currentStructured.sections.push(section);
+        }
+        if (!Array.isArray(section.items)) section.items = [];
+        section.items.push(newItem);
+      } else if (op.operation === 'REMOVE_ITEM' && op.targetId) {
+        if (Array.isArray(currentStructured.sections)) {
+          currentStructured.sections.forEach((sec: any) => {
+            if (Array.isArray(sec.items)) {
+              sec.items = sec.items.filter((item: any) => item.id !== op.targetId);
+            }
+          });
+        }
+      } else if (op.operation === 'ADD_TASK' && op.task) {
+        if (!currentStructured.tasks) currentStructured.tasks = [];
+        const newTask = { ...op.task, id: uuidv4() };
+        currentStructured.tasks.push(newTask);
+      } else if (op.operation === 'UPDATE_TITLE' && op.title) {
+        currentStructured.titleSuggestion = op.title;
+      }
+    });
+
+    const updatedNote = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.assistantNote.update({
+        where: { id: noteId },
+        data: {
+          structuredData: currentStructured,
+          status: AssistantNoteStatus.STRUCTURED,
+          version: note.version + 1,
+        },
+        include: {
+          attachments: { orderBy: { createdAt: 'asc' } },
+          revisions: { orderBy: { createdAt: 'desc' } },
+        },
+      });
+
+      await tx.assistantNoteEditProposal.update({
+        where: { id: proposalId },
+        data: {
+          status: AssistantNoteEditProposalStatus.APPLIED,
+          appliedAt: new Date(),
+        },
+      });
+
+      await tx.assistantNoteRevision.create({
+        data: {
+          noteId,
+          source: AssistantNoteRevisionSource.AI_PATCH,
+          rawInput: proposal.rawInput,
+          newData: currentStructured,
+        },
+      });
+
+      return updated;
+    });
+
+    this.logger.info('ASSISTANT_PROPOSAL_APPLIED', `Applied edit proposal ${proposalId}`, {
+      userId,
+      noteId,
+    });
+
+    return updatedNote;
   }
 
   async archive(userId: string, id: string) {

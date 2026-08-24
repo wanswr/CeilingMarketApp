@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  TextInput,
+  Modal,
 } from 'react';
 import { apiService } from '../../services/ApiService';
 import { audioRecorder } from '../../services/AudioRecorder';
@@ -16,6 +18,7 @@ import {
   AssistantNoteTranscriptionStatus,
   AssistantNoteAnalysisStatus,
   AssistantNoteStructuredOutput,
+  AssistantNoteEditProposal,
 } from '../../types/assistant';
 
 interface Props {
@@ -35,6 +38,13 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<string | null>(null);
   const [transcribingIds, setTranscribingIds] = useState<Set<string>>(new Set());
+
+  // AI Edit Modal State
+  const [editModalVisible, setEditModalVisible] = useState<boolean>(false);
+  const [editText, setEditText] = useState<string>('');
+  const [proposing, setProposing] = useState<boolean>(false);
+  const [applying, setApplying] = useState<boolean>(false);
+  const [proposal, setProposal] = useState<AssistantNoteEditProposal | null>(null);
 
   const fetchNote = async () => {
     try {
@@ -109,6 +119,56 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
       await fetchNote();
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleProposeEdit = async () => {
+    if (!editText.trim()) {
+      Alert.alert('Предупреждение', 'Введите текст изменений');
+      return;
+    }
+
+    try {
+      setProposing(true);
+      const prop = await apiService.proposeAssistantNoteEdit(id, editText.trim());
+      setProposal(prop);
+    } catch (error: any) {
+      Alert.alert(
+        'Ошибка обработки изменений',
+        error?.response?.data?.message || 'Не удалось обработать изменения',
+      );
+    } finally {
+      setProposing(false);
+    }
+  };
+
+  const handleApplyEdit = async () => {
+    if (!proposal) return;
+
+    try {
+      setApplying(true);
+      const updatedNote = await apiService.applyAssistantNoteEdit(id, proposal.id);
+      setNote(updatedNote);
+      setProposal(null);
+      setEditText('');
+      setEditModalVisible(false);
+      Alert.alert('Успех', 'Изменения успешно применены');
+    } catch (error: any) {
+      if (error?.response?.status === 409) {
+        Alert.alert(
+          'Заметка изменилась',
+          'Содержимое заметки изменилось. Пожалуйста, обновите страницу и повторите обработку изменений.',
+        );
+        setProposal(null);
+        await fetchNote();
+      } else {
+        Alert.alert(
+          'Ошибка применения',
+          error?.response?.data?.message || 'Не удалось применить изменения',
+        );
+      }
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -198,7 +258,15 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
       {/* Structured AI View */}
       {structuredData && (structuredData.summary || (structuredData.sections && structuredData.sections.length > 0)) ? (
         <View style={styles.structuredCard}>
-          <Text style={styles.structuredCardHeader}>Ассистент разобрал заметку</Text>
+          <View style={styles.structuredHeaderRow}>
+            <Text style={styles.structuredCardHeader}>Ассистент разобрал заметку</Text>
+            <TouchableOpacity
+              style={styles.editAssistantButton}
+              onPress={() => setEditModalVisible(true)}
+            >
+              <Text style={styles.editAssistantButtonText}>Изменить через Ассистента</Text>
+            </TouchableOpacity>
+          </View>
 
           {structuredData.summary ? (
             <Text style={styles.structuredSummary}>{structuredData.summary}</Text>
@@ -207,10 +275,10 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
           {/* Sections & Items */}
           {structuredData.sections && structuredData.sections.length > 0 ? (
             structuredData.sections.map((sec, idx) => (
-              <View key={idx} style={styles.sectionBox}>
+              <View key={sec.id || idx} style={styles.sectionBox}>
                 <Text style={styles.sectionBoxTitle}>{sec.name}</Text>
                 {sec.items && sec.items.map((item, itemIdx) => (
-                  <View key={itemIdx} style={styles.itemRow}>
+                  <View key={item.id || itemIdx} style={styles.itemRow}>
                     <Text style={styles.itemQuantity}>
                       {item.quantity ? `${item.quantity} ${item.unit || ''}` : ''}
                     </Text>
@@ -226,7 +294,7 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
             <View style={styles.subSection}>
               <Text style={styles.subSectionTitle}>Задачи:</Text>
               {structuredData.tasks.map((task, taskIdx) => (
-                <Text key={taskIdx} style={styles.taskText}>
+                <Text key={task.id || taskIdx} style={styles.taskText}>
                   • {task.text} {task.dateText ? `(${task.dateText})` : ''}
                 </Text>
               ))}
@@ -238,7 +306,7 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
             <View style={styles.uncertaintyBox}>
               <Text style={styles.uncertaintyTitle}>Нужно уточнить:</Text>
               {structuredData.uncertainties.map((unc, uncIdx) => (
-                <Text key={uncIdx} style={styles.uncertaintyQuestion}>
+                <Text key={unc.id || uncIdx} style={styles.uncertaintyQuestion}>
                   • {unc.question}
                 </Text>
               ))}
@@ -372,6 +440,84 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
           <Text style={styles.archiveButtonText}>Архивировать</Text>
         </TouchableOpacity>
       </View>
+
+      {/* AI Edit Modal */}
+      <Modal visible={editModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Изменить через Ассистента</Text>
+
+            {!proposal ? (
+              <>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Например: Светильников теперь 12. Парящего 4м. Добавь карниз 3м."
+                  value={editText}
+                  onChangeText={setEditText}
+                  multiline
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
+                    onPress={() => {
+                      setEditModalVisible(false);
+                      setEditText('');
+                    }}
+                  >
+                    <Text style={styles.modalCancelText}>Отмена</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modalProposeButton}
+                    onPress={handleProposeEdit}
+                    disabled={proposing}
+                  >
+                    {proposing ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={styles.modalProposeText}>Обработать</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.proposalSummary}>
+                  {proposal.summary || 'Ассистент предлагает изменения:'}
+                </Text>
+
+                <ScrollView style={styles.operationsList}>
+                  {proposal.operations.map((op, idx) => (
+                    <View key={idx} style={styles.operationRow}>
+                      <Text style={styles.operationBadge}>{op.operation}</Text>
+                      <Text style={styles.operationReason}>{op.reason}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
+                    onPress={() => setProposal(null)}
+                  >
+                    <Text style={styles.modalCancelText}>Отмена</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modalApplyButton}
+                    onPress={handleApplyEdit}
+                    disabled={applying}
+                  >
+                    {applying ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={styles.modalApplyText}>Применить изменения</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -425,12 +571,25 @@ const styles = StyleSheet.create({
     borderColor: '#E5E5EA',
     marginBottom: 20,
   },
+  structuredHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   structuredCardHeader: {
     fontSize: 16,
     fontWeight: '700',
     color: '#007AFF',
-    marginBottom: 8,
+    flex: 1,
   },
+  editAssistantButton: {
+    backgroundColor: '#E5F1FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  editAssistantButtonText: { fontSize: 12, fontWeight: '600', color: '#007AFF' },
   structuredSummary: { fontSize: 14, color: '#3A3A3C', marginBottom: 12, fontStyle: 'italic' },
   sectionBox: { marginTop: 8, marginBottom: 8 },
   sectionBoxTitle: { fontSize: 14, fontWeight: '600', color: '#1C1C1E', marginBottom: 4 },
@@ -551,4 +710,56 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   archiveButtonText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#1C1C1E', marginBottom: 12 },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  proposalSummary: { fontSize: 14, color: '#3A3A3C', marginBottom: 12, fontStyle: 'italic' },
+  operationsList: { maxHeight: 200, marginBottom: 16 },
+  operationRow: {
+    backgroundColor: '#F8F9FA',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  operationBadge: { fontSize: 12, fontWeight: '700', color: '#007AFF' },
+  operationReason: { fontSize: 13, color: '#2C2C2E', marginTop: 2 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end' },
+  modalCancelButton: { paddingHorizontal: 16, paddingVertical: 10, marginRight: 8 },
+  modalCancelText: { fontSize: 14, color: '#8E8E93', fontWeight: '600' },
+  modalProposeButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  modalProposeText: { fontSize: 14, color: '#FFF', fontWeight: '600' },
+  modalApplyButton: {
+    backgroundColor: '#34C759',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  modalApplyText: { fontSize: 14, color: '#FFF', fontWeight: '600' },
 });
