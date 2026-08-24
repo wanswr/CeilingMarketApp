@@ -7,13 +7,15 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-} from 'react'
+} from 'react';
 import { apiService } from '../../services/ApiService';
 import { audioRecorder } from '../../services/AudioRecorder';
 import {
   AssistantNote,
   AssistantNoteAttachment,
   AssistantNoteTranscriptionStatus,
+  AssistantNoteAnalysisStatus,
+  AssistantNoteStructuredOutput,
 } from '../../types/assistant';
 
 interface Props {
@@ -29,6 +31,7 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
   const { id } = route.params;
   const [note, setNote] = useState<AssistantNote | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [analyzing, setAnalyzing] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<string | null>(null);
   const [transcribingIds, setTranscribingIds] = useState<Set<string>>(new Set());
@@ -93,6 +96,22 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
     }
   };
 
+  const handleAnalyze = async () => {
+    try {
+      setAnalyzing(true);
+      const updatedNote = await apiService.analyzeAssistantNote(id);
+      setNote(updatedNote);
+    } catch (error: any) {
+      Alert.alert(
+        'Ошибка разбора',
+        error?.response?.data?.message || 'Не удалось выполнить структурированный разбор заметки',
+      );
+      await fetchNote();
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const handleTogglePlay = async (attachment: AssistantNoteAttachment) => {
     if (isPlaying === attachment.id) {
       await audioRecorder.stopAudio();
@@ -146,12 +165,118 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
     );
   }
 
+  const structuredData = note.structuredData as AssistantNoteStructuredOutput | null;
+  const isStale = note.analysisStatus === AssistantNoteAnalysisStatus.STALE;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={styles.title}>{note.title}</Text>
         <Text style={styles.statusBadge}>{note.status}</Text>
       </View>
+
+      {/* STALE Banner */}
+      {isStale ? (
+        <View style={styles.staleBanner}>
+          <Text style={styles.staleBannerText}>
+            Заметка изменилась после последнего разбора.
+          </Text>
+          <TouchableOpacity
+            style={styles.reanalyzeButton}
+            onPress={handleAnalyze}
+            disabled={analyzing}
+          >
+            {analyzing ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Text style={styles.reanalyzeButtonText}>Обновить разбор</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* Structured AI View */}
+      {structuredData && (structuredData.summary || (structuredData.sections && structuredData.sections.length > 0)) ? (
+        <View style={styles.structuredCard}>
+          <Text style={styles.structuredCardHeader}>Ассистент разобрал заметку</Text>
+
+          {structuredData.summary ? (
+            <Text style={styles.structuredSummary}>{structuredData.summary}</Text>
+          ) : null}
+
+          {/* Sections & Items */}
+          {structuredData.sections && structuredData.sections.length > 0 ? (
+            structuredData.sections.map((sec, idx) => (
+              <View key={idx} style={styles.sectionBox}>
+                <Text style={styles.sectionBoxTitle}>{sec.name}</Text>
+                {sec.items && sec.items.map((item, itemIdx) => (
+                  <View key={itemIdx} style={styles.itemRow}>
+                    <Text style={styles.itemQuantity}>
+                      {item.quantity ? `${item.quantity} ${item.unit || ''}` : ''}
+                    </Text>
+                    <Text style={styles.itemName}>{item.name}</Text>
+                  </View>
+                ))}
+              </View>
+            ))
+          ) : null}
+
+          {/* Tasks */}
+          {structuredData.tasks && structuredData.tasks.length > 0 ? (
+            <View style={styles.subSection}>
+              <Text style={styles.subSectionTitle}>Задачи:</Text>
+              {structuredData.tasks.map((task, taskIdx) => (
+                <Text key={taskIdx} style={styles.taskText}>
+                  • {task.text} {task.dateText ? `(${task.dateText})` : ''}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+
+          {/* Uncertainties */}
+          {structuredData.uncertainties && structuredData.uncertainties.length > 0 ? (
+            <View style={styles.uncertaintyBox}>
+              <Text style={styles.uncertaintyTitle}>Нужно уточнить:</Text>
+              {structuredData.uncertainties.map((unc, uncIdx) => (
+                <Text key={uncIdx} style={styles.uncertaintyQuestion}>
+                  • {unc.question}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+
+          {/* Suggested Actions Badges (Informational) */}
+          {structuredData.suggestedActions && structuredData.suggestedActions.length > 0 ? (
+            <View style={styles.actionsBox}>
+              <Text style={styles.actionsBoxTitle}>Предложения Ассистента:</Text>
+              <View style={styles.badgeRow}>
+                {structuredData.suggestedActions.map((act, actIdx) => (
+                  <View key={actIdx} style={styles.actionBadge}>
+                    <Text style={styles.actionBadgeText}>{act.type}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+        </View>
+      ) : (
+        <View style={styles.analyzePromptCard}>
+          <Text style={styles.analyzePromptText}>
+            Заметка еще не обработана Ассистентом.
+          </Text>
+          <TouchableOpacity
+            style={styles.analyzeButton}
+            onPress={handleAnalyze}
+            disabled={analyzing}
+          >
+            {analyzing ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Text style={styles.analyzeButtonText}>Обработать заметку</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       {note.rawText ? (
         <View style={styles.section}>
@@ -273,6 +398,95 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: 'hidden',
   },
+  staleBanner: {
+    backgroundColor: '#FFF3CD',
+    borderColor: '#FFEEBA',
+    borderWidth: 1,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  staleBannerText: { fontSize: 13, color: '#856404', flex: 1, marginRight: 8 },
+  reanalyzeButton: {
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  reanalyzeButtonText: { color: '#FFF', fontWeight: '600', fontSize: 12 },
+  structuredCard: {
+    backgroundColor: '#FFF',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    marginBottom: 20,
+  },
+  structuredCardHeader: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#007AFF',
+    marginBottom: 8,
+  },
+  structuredSummary: { fontSize: 14, color: '#3A3A3C', marginBottom: 12, fontStyle: 'italic' },
+  sectionBox: { marginTop: 8, marginBottom: 8 },
+  sectionBoxTitle: { fontSize: 14, fontWeight: '600', color: '#1C1C1E', marginBottom: 4 },
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 4,
+    marginBottom: 3,
+  },
+  itemName: { fontSize: 13, color: '#2C2C2E', flex: 1 },
+  itemQuantity: { fontSize: 13, fontWeight: '600', color: '#007AFF', marginRight: 8 },
+  subSection: { marginTop: 10 },
+  subSectionTitle: { fontSize: 14, fontWeight: '600', color: '#1C1C1E', marginBottom: 4 },
+  taskText: { fontSize: 13, color: '#2C2C2E', marginBottom: 2 },
+  uncertaintyBox: {
+    marginTop: 10,
+    backgroundColor: '#FFF5F5',
+    padding: 8,
+    borderRadius: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF3B30',
+  },
+  uncertaintyTitle: { fontSize: 13, fontWeight: '600', color: '#FF3B30', marginBottom: 4 },
+  uncertaintyQuestion: { fontSize: 13, color: '#C0392B' },
+  actionsBox: { marginTop: 10 },
+  actionsBoxTitle: { fontSize: 12, color: '#8E8E93', marginBottom: 4 },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  actionBadge: {
+    backgroundColor: '#E5F1FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  actionBadgeText: { fontSize: 11, fontWeight: '600', color: '#007AFF' },
+  analyzePromptCard: {
+    backgroundColor: '#FFF',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  analyzePromptText: { fontSize: 14, color: '#8E8E93', marginBottom: 10 },
+  analyzeButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  analyzeButtonText: { color: '#FFF', fontWeight: '600', fontSize: 14 },
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 16, fontWeight: '600', color: '#3A3A3C', marginBottom: 8 },
   rawText: {

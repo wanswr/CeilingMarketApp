@@ -3,7 +3,6 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
-  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
@@ -11,14 +10,17 @@ import { AiService } from '../ai/ai.service';
 import { CreateAssistantNoteDto } from './dto/create-assistant-note.dto';
 import { UpdateAssistantNoteDto } from './dto/update-assistant-note.dto';
 import { AssistantNotesQueryDto } from './dto/assistant-notes-query.dto';
+import { ConfigService } from '@nestjs/config';
 import {
   AssistantNoteStatus,
   AssistantNoteRevisionSource,
   AssistantNoteAttachmentType,
   AssistantNoteTranscriptionStatus,
+  AssistantNoteAnalysisStatus,
 } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 const ALLOWED_AUDIO_MIME_TYPES = [
   'audio/m4a',
@@ -41,8 +43,31 @@ export class AssistantService {
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
     private readonly aiService: AiService,
+    private readonly configService: ConfigService,
   ) {
     this.logger.setContext('AssistantService');
+  }
+
+  computeAnalysisInputHash(rawText?: string | null, transcriptions: string[] = []): string {
+    const normalizedRaw = (rawText || '').trim();
+    const normalizedTranscriptions = transcriptions.map((t) => t.trim()).filter(Boolean);
+
+    const combinedPayload = JSON.stringify({
+      rawText: normalizedRaw,
+      transcriptions: normalizedTranscriptions,
+    });
+
+    return crypto.createHash('sha256').update(combinedPayload).digest('hex');
+  }
+
+  private markAnalysisStaleIfCompleted(existingStatus: AssistantNoteAnalysisStatus): AssistantNoteAnalysisStatus {
+    if (
+      existingStatus === AssistantNoteAnalysisStatus.COMPLETED ||
+      existingStatus === AssistantNoteAnalysisStatus.STALE
+    ) {
+      return AssistantNoteAnalysisStatus.STALE;
+    }
+    return existingStatus;
   }
 
   async create(userId: string, dto: CreateAssistantNoteDto) {
@@ -62,6 +87,9 @@ export class AssistantService {
         rawText: dto.rawText,
         structuredData: dto.structuredData,
         status: initialStatus,
+        analysisStatus: dto.structuredData
+          ? AssistantNoteAnalysisStatus.COMPLETED
+          : AssistantNoteAnalysisStatus.IDLE,
         revisions: {
           create: {
             source: AssistantNoteRevisionSource.MANUAL,
@@ -137,8 +165,15 @@ export class AssistantService {
     const existingNote = await this.findOne(userId, id);
 
     const updatedData: any = {};
+    let isContentChanged = false;
+
     if (dto.title !== undefined) updatedData.title = dto.title;
-    if (dto.rawText !== undefined) updatedData.rawText = dto.rawText;
+    if (dto.rawText !== undefined) {
+      updatedData.rawText = dto.rawText;
+      if (dto.rawText !== existingNote.rawText) {
+        isContentChanged = true;
+      }
+    }
     if (dto.structuredData !== undefined) {
       updatedData.structuredData = dto.structuredData;
       if (!existingNote.status || existingNote.status === AssistantNoteStatus.DRAFT) {
@@ -146,6 +181,12 @@ export class AssistantService {
       }
     }
     if (dto.status !== undefined) updatedData.status = dto.status;
+
+    if (isContentChanged) {
+      updatedData.analysisStatus = this.markAnalysisStaleIfCompleted(
+        existingNote.analysisStatus,
+      );
+    }
 
     const updatedNote = await this.prisma.assistantNote.update({
       where: { id },
@@ -271,7 +312,6 @@ export class AssistantService {
       throw new BadRequestException('Attachment is not an audio file');
     }
 
-    // 1. Cost & Idempotency guard: If already completed, return immediately without calling OpenAI
     if (attachment.transcriptionStatus === AssistantNoteTranscriptionStatus.COMPLETED) {
       this.logger.info(
         'ASSISTANT_TRANSCRIPTION_SKIPPED',
@@ -281,7 +321,6 @@ export class AssistantService {
       return this.findOne(userId, noteId);
     }
 
-    // 2. Concurrency lock: Check and transition atomically to PROCESSING
     if (attachment.transcriptionStatus === AssistantNoteTranscriptionStatus.PROCESSING) {
       this.logger.warn(
         'ASSISTANT_TRANSCRIPTION_CONCURRENT_BLOCKED',
@@ -291,7 +330,6 @@ export class AssistantService {
       return this.findOne(userId, noteId);
     }
 
-    // Atomically acquire lock / transition to PROCESSING
     await this.prisma.assistantNoteAttachment.update({
       where: { id: attachmentId },
       data: {
@@ -312,7 +350,14 @@ export class AssistantService {
         },
       });
 
-      // Create VOICE revision preserving note rawText
+      const nextAnalysisStatus = this.markAnalysisStaleIfCompleted(note.analysisStatus);
+      if (nextAnalysisStatus !== note.analysisStatus) {
+        await this.prisma.assistantNote.update({
+          where: { id: noteId },
+          data: { analysisStatus: nextAnalysisStatus },
+        });
+      }
+
       await this.prisma.assistantNoteRevision.create({
         data: {
           noteId,
@@ -347,6 +392,113 @@ export class AssistantService {
     }
 
     return this.findOne(userId, noteId);
+  }
+
+  async analyzeNote(userId: string, noteId: string) {
+    const note = await this.findOne(userId, noteId);
+
+    const completedTranscriptions = (note.attachments || [])
+      .filter(
+        (att) =>
+          att.type === AssistantNoteAttachmentType.AUDIO &&
+          att.transcriptionStatus === AssistantNoteTranscriptionStatus.COMPLETED &&
+          att.transcriptionText,
+      )
+      .map((att) => att.transcriptionText as string);
+
+    const currentHash = this.computeAnalysisInputHash(
+      note.rawText,
+      completedTranscriptions,
+    );
+
+    // Cost & Idempotency guard: Skip OpenAI call if input hash matches completed analysis
+    if (
+      note.analysisInputHash === currentHash &&
+      note.analysisStatus === AssistantNoteAnalysisStatus.COMPLETED
+    ) {
+      this.logger.info('ASSISTANT_ANALYSIS_SKIPPED', `Note ${noteId} analysis up-to-date`, {
+        userId,
+        noteId,
+      });
+      return note;
+    }
+
+    // Concurrency lock guard: Prevent concurrent analysis requests
+    if (note.analysisStatus === AssistantNoteAnalysisStatus.PROCESSING) {
+      this.logger.warn(
+        'ASSISTANT_ANALYSIS_CONCURRENT_BLOCKED',
+        `Note ${noteId} is currently being analyzed`,
+        { userId, noteId },
+      );
+      return note;
+    }
+
+    // Atomically transition to PROCESSING
+    await this.prisma.assistantNote.update({
+      where: { id: noteId },
+      data: {
+        analysisStatus: AssistantNoteAnalysisStatus.PROCESSING,
+        analysisError: null,
+      },
+    });
+
+    const modelName =
+      this.configService.get<string>('OPENAI_ANALYSIS_MODEL') || 'gpt-4o-mini';
+
+    try {
+      const structuredOutput = await this.aiService.analyzeAssistantNote({
+        rawText: note.rawText || undefined,
+        transcriptions: completedTranscriptions,
+      });
+
+      const updatedNote = await this.prisma.assistantNote.update({
+        where: { id: noteId },
+        data: {
+          structuredData: structuredOutput as any,
+          status: AssistantNoteStatus.STRUCTURED,
+          analysisStatus: AssistantNoteAnalysisStatus.COMPLETED,
+          analysisInputHash: currentHash,
+          analyzedAt: new Date(),
+          analysisModel: modelName,
+          analysisError: null,
+        },
+        include: {
+          attachments: { orderBy: { createdAt: 'asc' } },
+          revisions: { orderBy: { createdAt: 'desc' } },
+        },
+      });
+
+      await this.prisma.assistantNoteRevision.create({
+        data: {
+          noteId,
+          source: AssistantNoteRevisionSource.AI_PATCH,
+          newData: structuredOutput as any,
+        },
+      });
+
+      this.logger.info('ASSISTANT_ANALYSIS_SUCCESS', `Analyzed note ${noteId}`, {
+        userId,
+        noteId,
+      });
+      return updatedNote;
+    } catch (error: any) {
+      const safeError = error.message || 'Analysis failed';
+      this.logger.error(
+        'ASSISTANT_ANALYSIS_FAILED',
+        `Analysis failed for note ${noteId}: ${safeError}`,
+      );
+
+      // Transition to FAILED while preserving existing structuredData
+      await this.prisma.assistantNote.update({
+        where: { id: noteId },
+        data: {
+          analysisStatus: AssistantNoteAnalysisStatus.FAILED,
+          analysisError: safeError,
+        },
+      });
+
+      return this.findOne(userId, noteId);
+    }
   }
 
   async archive(userId: string, id: string) {

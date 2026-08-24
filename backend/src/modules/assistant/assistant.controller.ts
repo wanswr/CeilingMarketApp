@@ -78,6 +78,11 @@ export class AssistantController {
     return this.assistantService.transcribeAttachment(req.user.id, noteId, attachmentId);
   }
 
+  @Post(':id/analyze')
+  analyzeNote(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.assistantService.analyzeNote(req.user.id, id);
+  }
+
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     return this.assistantService.archive(req.user.id, id);

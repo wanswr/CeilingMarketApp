@@ -3,6 +3,7 @@ import { AssistantService } from './assistant.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
 import { AiService } from '../ai/ai.service';
+import { ConfigService } from '@nestjs/config';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 
 describe('AssistantService', () => {
@@ -42,6 +43,7 @@ describe('AssistantService', () => {
 
     aiServiceMock = {
       transcribeAudio: jest.fn(),
+      analyzeAssistantNote: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -58,6 +60,10 @@ describe('AssistantService', () => {
         {
           provide: AiService,
           useValue: aiServiceMock,
+        },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn() },
         },
       ],
     }).compile();
