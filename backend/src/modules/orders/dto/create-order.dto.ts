@@ -104,4 +104,8 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   categoryId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  sourceNoteId?: string;
 }

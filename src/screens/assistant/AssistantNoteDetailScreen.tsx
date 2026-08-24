@@ -1,3 +1,4 @@
+import { buildOrderPrefillFromNote } from '../../utils/assistantOrderMapper';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -342,7 +343,23 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
         <Text style={styles.statusBadge}>{note.status}</Text>
       </View>
 
-      {/* STALE Banner */}
+
+      {/* Linked Order Banner */}
+      {note.convertedOrderId ? (
+        <View style={styles.linkedOrderBanner}>
+          <Text style={styles.linkedOrderBannerText}>
+            Из этой заметки создан заказ
+          </Text>
+          <TouchableOpacity
+            style={styles.openOrderBtn}
+            onPress={() => navigation.navigate('OrderDetail', { id: note.convertedOrderId })}
+          >
+            <Text style={styles.openOrderBtnText}>Открыть заказ</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+{/* STALE Banner */}
       {isStale ? (
         <View style={styles.staleBanner}>
           <Text style={styles.staleBannerText}>
@@ -368,7 +385,18 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
           <View style={styles.structuredHeaderRow}>
             <Text style={styles.structuredCardHeader}>Ассистент разобрал заметку</Text>
 
+
             <TouchableOpacity
+              style={styles.createOrderNavButton}
+              onPress={() => {
+                const prefill = buildOrderPrefillFromNote(note);
+                navigation.navigate('CreateOrder', { prefill, sourceNoteId: note.id });
+              }}
+            >
+              <Text style={styles.createOrderNavButtonText}>📋 Создать заказ</Text>
+            </TouchableOpacity>
+
+<TouchableOpacity
               style={styles.tableNavButton}
               onPress={() => navigation.navigate('AssistantNoteTable', { id })}
             >
@@ -1082,5 +1110,34 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   tableNavButtonText: { fontSize: 12, fontWeight: '600', color: '#FFF' },
+
+
+  createOrderNavButton: {
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  createOrderNavButtonText: { fontSize: 12, fontWeight: '600', color: '#FFF' },
+  linkedOrderBanner: {
+    backgroundColor: '#E5F1FF',
+    borderColor: '#B3D7FF',
+    borderWidth: 1,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  linkedOrderBannerText: { fontSize: 13, color: '#007AFF', fontWeight: '600', flex: 1 },
+  openOrderBtn: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  openOrderBtnText: { color: '#FFF', fontWeight: '600', fontSize: 12 },
 
 });
