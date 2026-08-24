@@ -1,198 +1,217 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   FlatList,
+  TouchableOpacity,
   ActivityIndicator,
+  Alert,
   RefreshControl,
-  SafeAreaView,
 } from 'react-native';
-import AppIcon from '../../components/AppIcon';
-import { COLORS, SHADOWS } from '../../constants/theme';
 import { apiService } from '../../services/ApiService';
-import { AssistantNote } from '../../types';
-import { formatDate } from '../../utils/date';
+import { AssistantNote, AssistantReminder } from '../../types/assistant';
 
-export default function AssistantScreen({ navigation }: any) {
+interface Props {
+  navigation: any;
+}
+
+export const AssistantScreen: React.FC<Props> = ({ navigation }) => {
   const [notes, setNotes] = useState<AssistantNote[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [reminders, setReminders] = useState<AssistantReminder[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  const fetchNotes = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-
+  const fetchData = async () => {
     try {
-      const res = await apiService.getAssistantNotes();
-      const list = Array.isArray(res.data) ? res.data : [];
-      setNotes(list);
-    } catch (e: any) {
-      setError('Не удалось загрузить заметки');
+      const [notesData, remindersData] = await Promise.all([
+        apiService.getAssistantNotes(),
+        apiService.getReminders(),
+      ]);
+      setNotes(notesData);
+      setReminders(
+        (remindersData || [])
+          .filter((r) => r.status === 'SCHEDULED')
+          .slice(0, 5),
+      );
+    } catch (error: any) {
+      Alert.alert('Ошибка', error?.response?.data?.message || 'Не удалось загрузить данные');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      fetchNotes();
-    });
-    return unsubscribe;
-  }, [navigation, fetchNotes]);
-
-  const renderNoteItem = ({ item }: { item: AssistantNote }) => {
-    return (
-      <TouchableOpacity
-        style={styles.noteCard}
-        activeOpacity={0.7}
-        onPress={() => navigation.navigate('AssistantNoteDetail', { noteId: item.id })}
-      >
-        <View style={styles.noteHeader}>
-          <Text style={styles.noteTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <View style={[
-            styles.statusBadge,
-            item.status === 'STRUCTURED' && styles.statusBadgeStructured
-          ]}>
-            <Text style={[
-              styles.statusText,
-              item.status === 'STRUCTURED' && styles.statusTextStructured
-            ]}>
-              {item.status === 'STRUCTURED' ? 'Структурировано' : 'Заметка'}
-            </Text>
-          </View>
-        </View>
-
-        {item.rawText ? (
-          <Text style={styles.notePreview} numberOfLines={2}>
-            {item.rawText}
-          </Text>
-        ) : null}
-
-        <Text style={styles.noteDate}>
-          {formatDate(item.updatedAt || item.createdAt)}
-        </Text>
-      </TouchableOpacity>
-    );
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <AppIcon name="nav-back" size={24} color={COLORS.dark} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Ассистент</Text>
-        <View style={{ width: 24 }} />
-      </View>
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-      <View style={styles.content}>
-        <Text style={styles.subtitle}>
-          Запишите то, что важно. Позже сможете дополнить или использовать заметку.
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
+
+  const renderNoteItem = ({ item }: { item: AssistantNote }) => (
+    <TouchableOpacity
+      style={styles.noteCard}
+      onPress={() => navigation.navigate('AssistantNoteDetail', { id: item.id })}
+    >
+      <View style={styles.noteHeader}>
+        <Text style={styles.noteTitle} numberOfLines={1}>
+          {item.title}
         </Text>
-
-        <TouchableOpacity
-          style={styles.createBtn}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('AssistantNoteEditor', { mode: 'create' })}
-        >
-          <AppIcon name="tab-create" size={22} color="#fff" />
-          <Text style={styles.createBtnText}>Новая заметка</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.sectionTitle}>Последние заметки</Text>
-
-        {loading && !refreshing ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-          </View>
-        ) : error ? (
-          <View style={styles.center}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryBtn} onPress={() => fetchNotes()}>
-              <Text style={styles.retryBtnText}>Повторить</Text>
-            </TouchableOpacity>
-          </View>
-        ) : notes.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <AppIcon name="action-attach" size={48} color={COLORS.border} />
-            <Text style={styles.emptyText}>
-              Пока нет заметок.{'\n'}
-              Создайте первую — сюда можно записать замер, мысль или информацию по объекту.
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={notes}
-            keyExtractor={item => item.id}
-            renderItem={renderNoteItem}
-            contentContainerStyle={{ paddingBottom: 30 }}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={() => fetchNotes(true)} />
-            }
-          />
-        )}
+        <Text style={styles.noteStatus}>{item.status}</Text>
       </View>
-    </SafeAreaView>
+      <Text style={styles.noteDate}>
+        {new Date(item.createdAt).toLocaleDateString('ru-RU', {
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })}
+      </Text>
+      {item.rawText ? (
+        <Text style={styles.noteText} numberOfLines={2}>
+          {item.rawText}
+        </Text>
+      ) : null}
+    </TouchableOpacity>
   );
-}
+
+  const renderReminderItem = ({ item }: { item: AssistantReminder }) => (
+    <TouchableOpacity
+      style={styles.reminderCard}
+      onPress={() => {
+        if (item.noteId) {
+          navigation.navigate('AssistantNoteDetail', { id: item.noteId });
+        }
+      }}
+    >
+      <View style={styles.reminderHeader}>
+        <Text style={styles.reminderTitle} numberOfLines={1}>
+          {item.title}
+        </Text>
+        <Text style={styles.reminderBadge}>SCHEDULED</Text>
+      </View>
+      <Text style={styles.reminderTime}>
+        ⏰ {new Date(item.scheduledAt).toLocaleString('ru-RU', {
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.topActions}>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => navigation.navigate('AssistantNoteEditor')}
+        >
+          <Text style={styles.createButtonText}>+ Новая заметка</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      >
+        {/* Reminders Section */}
+        {reminders && reminders.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Ближайшие напоминания</Text>
+            {reminders.map((reminder) => (
+              <View key={reminder.id}>{renderReminderItem({ item: reminder })}</View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Notes Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Все заметки</Text>
+          {notes && notes.length > 0 ? (
+            notes.map((note) => <View key={note.id}>{renderNoteItem({ item: note })}</View>)
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>У вас пока нет заметок</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: {
-    height: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    backgroundColor: '#fff',
-  },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark },
-  content: { flex: 1, padding: 20 },
-  subtitle: { fontSize: 14, color: COLORS.gray, lineHeight: 20, marginBottom: 16 },
-  createBtn: {
-    backgroundColor: COLORS.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 16,
-    gap: 8,
-    marginBottom: 24,
-    ...SHADOWS.soft,
-  },
-  createBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.dark, marginBottom: 12 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  errorText: { color: COLORS.danger, fontSize: 15, fontWeight: '600', marginBottom: 12, textAlign: 'center' },
-  retryBtn: { backgroundColor: COLORS.primary + '15', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
-  retryBtnText: { color: COLORS.primary, fontWeight: '700' },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 },
-  emptyText: { color: COLORS.gray, fontSize: 14, textAlign: 'center', lineHeight: 22, marginTop: 12 },
-  noteCard: {
-    backgroundColor: '#fff',
+  container: { flex: 1, backgroundColor: '#F9F9FB' },
+  scrollContent: { padding: 16 },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  topActions: {
     padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.soft,
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
   },
-  noteHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  noteTitle: { fontSize: 16, fontWeight: '800', color: COLORS.dark, flex: 1, marginRight: 8 },
-  statusBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  statusBadgeStructured: { backgroundColor: 'rgba(16, 185, 129, 0.1)' },
-  statusText: { fontSize: 11, fontWeight: '700', color: COLORS.gray },
-  statusTextStructured: { color: '#10B981' },
-  notePreview: { fontSize: 14, color: COLORS.gray, lineHeight: 20, marginBottom: 8 },
-  noteDate: { fontSize: 12, color: COLORS.placeholder },
+  createButton: {
+    backgroundColor: '#007AFF',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  createButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  section: { marginBottom: 20 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#1C1C1E', marginBottom: 12 },
+  noteCard: {
+    backgroundColor: '#FFF',
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  noteHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  noteTitle: { fontSize: 16, fontWeight: '600', color: '#1C1C1E', flex: 1 },
+  noteStatus: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#007AFF',
+    backgroundColor: '#E5F1FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  noteDate: { fontSize: 12, color: '#8E8E93', marginBottom: 6 },
+  noteText: { fontSize: 14, color: '#3A3A3C' },
+  reminderCard: {
+    backgroundColor: '#FFF',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#34C759',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  reminderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reminderTitle: { fontSize: 15, fontWeight: '600', color: '#1C1C1E', flex: 1 },
+  reminderBadge: { fontSize: 11, fontWeight: '600', color: '#34C759' },
+  reminderTime: { fontSize: 13, color: '#8E8E93', marginTop: 4 },
+  emptyContainer: { padding: 30, alignItems: 'center' },
+  emptyText: { fontSize: 15, color: '#8E8E93' },
 });

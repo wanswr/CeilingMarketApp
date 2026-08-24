@@ -9,9 +9,10 @@ import {
   Alert,
   TextInput,
   Modal,
-} from 'react';
+} from 'react-native';
 import { apiService } from '../../services/ApiService';
 import { audioRecorder } from '../../services/AudioRecorder';
+import { reminderNotificationService } from '../../services/ReminderNotificationService';
 import {
   AssistantNote,
   AssistantNoteAttachment,
@@ -19,6 +20,7 @@ import {
   AssistantNoteAnalysisStatus,
   AssistantNoteStructuredOutput,
   AssistantNoteEditProposal,
+  AssistantReminder,
 } from '../../types/assistant';
 
 interface Props {
@@ -33,6 +35,7 @@ interface Props {
 export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { id } = route.params;
   const [note, setNote] = useState<AssistantNote | null>(null);
+  const [reminders, setReminders] = useState<AssistantReminder[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [analyzing, setAnalyzing] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
@@ -46,19 +49,31 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
   const [applying, setApplying] = useState<boolean>(false);
   const [proposal, setProposal] = useState<AssistantNoteEditProposal | null>(null);
 
-  const fetchNote = async () => {
+  // Reminder Modal State
+  const [reminderModalVisible, setReminderModalVisible] = useState<boolean>(false);
+  const [reminderTitle, setReminderTitle] = useState<string>('');
+  const [reminderDateStr, setReminderDateStr] = useState<string>('');
+  const [reminderTimeStr, setReminderTimeStr] = useState<string>('19:00');
+  const [sourceTaskId, setSourceTaskId] = useState<string | undefined>(undefined);
+  const [creatingReminder, setCreatingReminder] = useState<boolean>(false);
+
+  const fetchNoteAndReminders = async () => {
     try {
-      const data = await apiService.getAssistantNote(id);
-      setNote(data);
+      const [noteData, remindersData] = await Promise.all([
+        apiService.getAssistantNote(id),
+        apiService.getReminders(id),
+      ]);
+      setNote(noteData);
+      setReminders(remindersData || []);
     } catch (error: any) {
-      Alert.alert('Ошибка', error?.response?.data?.message || 'Не удалось загрузить заметку');
+      Alert.alert('Ошибка', error?.response?.data?.message || 'Не удалось загрузить данные');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchNote();
+    fetchNoteAndReminders();
   }, [id]);
 
   const handleStartRecording = async () => {
@@ -96,7 +111,7 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
         'Ошибка расшифровки',
         error?.response?.data?.message || 'Не удалось выполнить расшифровку',
       );
-      await fetchNote();
+      await fetchNoteAndReminders();
     } finally {
       setTranscribingIds((prev) => {
         const next = new Set(prev);
@@ -116,9 +131,101 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
         'Ошибка разбора',
         error?.response?.data?.message || 'Не удалось выполнить структурированный разбор заметки',
       );
-      await fetchNote();
+      await fetchNoteAndReminders();
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleOpenReminderModal = (title: string, taskObj?: any) => {
+    setReminderTitle(title);
+    setSourceTaskId(taskObj?.id);
+
+    // Default to tomorrow 19:00 if date not explicitly passed
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateFormatted = tomorrow.toISOString().split('T')[0];
+
+    setReminderDateStr(dateFormatted);
+    setReminderTimeStr('19:00');
+    setReminderModalVisible(true);
+  };
+
+  const handleConfirmCreateReminder = async () => {
+    if (!reminderTitle.trim() || !reminderDateStr.trim() || !reminderTimeStr.trim()) {
+      Alert.alert('Предупреждение', 'Заполните название, дату и время');
+      return;
+    }
+
+    const fullDateIsoStr = `${reminderDateStr.trim()}T${reminderTimeStr.trim()}:00`;
+    const targetDate = new Date(fullDateIsoStr);
+
+    if (isNaN(targetDate.getTime()) || targetDate.getTime() <= Date.now()) {
+      Alert.alert('Ошибка даты', 'Время напоминания должно быть в будущем');
+      return;
+    }
+
+    try {
+      setCreatingReminder(true);
+
+      // Request notification permission contextually
+      const hasPermission = await reminderNotificationService.requestPermissions();
+
+      // Create reminder on backend
+      const reminder = await apiService.createReminder({
+        title: reminderTitle.trim(),
+        scheduledAt: targetDate.toISOString(),
+        noteId: id,
+        sourceTaskId,
+      });
+
+      // Schedule local notification if permission granted
+      if (hasPermission) {
+        const notificationId = await reminderNotificationService.scheduleNotification(
+          reminder.title,
+          'Напоминание от Ассистента',
+          targetDate,
+        );
+        if (notificationId) {
+          await apiService.updateReminder(reminder.id, { notificationId });
+        }
+      } else {
+        Alert.alert(
+          'Уведомления отключены',
+          'Напоминание сохранено, но уведомления на устройстве отключены.',
+        );
+      }
+
+      setReminderModalVisible(false);
+      await fetchNoteAndReminders();
+      Alert.alert('Успех', 'Напоминание успешно создано');
+    } catch (error: any) {
+      Alert.alert(
+        'Ошибка создания',
+        error?.response?.data?.message || 'Не удалось создать напоминание',
+      );
+    } finally {
+      setCreatingReminder(false);
+    }
+  };
+
+  const handleCompleteReminder = async (reminder: AssistantReminder) => {
+    try {
+      await apiService.completeReminder(reminder.id);
+      await reminderNotificationService.cancelNotification(reminder.notificationId);
+      await fetchNoteAndReminders();
+    } catch (error) {
+      Alert.alert('Ошибка', 'Не удалось завершить напоминание');
+    }
+  };
+
+  const handleCancelReminder = async (reminder: AssistantReminder) => {
+    try {
+      await apiService.cancelReminder(reminder.id);
+      await reminderNotificationService.cancelNotification(reminder.notificationId);
+      await fetchNoteAndReminders();
+    } catch (error) {
+      Alert.alert('Ошибка', 'Не удалось отменить напоминание');
     }
   };
 
@@ -160,7 +267,7 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
           'Содержимое заметки изменилось. Пожалуйста, обновите страницу и повторите обработку изменений.',
         );
         setProposal(null);
-        await fetchNote();
+        await fetchNoteAndReminders();
       } else {
         Alert.alert(
           'Ошибка применения',
@@ -294,9 +401,17 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
             <View style={styles.subSection}>
               <Text style={styles.subSectionTitle}>Задачи:</Text>
               {structuredData.tasks.map((task, taskIdx) => (
-                <Text key={task.id || taskIdx} style={styles.taskText}>
-                  • {task.text} {task.dateText ? `(${task.dateText})` : ''}
-                </Text>
+                <View key={task.id || taskIdx} style={styles.taskRow}>
+                  <Text style={styles.taskText}>
+                    • {task.text} {task.dateText ? `(${task.dateText})` : ''}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.createReminderSmallBtn}
+                    onPress={() => handleOpenReminderModal(task.text, task)}
+                  >
+                    <Text style={styles.createReminderSmallText}>+ Напоминание</Text>
+                  </TouchableOpacity>
+                </View>
               ))}
             </View>
           ) : null}
@@ -313,15 +428,25 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
             </View>
           ) : null}
 
-          {/* Suggested Actions Badges (Informational) */}
+          {/* Suggested Actions Badges */}
           {structuredData.suggestedActions && structuredData.suggestedActions.length > 0 ? (
             <View style={styles.actionsBox}>
               <Text style={styles.actionsBoxTitle}>Предложения Ассистента:</Text>
               <View style={styles.badgeRow}>
                 {structuredData.suggestedActions.map((act, actIdx) => (
-                  <View key={actIdx} style={styles.actionBadge}>
+                  <TouchableOpacity
+                    key={actIdx}
+                    style={styles.actionBadge}
+                    onPress={() => {
+                      if (act.type === 'CREATE_REMINDER') {
+                        handleOpenReminderModal(
+                          structuredData.summary || note.title || 'Напоминание',
+                        );
+                      }
+                    }}
+                  >
                     <Text style={styles.actionBadgeText}>{act.type}</Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -345,6 +470,67 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Reminders List Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Напоминания:</Text>
+          <TouchableOpacity
+            style={styles.addReminderBtn}
+            onPress={() => handleOpenReminderModal(note.title || 'Напоминание')}
+          >
+            <Text style={styles.addReminderBtnText}>+ Добавить</Text>
+          </TouchableOpacity>
+        </View>
+
+        {reminders && reminders.length > 0 ? (
+          reminders.map((reminder) => (
+            <View key={reminder.id} style={styles.reminderCard}>
+              <View style={styles.reminderCardHeader}>
+                <Text style={styles.reminderCardTitle}>{reminder.title}</Text>
+                <Text
+                  style={[
+                    styles.reminderStatusText,
+                    reminder.status === 'COMPLETED'
+                      ? styles.statusCompleted
+                      : reminder.status === 'CANCELLED'
+                      ? styles.statusCancelled
+                      : styles.statusScheduled,
+                  ]}
+                >
+                  {reminder.status}
+                </Text>
+              </View>
+              <Text style={styles.reminderTimeText}>
+                ⏰ {new Date(reminder.scheduledAt).toLocaleString('ru-RU', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
+              {reminder.status === 'SCHEDULED' ? (
+                <View style={styles.reminderActionsRow}>
+                  <TouchableOpacity
+                    style={styles.completeBtn}
+                    onPress={() => handleCompleteReminder(reminder)}
+                  >
+                    <Text style={styles.actionBtnText}>✓ Выполнено</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => handleCancelReminder(reminder)}
+                  >
+                    <Text style={styles.actionBtnText}>✕ Отменить</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+          ))
+        ) : (
+          <Text style={styles.emptyText}>Нет активных напоминаний</Text>
+        )}
+      </View>
 
       {note.rawText ? (
         <View style={styles.section}>
@@ -440,6 +626,58 @@ export const AssistantNoteDetailScreen: React.FC<Props> = ({ route, navigation }
           <Text style={styles.archiveButtonText}>Архивировать</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Reminder Creator Modal */}
+      <Modal visible={reminderModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Создать напоминание</Text>
+
+            <Text style={styles.inputLabel}>Название:</Text>
+            <TextInput
+              style={styles.modalSingleInput}
+              value={reminderTitle}
+              onChangeText={setReminderTitle}
+            />
+
+            <Text style={styles.inputLabel}>Дата (ГГГГ-ММ-ДД):</Text>
+            <TextInput
+              style={styles.modalSingleInput}
+              value={reminderDateStr}
+              onChangeText={setReminderDateStr}
+              placeholder="YYYY-MM-DD"
+            />
+
+            <Text style={styles.inputLabel}>Время (ЧЧ:ММ):</Text>
+            <TextInput
+              style={styles.modalSingleInput}
+              value={reminderTimeStr}
+              onChangeText={setReminderTimeStr}
+              placeholder="HH:MM"
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setReminderModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Отмена</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalApplyButton}
+                onPress={handleConfirmCreateReminder}
+                disabled={creatingReminder}
+              >
+                {creatingReminder ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.modalApplyText}>Создать</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* AI Edit Modal */}
       <Modal visible={editModalVisible} animationType="slide" transparent>
@@ -606,7 +844,20 @@ const styles = StyleSheet.create({
   itemQuantity: { fontSize: 13, fontWeight: '600', color: '#007AFF', marginRight: 8 },
   subSection: { marginTop: 10 },
   subSectionTitle: { fontSize: 14, fontWeight: '600', color: '#1C1C1E', marginBottom: 4 },
-  taskText: { fontSize: 13, color: '#2C2C2E', marginBottom: 2 },
+  taskRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  taskText: { fontSize: 13, color: '#2C2C2E', flex: 1, marginRight: 8 },
+  createReminderSmallBtn: {
+    backgroundColor: '#34C759',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  createReminderSmallText: { fontSize: 11, fontWeight: '600', color: '#FFF' },
   uncertaintyBox: {
     marginTop: 10,
     backgroundColor: '#FFF5F5',
@@ -647,7 +898,50 @@ const styles = StyleSheet.create({
   },
   analyzeButtonText: { color: '#FFF', fontWeight: '600', fontSize: 14 },
   section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#3A3A3C', marginBottom: 8 },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#3A3A3C' },
+  addReminderBtn: {
+    backgroundColor: '#34C759',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  addReminderBtnText: { color: '#FFF', fontWeight: '600', fontSize: 12 },
+  reminderCard: {
+    backgroundColor: '#FFF',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  reminderCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reminderCardTitle: { fontSize: 14, fontWeight: '600', color: '#1C1C1E', flex: 1 },
+  reminderStatusText: { fontSize: 11, fontWeight: '700' },
+  statusScheduled: { color: '#34C759' },
+  statusCompleted: { color: '#007AFF' },
+  statusCancelled: { color: '#8E8E93' },
+  reminderTimeText: { fontSize: 12, color: '#8E8E93', marginTop: 2 },
+  reminderActionsRow: { flexDirection: 'row', marginTop: 8 },
+  completeBtn: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  cancelBtn: {
+    backgroundColor: '#8E8E93',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  actionBtnText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
   rawText: {
     fontSize: 15,
     color: '#2C2C2E',
@@ -725,6 +1019,15 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
   },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#1C1C1E', marginBottom: 12 },
+  inputLabel: { fontSize: 13, color: '#3A3A3C', fontWeight: '600', marginBottom: 4 },
+  modalSingleInput: {
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14,
+    marginBottom: 12,
+  },
   modalInput: {
     borderWidth: 1,
     borderColor: '#E5E5EA',
@@ -745,7 +1048,7 @@ const styles = StyleSheet.create({
   },
   operationBadge: { fontSize: 12, fontWeight: '700', color: '#007AFF' },
   operationReason: { fontSize: 13, color: '#2C2C2E', marginTop: 2 },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 },
   modalCancelButton: { paddingHorizontal: 16, paddingVertical: 10, marginRight: 8 },
   modalCancelText: { fontSize: 14, color: '#8E8E93', fontWeight: '600' },
   modalProposeButton: {

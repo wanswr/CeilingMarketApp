@@ -40,6 +40,12 @@ export enum AssistantNoteEditProposalStatus {
   STALE = 'STALE',
 }
 
+export enum AssistantReminderStatus {
+  SCHEDULED = 'SCHEDULED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
 export interface AssistantNoteAttachment {
   id: string;
   noteId: string;
@@ -63,6 +69,42 @@ export interface AssistantNoteRevision {
   previousData?: any | null;
   newData?: any | null;
   createdAt: string;
+}
+
+export interface AssistantReminder {
+  id: string;
+  userId: string;
+  noteId?: string | null;
+  title: string;
+  description?: string | null;
+  scheduledAt: string;
+  status: AssistantReminderStatus;
+  sourceTaskId?: string | null;
+  sourceDateId?: string | null;
+  notificationId?: string | null;
+  idempotencyKey?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+}
+
+export interface CreateReminderDto {
+  title: string;
+  description?: string;
+  scheduledAt: string;
+  noteId?: string;
+  sourceTaskId?: string;
+  sourceDateId?: string;
+  notificationId?: string;
+  idempotencyKey?: string;
+}
+
+export interface UpdateReminderDto {
+  title?: string;
+  description?: string;
+  scheduledAt?: string;
+  notificationId?: string;
 }
 
 export interface AssistantNoteStructuredItem {
@@ -175,6 +217,7 @@ export interface AssistantNote {
   updatedAt: string;
   attachments?: AssistantNoteAttachment[];
   revisions?: AssistantNoteRevision[];
+  reminders?: AssistantReminder[];
 }
 
 export interface CreateAssistantNoteDto {
