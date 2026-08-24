@@ -1,3 +1,4 @@
+import { AssistantMascot } from '../../components/assistant/AssistantMascot';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -114,7 +115,21 @@ export const AssistantScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.topActions}>
+
+      <View style={styles.assistantHeaderRow}>
+        <View style={styles.mascotTitleRow}>
+          <AssistantMascot state="idle" size={38} />
+          <Text style={styles.headerSubtitleText}>Что нужно зафиксировать?</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.helpButton}
+          onPress={() => navigation.navigate('AssistantOnboarding')}
+        >
+          <Text style={styles.helpButtonText}>Что умеет Ассистент?</Text>
+        </TouchableOpacity>
+      </View>
+
+<View style={styles.topActions}>
         <TouchableOpacity
           style={styles.createButton}
           onPress={() => navigation.navigate('AssistantNoteEditor')}
@@ -214,4 +229,19 @@ const styles = StyleSheet.create({
   reminderTime: { fontSize: 13, color: '#8E8E93', marginTop: 4 },
   emptyContainer: { padding: 30, alignItems: 'center' },
   emptyText: { fontSize: 15, color: '#8E8E93' },
+
+  assistantHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: '#FFF',
+  },
+  mascotTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  headerSubtitleText: { fontSize: 14, fontWeight: '600', color: '#1C1C1E', marginLeft: 10 },
+  helpButton: { backgroundColor: '#E5F1FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  helpButtonText: { fontSize: 12, fontWeight: '600', color: '#007AFF' },
+
 });

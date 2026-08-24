@@ -1,3 +1,5 @@
+import { AssistantMascot } from '../components/assistant/AssistantMascot';
+import StorageService from '../services/StorageService';
 import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
