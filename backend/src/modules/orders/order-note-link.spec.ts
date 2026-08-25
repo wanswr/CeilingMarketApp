@@ -1,3 +1,4 @@
+import { AppGateway } from '../gateway/app.gateway';
 import { Test, TestingModule } from '@nestjs/testing';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -38,6 +39,7 @@ describe('OrdersService Assistant Note Linkage & Duplicate Protection', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
+        { provide: AppGateway, useValue: { server: { emit: jest.fn() } } },
         { provide: PrismaService, useValue: prismaMock },
         { provide: OrderParserService, useValue: {} },
         { provide: OrderSpatialService, useValue: {} },
@@ -72,7 +74,7 @@ describe('OrdersService Assistant Note Linkage & Duplicate Protection', () => {
       prismaMock.order.create.mockResolvedValue(mockOrder);
       prismaMock.assistantNote.updateMany.mockResolvedValue({ count: 1 });
 
-      const result = await service.create('user-1', validDto);
+      const result = await service.create(validDto, 'user-1');
 
       expect(result).toEqual(mockOrder);
       expect(prismaMock.assistantNote.updateMany).toHaveBeenCalledWith({
@@ -91,14 +93,14 @@ describe('OrdersService Assistant Note Linkage & Duplicate Protection', () => {
       const mockNote = { id: 'note-1', userId: 'user-2', convertedOrderId: null };
       prismaMock.assistantNote.findUnique.mockResolvedValue(mockNote);
 
-      await expect(service.create('user-1', validDto)).rejects.toThrow(ForbiddenException);
+      await expect(service.create(validDto, 'user-1')).rejects.toThrow(ForbiddenException);
     });
 
     it('throws ConflictException if note is already linked to another order', async () => {
       const mockNote = { id: 'note-1', userId: 'user-1', convertedOrderId: 'existing-order' };
       prismaMock.assistantNote.findUnique.mockResolvedValue(mockNote);
 
-      await expect(service.create('user-1', validDto)).rejects.toThrow(ConflictException);
+      await expect(service.create(validDto, 'user-1')).rejects.toThrow(ConflictException);
     });
 
     it('throws ConflictException on concurrent duplicate conversion attempt', async () => {
@@ -109,7 +111,7 @@ describe('OrdersService Assistant Note Linkage & Duplicate Protection', () => {
       prismaMock.order.create.mockResolvedValue(mockOrder);
       prismaMock.assistantNote.updateMany.mockResolvedValue({ count: 0 }); // Concurrent update modified record first
 
-      await expect(service.create('user-1', validDto)).rejects.toThrow(ConflictException);
+      await expect(service.create(validDto, 'user-1')).rejects.toThrow(ConflictException);
     });
   });
 });

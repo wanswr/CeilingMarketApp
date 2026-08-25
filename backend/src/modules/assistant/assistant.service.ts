@@ -49,8 +49,7 @@ export class AssistantService {
     private readonly aiService: AiService,
     private readonly configService: ConfigService,
   ) {
-    this.logger.setContext('AssistantService');
-  }
+      }
 
   computeAnalysisInputHash(rawText?: string | null, transcriptions: string[] = []): string {
     const normalizedRaw = (rawText || '').trim();

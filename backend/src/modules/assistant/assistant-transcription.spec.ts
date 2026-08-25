@@ -89,7 +89,7 @@ describe('Assistant Notes Audio Transcription Unit & Integration Tests', () => {
       prismaMock.assistantNoteAttachment.findUnique.mockResolvedValue({
         id: 'att-1',
         noteId: 'note-1',
-        type: AssistantNoteAttachmentType.IMAGE,
+        type: 'UNSUPPORTED' as any,
       });
 
       await expect(

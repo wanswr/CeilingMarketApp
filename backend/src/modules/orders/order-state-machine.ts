@@ -8,6 +8,10 @@ export interface AllowedTransition {
 }
 
 export const ORDER_STATE_MACHINE: Record<OrderStatus, AllowedTransition[]> = {
+  [OrderStatus.PENDING]: [
+    { to: OrderStatus.PUBLISHED, initiator: 'employer' },
+    { to: OrderStatus.CANCELLED, initiator: 'employer' }
+  ],
   [OrderStatus.DRAFT]: [
     { to: OrderStatus.PUBLISHED, initiator: 'employer' },
     { to: OrderStatus.CANCELLED, initiator: 'employer' },

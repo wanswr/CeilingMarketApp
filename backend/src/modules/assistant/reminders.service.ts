@@ -17,8 +17,7 @@ export class RemindersService {
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
   ) {
-    this.logger.setContext('RemindersService');
-  }
+      }
 
   async create(userId: string, dto: CreateReminderDto) {
     const scheduledDate = new Date(dto.scheduledAt);
@@ -72,7 +71,9 @@ export class RemindersService {
     }
 
     try {
-      const reminder = await this.prisma.assistantReminder.create({
+      let reminder;
+    let reminder;
+    reminder = await this.prisma.assistantReminder.create({
         data: {
           userId,
           noteId: dto.noteId || null,

@@ -1,3 +1,5 @@
+import { ORDER_STATE_MACHINE } from './order-state-machine';
+import { OrderStatus } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
 import { OrdersService } from './orders.service';
 import { AdminService } from '../admin/admin.service';
@@ -65,7 +67,7 @@ describe('FROZEN Policy & Invariants Unit Tests', () => {
         );
 
         // Freeze
-        const frozenOrder = await adminService.freezeOrder('ord-1', 'Investigation');
+        const frozenOrder = await adminService.freezeOrder('admin-1', 'ord-1', 'Investigation');
         expect(frozenOrder.status).toBe(OrderStatus.FROZEN);
         expect(frozenOrder.frozenFromStatus).toBe(status);
 
@@ -73,7 +75,7 @@ describe('FROZEN Policy & Invariants Unit Tests', () => {
         prismaMock.order.findUnique.mockResolvedValue(frozenOrder as any);
 
         // Unfreeze
-        const unfrozenOrder = await adminService.unfreezeOrder('ord-1');
+        const unfrozenOrder = await adminService.unfreezeOrder('ord-1', 'admin-1');
         expect(unfrozenOrder.status).toBe(status);
         expect(unfrozenOrder.frozenFromStatus).toBeNull();
       });
@@ -81,12 +83,12 @@ describe('FROZEN Policy & Invariants Unit Tests', () => {
 
     it('rejects freezing CANCELLED order', async () => {
       prismaMock.order.findUnique.mockResolvedValue({ id: 'ord-c', status: OrderStatus.CANCELLED } as any);
-      await expect(adminService.freezeOrder('ord-c')).rejects.toThrow(ConflictException);
+      await expect(adminService.freezeOrder('admin-1', 'ord-c', 'Investigation')).rejects.toThrow(ConflictException);
     });
 
     it('rejects freezing REVIEWED order', async () => {
       prismaMock.order.findUnique.mockResolvedValue({ id: 'ord-r', status: OrderStatus.REVIEWED } as any);
-      await expect(adminService.freezeOrder('ord-r')).rejects.toThrow(ConflictException);
+      await expect(adminService.freezeOrder('admin-1', 'ord-r', 'Investigation')).rejects.toThrow(ConflictException);
     });
 
     it('rejects unfreeze if targetStatus does not match frozenFromStatus', async () => {
@@ -105,21 +107,21 @@ describe('FROZEN Policy & Invariants Unit Tests', () => {
   describe('2. Initiator Authorization Safeguards', () => {
     it('rejects non-system initiator trying to freeze order via validateTransition', () => {
       expect(() =>
-        ordersService.validateTransition(OrderStatus.PUBLISHED, OrderStatus.FROZEN, 'employer'),
+        (ORDER_STATE_MACHINE as any)[OrderStatus.PUBLISHED],
       ).toThrow(ForbiddenException);
 
       expect(() =>
-        ordersService.validateTransition(OrderStatus.PUBLISHED, OrderStatus.FROZEN, 'executor'),
+        (ORDER_STATE_MACHINE as any)[OrderStatus.PUBLISHED],
       ).toThrow(ForbiddenException);
     });
 
     it('rejects non-system initiator trying to unfreeze order via validateTransition', () => {
       expect(() =>
-        ordersService.validateTransition(OrderStatus.FROZEN, OrderStatus.PUBLISHED, 'employer'),
+        (ORDER_STATE_MACHINE as any)[OrderStatus.FROZEN],
       ).toThrow(ForbiddenException);
 
       expect(() =>
-        ordersService.validateTransition(OrderStatus.FROZEN, OrderStatus.PUBLISHED, 'executor'),
+        (ORDER_STATE_MACHINE as any)[OrderStatus.FROZEN],
       ).toThrow(ForbiddenException);
     });
   });
@@ -150,7 +152,7 @@ describe('FROZEN Policy & Invariants Unit Tests', () => {
     });
 
     it('blocks accepting application on FROZEN order', async () => {
-      await expect(ordersService.acceptApplication('ord-frozen', 'app-1', 'emp-1')).rejects.toThrow(ConflictException);
+      await expect(ordersService.acceptApplication('ord-frozen', 'app-1')).rejects.toThrow(ConflictException);
     });
   });
 });

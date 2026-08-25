@@ -14,6 +14,7 @@ enum Role {
 }
 
 enum OrderStatus {
+  DRAFT
   PENDING
   PUBLISHED
   HAS_RESPONSES
@@ -91,7 +92,8 @@ model User {
   employerChats             Chat[]                      @relation("EmployerChats")
   executorChats             Chat[]                      @relation("ExecutorChats")
   messages                  Message[]
-  subscription              Subscription?
+  freeCategoryUsed          Boolean                     @default(false)
+  subscriptions             Subscription[]
   authoredReviews           Review[]                    @relation("AuthoredReviews")
   receivedReviews           Review[]                    @relation("TargetedReviews")
   portfolioItems            PortfolioItem[]
@@ -257,13 +259,19 @@ model Application {
 
 model Subscription {
   id          String   @id @default(uuid())
-  userId      String   @unique
+  userId      String
+  categoryId  String
   activeUntil DateTime
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([userId])
+  @@index([categoryId])
 }
 
 model Review {
@@ -289,8 +297,9 @@ model Category {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  orders  Order[]
-  masters User[]  @relation("UserActiveCategory")
+  orders        Order[]
+  masters       User[]         @relation("UserActiveCategory")
+  subscriptions Subscription[]
 }
 
 model OrderStatusHistory {
