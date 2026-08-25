@@ -1,5 +1,7 @@
+import { maskPhoneNumbers } from '../utils/security';
 import AppIcon from '../components/AppIcon';
 import React, { useState, useRef, useEffect } from 'react';
+import * as Crypto from 'expo-crypto';
 import { logger } from '../services/logger/LoggerService';
 
 import {
@@ -22,6 +24,7 @@ import { mapEngine } from '../services/MapEngine'
 
 interface Message {
   id: string;
+  clientMessageId?: string;
   text: string;
   senderId: string;
   senderName?: string;
@@ -54,8 +57,9 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     const onNewMessage = (msg: any) => {
         if (msg.chatId === activeChatId) {
             setMessages(prev => {
-                if (prev.some(m => m.id === msg.id)) return prev;
-                // Replace matching pending message of the current user
+                if (prev.some(m => m.id === msg.id || (msg.clientMessageId && m.clientMessageId === msg.clientMessageId))) {
+                    return prev.map(m => (msg.clientMessageId && m.clientMessageId === msg.clientMessageId) || m.id === msg.id ? { ...msg, pending: false, failed: false } : m);
+                }
                 if (msg.senderId === myId) {
                     const pendingIdx = prev.findIndex(m => m.pending && m.text === msg.text);
                     if (pendingIdx !== -1) {
@@ -156,7 +160,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, pending: true, failed: false } : m));
 
     try {
-        await apiService.sendMessage(activeChatId, msg.text);
+        await apiService.sendMessage(activeChatId, msg.text, msg.clientMessageId);
     } catch (e) {
         logger.error("UI_ERROR", { error: 'Retry send error:', e });
         setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, pending: false, failed: true } : m));
@@ -166,12 +170,13 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
   const sendMessage = async () => {
     if (inputText.trim() === '' || !activeChatId) return;
 
-    const textToSend = inputText;
+    const textToSend = maskPhoneNumbers(inputText);
     setInputText('');
 
-    const tempId = `temp-${Date.now()}`;
+    const clientMessageId = Crypto.randomUUID();
     const tempMsg: Message = {
-      id: tempId,
+      id: clientMessageId,
+      clientMessageId,
       text: textToSend,
       senderId: myId || 'me',
       createdAt: new Date().toISOString(),
@@ -183,10 +188,10 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
     setMessages(prev => [...prev, tempMsg]);
 
     try {
-        await apiService.sendMessage(activeChatId, textToSend);
+        await apiService.sendMessage(activeChatId, textToSend, clientMessageId);
     } catch (e) {
         logger.error("UI_ERROR", { error: 'Send error:', e });
-        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, pending: false, failed: true } : m));
+        setMessages(prev => prev.map(m => m.clientMessageId === clientMessageId ? { ...m, pending: false, failed: true } : m));
     }
   };
 
@@ -253,7 +258,7 @@ const ChatDetailScreen = ({ route, navigation }: any) => {
                 ref={flatListRef}
                 data={messages}
                 renderItem={renderMessage}
-                keyExtractor={item => item.id}
+                keyExtractor={item => item.clientMessageId || item.id}
                 contentContainerStyle={styles.listPadding}
                 onContentSizeChange={(w, h) => {
                   if (!loadingMore) {

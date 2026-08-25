@@ -150,7 +150,6 @@ describe('MutationQueueService & Offline-First flow', () => {
     mutationQueueService.add('updateProfile', { data: { name: 'Bob' } });
     expect(mutationQueueService.getQueue().length).toBe(1);
 
-    const MutationQueueModule = require('./MutationQueueService');
     const list = entityStore.hydrate();
     expect(mutationQueueService.getQueue().length).toBe(1);
   });
@@ -180,5 +179,232 @@ describe('MutationQueueService & Offline-First flow', () => {
 
   it('Scenario H: applyForOrder on a temp_ ID order is blocked', async () => {
     await expect(apiService.applyForOrder('temp_create_123', 500)).rejects.toThrow();
+  });
+});
+
+describe('MutationQueueService - Idempotency & Retry Policy', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    mutationQueueService.clearQueue();
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(true);
+  });
+
+  it('should preserve and pass the SAME idempotencyKey across retries', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    const idempotencyKey = 'unique-idem-key-999';
+    await apiService.createOrder({ title: 'Idempotent Order', latitude: 55.75, longitude: 37.61, idempotencyKey });
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(1);
+    expect(queue[0].idempotencyKey).toBe(idempotencyKey);
+
+    let attempts = 0;
+    const apiSpy = jest.spyOn(apiService, 'createOrder').mockImplementation(async (data: any) => {
+      attempts++;
+      expect(data.idempotencyKey).toBe(idempotencyKey);
+      if (attempts === 1) {
+        throw { response: { status: 500 }, message: 'Server Internal Error' };
+      }
+      return { data: { id: 'srv_order_idem', title: 'Idempotent Order' }, status: 201 } as any;
+    });
+
+    netinfo.__setConnected(true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Attempt 1 failed with 500
+    expect(apiSpy).toHaveBeenCalledTimes(1);
+    expect(mutationQueueService.getQueue()[0].retryCount).toBe(1);
+
+    // Advance time past backoff delay
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 10000);
+    await mutationQueueService.processQueue();
+    expect(apiSpy).toHaveBeenCalledTimes(2);
+    expect(mutationQueueService.getQueue().length).toBe(0);
+  });
+
+  it('should stop retrying 5xx or 429 errors when MAX_RETRY_COUNT is reached', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    mutationQueueService.add('applyForOrder', { id: 'order-1', price: 1000 }, 'idem-apply-123');
+
+    const apiSpy = jest.spyOn(apiService, 'applyForOrder').mockRejectedValue({
+      response: { status: 429 },
+      message: 'Too Many Requests'
+    });
+
+    netinfo.__setConnected(true);
+    await new Promise(resolve => setTimeout(resolve, 100)); // Attempt 1
+
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 10000);
+    await mutationQueueService.processQueue(); // Attempt 2
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 20000);
+    await mutationQueueService.processQueue(); // Attempt 3
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 40000);
+    await mutationQueueService.processQueue(); // Attempt 4
+    jest.spyOn(Date, "now").mockReturnValue(Date.now() + 80000);
+    await mutationQueueService.processQueue(); // Attempt 5
+
+    expect(apiSpy).toHaveBeenCalledTimes(5);
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(1);
+    expect(queue[0].status).toBe('failed');
+    expect(queue[0].error).toContain('Exceeded retry limit');
+  });
+});
+
+describe('MutationQueueService - Independent vs Dependent Ordering', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    mutationQueueService.clearQueue();
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(true);
+  });
+
+  it('Test 1: Independent mutations - updateProfile 5xx error does NOT block sendMessage', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    mutationQueueService.add('updateProfile', { data: { name: 'Alice' } });
+    mutationQueueService.add('sendMessage', { chatId: 'chat-100', text: 'Hello' });
+
+    expect(mutationQueueService.getQueue().length).toBe(2);
+
+    const updateProfileSpy = jest.spyOn(apiService, 'updateProfile').mockRejectedValue({
+      response: { status: 500 },
+      message: 'Internal Server Error'
+    });
+
+    const sendMessageSpy = jest.spyOn(apiService, 'sendMessage').mockResolvedValue({
+      data: { success: true }
+    } as any);
+
+    netinfo.__setConnected(true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    expect(updateProfileSpy).toHaveBeenCalledTimes(1);
+    expect(sendMessageSpy).toHaveBeenCalledTimes(1);
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(1);
+    expect(queue[0].type).toBe('updateProfile');
+  });
+
+  it('Test 2: Dependent mutations - createOrder 5xx error blocks applyForOrder on same order', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    const tempId = 'temp_order_999';
+    mutationQueueService.add('createOrder', { tempId, data: { title: 'Order' } });
+    mutationQueueService.add('applyForOrder', { id: tempId, price: 500 });
+
+    expect(mutationQueueService.getQueue().length).toBe(2);
+
+    const createOrderSpy = jest.spyOn(apiService, 'createOrder').mockRejectedValue({
+      response: { status: 500 },
+      message: 'Internal Server Error'
+    });
+
+    const applyForOrderSpy = jest.spyOn(apiService, 'applyForOrder');
+
+    netinfo.__setConnected(true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    expect(createOrderSpy).toHaveBeenCalledTimes(1);
+    expect(applyForOrderSpy).not.toHaveBeenCalled();
+
+    const queue = mutationQueueService.getQueue();
+    expect(queue.length).toBe(2);
+  });
+});
+
+describe('ApiService - Global HTTP 401 Interceptor & Loop Guard', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    apiService.reset401Guard();
+  });
+
+  it('A: Normal 200 response does not trigger 401 callback', async () => {
+    const callback = jest.fn();
+    apiService.setOnUnauthorizedCallback(callback);
+
+    jest.spyOn(apiService.api, 'get').mockResolvedValueOnce({ data: { success: true }, status: 200 } as any);
+
+    await apiService.getOrders({});
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('B & C: Non-auth 401 response triggers callback once even for concurrent 401 errors', async () => {
+    const callback = jest.fn().mockImplementation(() => Promise.resolve());
+    apiService.setOnUnauthorizedCallback(callback);
+
+    const err401 = {
+      response: { status: 401 },
+      config: { url: 'orders/my' }
+    };
+
+    const interceptor = (apiService.api.interceptors.response as any).handlers[0].rejected;
+
+    const req1 = interceptor(err401).catch(() => {});
+    const req2 = interceptor(err401).catch(() => {});
+    await Promise.all([req1, req2]);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it('D: Auth endpoints returning 401 do NOT trigger 401 callback (loop prevention)', async () => {
+    const callback = jest.fn();
+    apiService.setOnUnauthorizedCallback(callback);
+
+    const authErr401 = {
+      response: { status: 401 },
+      config: { url: 'auth/logout' }
+    };
+
+    const interceptor = (apiService.api.interceptors.response as any).handlers[0].rejected;
+
+    await interceptor(authErr401).catch(() => {});
+    expect(callback).not.toHaveBeenCalled();
+  });
+});
+
+describe('MutationQueueService - Manual Retry & Stale Lease Recovery', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+    mutationQueueService.clearQueue();
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(true);
+  });
+
+  it('Manual retry resets failed status to pending and clears error while preserving idempotencyKey', async () => {
+    const netinfo = require('@react-native-community/netinfo');
+    netinfo.__setConnected(false);
+
+    mutationQueueService.add('sendMessage', { chatId: 'chat-1', text: 'Hello' }, 'idem-msg-777');
+    const queue = mutationQueueService.getQueue();
+    const item = queue[0];
+
+    // Force to failed status
+    item.status = 'failed';
+    item.error = 'Permanent error (400)';
+
+    expect(mutationQueueService.getQueue()[0].status).toBe('failed');
+
+    const result = mutationQueueService.manualRetry(item.id);
+    expect(result).toBe(true);
+
+    const updatedQueue = mutationQueueService.getQueue();
+    expect(updatedQueue[0].status).toBe('pending');
+    expect(updatedQueue[0].retryCount).toBe(0);
+    expect(updatedQueue[0].error).toBeUndefined();
+    expect(updatedQueue[0].idempotencyKey).toBe('idem-msg-777');
   });
 });

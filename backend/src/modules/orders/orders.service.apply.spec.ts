@@ -4,38 +4,48 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { OrderParserService } from './order-parser.service';
 import { OrderSpatialService } from './order-spatial.service';
-import { ForbiddenException, ConflictException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 
-describe('OrdersService - apply subscription checks', () => {
+describe('OrdersService - apply category-bound subscription checks', () => {
   let service: OrdersService;
-  let prisma: PrismaService;
 
   const mockPrismaService = {
     user: {
       findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    order: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
     },
     subscription: {
       findUnique: jest.fn(),
+      upsert: jest.fn(),
     },
     application: {
       findUnique: jest.fn(),
+      create: jest.fn(),
+      count: jest.fn(),
     },
+    $transaction: jest.fn((cb) => cb(mockPrismaService)),
+    $executeRaw: jest.fn(),
   };
 
-  const mockGateway = {};
-  const mockLogger = {
-    setService: jest.fn(),
-    info: jest.fn(),
-    error: jest.fn(),
-  };
+  const mockGateway = { broadcast: jest.fn() };
+  const mockLogger = { setService: jest.fn(), info: jest.fn(), error: jest.fn() };
   const mockChats = {};
+  const mockNotifications = {};
   const mockParser = {};
   const mockSpatial = {};
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+    mockPrismaService.$transaction.mockImplementation((cb) => cb(mockPrismaService));
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
@@ -43,94 +53,100 @@ describe('OrdersService - apply subscription checks', () => {
         { provide: AppGateway, useValue: mockGateway },
         { provide: LoggerService, useValue: mockLogger },
         { provide: ChatsService, useValue: mockChats },
+        { provide: NotificationsService, useValue: mockNotifications },
         { provide: OrderParserService, useValue: mockParser },
         { provide: OrderSpatialService, useValue: mockSpatial },
       ],
     }).compile();
 
     service = module.get<OrdersService>(OrdersService);
-    prisma = module.get<PrismaService>(PrismaService);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('should allow apply if worker has active and non-expired subscription', async () => {
+  it('should allow apply if worker has active subscription on order category', async () => {
     mockPrismaService.user.findUnique.mockResolvedValue({
       id: 'worker-1',
       role: Role.WORKER,
       roles: [Role.WORKER],
+      freeCategoryUsed: true,
       deletedAt: null,
+    });
+    mockPrismaService.order.findUnique.mockImplementation(async ({ where }) => ({
+      id: where.id,
+      categoryId: 'cat-A',
+      status: 'PUBLISHED',
+    }));
+    mockPrismaService.order.update.mockResolvedValue({
+      id: 'order-1',
+      categoryId: 'cat-A',
+      status: 'HAS_RESPONSES',
     });
     mockPrismaService.subscription.findUnique.mockResolvedValue({
       id: 'sub-1',
+      userId: 'worker-1',
+      categoryId: 'cat-A',
       isActive: true,
-      activeUntil: new Date(Date.now() + 1000 * 60 * 60 * 24), // 1 day in the future
+      activeUntil: new Date(Date.now() + 86400000),
     });
     mockPrismaService.application.findUnique.mockResolvedValue(null);
-
-    const mockImpl: any = async (orderId: string, executorId: string) => {
-      const executor = await prisma.user.findUnique({ where: { id: executorId } });
-      if (!executor || executor.deletedAt) throw new ForbiddenException('Only workers are allowed');
-
-      const sub = await prisma.subscription.findUnique({ where: { userId: executorId } });
-      if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
-        throw new ForbiddenException('Требуется активная подписка для отклика');
-      }
-      return { success: true };
-    };
-
-    jest.spyOn(service, 'apply').mockImplementation(mockImpl);
+    mockPrismaService.application.count.mockResolvedValue(0);
+    mockPrismaService.application.create.mockResolvedValue({ id: 'app-1' });
 
     const result = await service.apply('order-1', 'worker-1');
-    expect(result).toEqual({ success: true });
+    expect((result as any).id || (result as any).app?.id).toBe('app-1');
+    expect(mockPrismaService.subscription.findUnique).toHaveBeenCalledWith({
+      where: { userId_categoryId: { userId: 'worker-1', categoryId: 'cat-A' } },
+    });
   });
 
-  it('should deny apply and throw ForbiddenException if worker has no subscription', async () => {
+  it('should auto-grant first free category when worker has no prior subscription and freeCategoryUsed is false', async () => {
     mockPrismaService.user.findUnique.mockResolvedValue({
       id: 'worker-2',
       role: Role.WORKER,
       roles: [Role.WORKER],
+      freeCategoryUsed: false,
       deletedAt: null,
     });
+    mockPrismaService.order.findUnique.mockImplementation(async ({ where }) => ({
+      id: where.id,
+      categoryId: 'cat-A',
+      status: 'PUBLISHED',
+    }));
+    mockPrismaService.order.update.mockResolvedValue({
+      id: 'order-1',
+      categoryId: 'cat-A',
+      status: 'HAS_RESPONSES',
+    });
     mockPrismaService.subscription.findUnique.mockResolvedValue(null);
+    mockPrismaService.application.findUnique.mockResolvedValue(null);
+    mockPrismaService.application.count.mockResolvedValue(0);
+    mockPrismaService.application.create.mockResolvedValue({ id: 'app-2' });
 
-    const testApply = async () => {
-      const executorId = 'worker-2';
-      const executor = await prisma.user.findUnique({ where: { id: executorId } });
-      const sub = await prisma.subscription.findUnique({ where: { userId: executorId } });
-      if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
-        throw new ForbiddenException('Требуется активная подписка для отклика');
-      }
-    };
+    const result = await service.apply('order-1', 'worker-2');
 
-    await expect(testApply()).rejects.toThrow(ForbiddenException);
-    await expect(testApply()).rejects.toThrow('Требуется активная подписка для отклика');
+    expect((result as any).id || (result as any).app?.id).toBe('app-2');
+    expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+      where: { id: 'worker-2' },
+      data: { freeCategoryUsed: true },
+    });
   });
 
-  it('should deny apply and throw ForbiddenException if worker subscription is expired', async () => {
+  it('should deny apply if worker has subscription on Category A but order is in Category B and free category used', async () => {
     mockPrismaService.user.findUnique.mockResolvedValue({
       id: 'worker-3',
       role: Role.WORKER,
       roles: [Role.WORKER],
+      freeCategoryUsed: true,
       deletedAt: null,
     });
-    mockPrismaService.subscription.findUnique.mockResolvedValue({
-      id: 'sub-2',
-      isActive: true,
-      activeUntil: new Date(Date.now() - 1000 * 60 * 60),
-    });
+    mockPrismaService.order.findUnique.mockImplementation(async ({ where }) => ({
+      id: where.id,
+      categoryId: 'cat-B',
+      status: 'PUBLISHED',
+    }));
+    mockPrismaService.subscription.findUnique.mockResolvedValue(null);
 
-    const testApply = async () => {
-      const executorId = 'worker-3';
-      const executor = await prisma.user.findUnique({ where: { id: executorId } });
-      const sub = await prisma.subscription.findUnique({ where: { userId: executorId } });
-      if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
-        throw new ForbiddenException('Требуется активная подписка для отклика');
-      }
-    };
-
-    await expect(testApply()).rejects.toThrow(ForbiddenException);
+    await expect(service.apply('order-2', 'worker-3')).rejects.toThrow(
+      new ForbiddenException('Требуется активная подписка на категорию заказа для отклика')
+    );
   });
 });

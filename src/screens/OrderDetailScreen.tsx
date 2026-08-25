@@ -28,6 +28,8 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const [showApplications, setShowApplications] = useState(false);
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   const [rating, setRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [offerPrice, setOfferPrice] = useState('');
@@ -37,7 +39,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
   const fetchOrderDetails = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-        // V11: Bypass cache to ensure UI is always fresh when entering Detail screen
         const updated = await mapEngine.syncOrder(orderId, true);
         if (updated) {
             setOrder(updated);
@@ -109,6 +110,33 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
         }
       ]
     );
+  };
+
+  const handleExecutorCancelOrder = async () => {
+    if (!cancelReason.trim()) {
+      Alert.alert('Ошибка', 'Укажите причину отказа от заказа');
+      return;
+    }
+
+    if (submitting) return;
+    setSubmitting(true);
+    const aid = logger.startAction('EXECUTOR_CANCEL_ORDER', { orderId });
+    try {
+      const res = await apiService.cancelOrderAsExecutor(orderId, cancelReason.trim());
+      setShowCancelModal(false);
+      setCancelReason('');
+      if (res.data) setOrder(res.data);
+      mapEngine.syncOrder(orderId, true).then(updated => {
+        if (updated) setOrder(updated);
+      });
+      logger.endAction('EXECUTOR_CANCEL_ORDER', { aid });
+      Alert.alert('Успех', 'Вы отказались от выполнения заказа');
+    } catch (e: any) {
+      logger.logNetworkError(aid, e, { orderId });
+      Alert.alert('Ошибка', e.response?.data?.message || 'Не удалось отказаться от заказа');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleApply = async () => {
@@ -192,12 +220,28 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             setSubmitting(true);
             try {
               const res = await mapEngine.acceptApplication(applicationId);
-              if (res.data?.order) setOrder(res.data.order);
+              const updatedOrder = res.data?.order || res.data;
+              const createdChat = res.data?.chat;
+
+              if (updatedOrder) setOrder(updatedOrder);
 
               logger.endAction('ACCEPT_APPLICATION', { aid });
               setShowApplications(false);
+
+              const chatId = createdChat?.id;
+              const executorName = updatedOrder?.executor?.name || createdChat?.executor?.name || 'Мастер';
+
               Alert.alert('Успех', 'Исполнитель выбран. Чат создан.', [
-                  { text: 'В чат', onPress: () => navigation.navigate('ChatDetail', { chatId: res.data.chat.id, name: res.data.order.executor.name }) },
+                  {
+                    text: 'В чат',
+                    onPress: () => {
+                      if (chatId) {
+                        navigation.navigate('ChatDetail', { chatId, name: executorName });
+                      } else {
+                        navigation.navigate('MainTabs', { screen: 'Chats' });
+                      }
+                    }
+                  },
                   { text: 'ОК' }
               ]);
             } catch (e: any) {
@@ -235,7 +279,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
     setSubmitting(true);
     try {
       const res = await mapEngine.startOrder(orderId);
-      // V11: Immediate local update to satisfy UI even before subscription fires
       if (res.data) setOrder(res.data);
 
       logger.logStateTransition('START_WORK', statusBefore, 'IN_PROGRESS', { orderId, actionId: aid });
@@ -307,15 +350,12 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               orderId
           });
 
-          // Force invalidate cache to prevent status rollback
           mapEngine.requestRouter.invalidate(`order:${orderId}`);
 
-          // Update local state immediately with the new review
           const newReview = res.data;
           setOrder(prev => {
               if (!prev) return prev;
               const reviews = prev.reviews || [];
-              // Avoid duplicates
               if (reviews.some(r => normalizeId(r.authorId) === nid)) return prev;
               const updatedOrder = { ...prev, reviews: [...reviews, newReview] };
               return updatedOrder;
@@ -323,7 +363,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
           logger.logStateTransition('SUBMIT_REVIEW', statusBefore, 'COMPLETED', { orderId, actionId: aid });
 
-          // Also sync from server to be sure
           mapEngine.syncOrder(orderId, true).then(updated => {
               if (updated) setOrder(updated);
           });
@@ -449,7 +488,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
           <Text style={styles.sectionTitle}>Описание задачи</Text>
           <Text style={styles.description}>{order.details || 'Описание отсутствует'}</Text>
 
-          {/* Milestones timeline */}
           {(() => {
             if (order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES' || order.status === 'CANCELLED') {
               return null;
@@ -485,7 +523,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                 <Text style={styles.sectionTitle}>Ход выполнения</Text>
 
                 <View style={styles.milestonesContainer}>
-                  {/* Milestone 1: CLAIMED */}
                   <View style={styles.milestoneRow}>
                     <AppIcon name={isClaimed ? "status-done" : "status-incomplete"}
                       size={22}
@@ -503,7 +540,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     </View>
                   </View>
 
-                  {/* Milestone 2: IN_PROGRESS */}
                   <View style={styles.milestoneRow}>
                     <AppIcon name={isInProgress ? "status-done" : "status-incomplete"}
                       size={22}
@@ -521,7 +557,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     </View>
                   </View>
 
-                  {/* Milestone 3: COMPLETED */}
                   <View style={styles.milestoneRow}>
                     <AppIcon name={isCompleted ? "status-done" : "status-incomplete"}
                       size={22}
@@ -664,7 +699,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                   >
                     <Text style={styles.applyBtnText}>Оставить отзыв</Text>
                   </TouchableOpacity>
-              ) : (
+              ) : order.executorId ? (
                 <TouchableOpacity
                   style={styles.chatButtonFooter}
                   onPress={async () => {
@@ -673,18 +708,14 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                           navigation.navigate('Login');
                           return;
                       }
-                      if (order.executorId) {
-                        const res = await apiService.getOrCreateChat(order.id, order.executorId);
-                        navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.executor?.name });
-                      } else {
-                        navigation.navigate('MainTabs', { screen: 'Chats' });
-                      }
+                      const res = await apiService.getOrCreateChat(order.id, order.executorId);
+                      navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.executor?.name });
                   }}
                 >
                   <AppIcon name="tab-chats" size={24} color={COLORS.primary} />
                   <Text style={styles.chatButtonTextFooter}>Сообщения</Text>
                 </TouchableOpacity>
-              )
+              ) : null
           ) : isExecutor ? (
             <>
               <TouchableOpacity
@@ -699,14 +730,25 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
               </TouchableOpacity>
 
               {order.status === 'CLAIMED' && (
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  style={[styles.applyBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
-                  onPress={handleStartWork}
-                  disabled={submitting}
-                >
-                  {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Начать работу</Text>}
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={[styles.applyBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
+                    onPress={handleStartWork}
+                    disabled={submitting}
+                  >
+                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.applyBtnText}>Начать работу</Text>}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={[styles.applyBtn, { flex: 1, backgroundColor: '#FF4757' }]}
+                    onPress={() => setShowCancelModal(true)}
+                    disabled={submitting}
+                  >
+                    <Text style={styles.applyBtnText}>Отказаться</Text>
+                  </TouchableOpacity>
+                </>
               )}
 
               {order.status === 'IN_PROGRESS' && (
@@ -740,21 +782,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
             </>
           ) : (
             <>
-              <TouchableOpacity
-                style={styles.iconChatBtn}
-                onPress={async () => {
-                    logger.logClick('OpenChat', 'OrderDetail', { orderId, isExecutor: false });
-                    if (!currentUser) {
-                        navigation.navigate('Login');
-                        return;
-                    }
-                    const res = await apiService.getOrCreateChat(order.id, myId!);
-                    navigation.navigate('ChatDetail', { chatId: res.data.id, name: order.employer?.name });
-                }}
-              >
-                <AppIcon name="tab-chats" size={24} color={COLORS.primary} />
-              </TouchableOpacity>
-
               <TouchableOpacity
                 activeOpacity={0.9}
                 style={[
@@ -805,6 +832,42 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.modalApplyBtn} onPress={submitOffer}>
                         <Text style={styles.modalApplyBtnText}>Откликнуться</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showCancelModal}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalOverlayCenter}>
+            <BlurView intensity={30} style={StyleSheet.absoluteFill}>
+                <TouchableOpacity style={{flex: 1}} onPress={() => setShowCancelModal(false)} />
+            </BlurView>
+            <View style={styles.priceModalContent}>
+                <Text style={styles.modalTitleSmall}>Отказ от заказа</Text>
+                <Text style={styles.modalSubtitleSmall}>Укажите причину отмены заказа</Text>
+                <TextInput
+                    style={[styles.priceInput, { height: 90, textAlignVertical: 'top' }]}
+                    value={cancelReason}
+                    onChangeText={setCancelReason}
+                    placeholder="Причина отказа..."
+                    multiline
+                    autoFocus
+                />
+                <View style={styles.modalActionsRow}>
+                    <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowCancelModal(false)}>
+                        <Text style={styles.modalCancelBtnText}>Назад</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalApplyBtn, { backgroundColor: '#FF4757' }, submitting && { opacity: 0.6 }]}
+                      onPress={handleExecutorCancelOrder}
+                      disabled={submitting}
+                    >
+                        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalApplyBtnText}>Отказаться</Text>}
                     </TouchableOpacity>
                 </View>
             </View>
@@ -895,19 +958,6 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
 
                   <View style={styles.appActions}>
                      <TouchableOpacity
-                      style={styles.appChatBtn}
-                      onPress={async () => {
-                        logger.logClick('OpenChatWithApplicant', 'OrderDetail', { orderId: order.id, masterId: app.executorId });
-                        setShowApplications(false);
-                        const res = await apiService.getOrCreateChat(order.id, app.executorId);
-                        navigation.navigate('ChatDetail', { chatId: res.data.id, name: app.executor?.name });
-                      }}
-                     >
-                       <AppIcon name="action-chat" size={20} color={COLORS.primary} />
-                       <Text style={styles.appChatText}>Чат</Text>
-                     </TouchableOpacity>
-
-                     <TouchableOpacity
                       style={[styles.selectBtn, submitting && { opacity: 0.5 }]}
                       onPress={() => {
                           markViewed(app.id, app.status);
@@ -915,7 +965,7 @@ const OrderDetailScreen = ({ route, navigation }: any) => {
                       }}
                       disabled={submitting}
                      >
-                       <Text style={styles.selectBtnText}>Выбрать</Text>
+                       <Text style={styles.selectBtnText}>Выбрать исполнителя</Text>
                      </TouchableOpacity>
                   </View>
                 </View>

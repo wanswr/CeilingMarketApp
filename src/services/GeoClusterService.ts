@@ -31,6 +31,9 @@ export const GeoClusterService = {
    * Clusters orders based on grid precision and density rules.
    */
   clusterOrders(orders: Order[], latDelta: number): (Order | Cluster)[] {
+    if (typeof latDelta !== "number" || !Number.isFinite(latDelta) || latDelta <= 0) {
+      latDelta = 0.1;
+    }
     if (latDelta < 0.01) {
       // High zoom: show all markers individually
       return orders.filter(o => this.getOrderCoords(o) !== null);

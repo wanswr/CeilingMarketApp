@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ApplicationStatus" ADD VALUE 'CANCELLED_BY_EXECUTOR';

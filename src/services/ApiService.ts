@@ -2,22 +2,43 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { logger } from './logger/LoggerService';
 
-/**
- * ApiService V11: Hardened connection logic with explicit host logging.
- */
 // @ts-ignore
 import { API_URL } from '@env';
 
-const DEFAULT_API_URL = API_URL || (__DEV__ ? 'http://192.168.1.124:3000/api/' : 'https://api.ceilingsapp.com/api/');
+function resolveDefaultApiUrl(): string {
+  if (typeof API_URL === 'string' && API_URL.trim() !== '') {
+    return API_URL;
+  }
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    return 'http://127.0.0.1:3000/api/';
+  }
+  return '';
+}
+
+const DEFAULT_API_URL = resolveDefaultApiUrl();
 
 class ApiService {
   public api: AxiosInstance;
   private baseURL: string;
+  private onUnauthorizedCallback: (() => Promise<void> | void) | null = null;
+  private isHandling401 = false;
+
+  setOnUnauthorizedCallback(cb: (() => Promise<void> | void) | null) {
+    this.onUnauthorizedCallback = cb;
+  }
+
+  reset401Guard() {
+    this.isHandling401 = false;
+  }
 
   constructor() {
     this.baseURL = DEFAULT_API_URL;
 
-    logger.info('[ApiService] Initializing with Base URL:', { url: this.baseURL });
+    if (!this.baseURL) {
+      logger.warn('[ApiService] API_URL environment variable is missing and no default fallback exists in production.');
+    } else {
+      logger.info('[ApiService] Initializing with Base URL:', { url: this.baseURL });
+    }
 
     this.api = axios.create({
       baseURL: this.baseURL,
@@ -38,6 +59,12 @@ class ApiService {
 
   private setupInterceptors() {
     this.api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+      if (!config.baseURL && !this.baseURL) {
+        const error = new Error('[ApiService] Request blocked: API_URL environment variable is not configured.');
+        logger.error('API_CONFIG_ERROR', { url: config.url, message: error.message });
+        return Promise.reject(error);
+      }
+
       const token = await SecureStore.getItemAsync('userToken');
       const requestId = Math.random().toString(36).substring(7);
 
@@ -57,7 +84,7 @@ class ApiService {
         logger.logResponse(requestId, response.status, response.data);
         return response;
       },
-      (error) => {
+      async (error) => {
         const requestId = (error.config as any)?.requestId;
         if (requestId) {
             logger.logNetworkError(requestId, error);
@@ -69,6 +96,26 @@ class ApiService {
                 host: this.baseURL,
                 message: error.message
             });
+        }
+
+        const status = error.response?.status;
+        const url = error.config?.url || '';
+        const isAuthRoute = url.includes('auth/request-otp') ||
+                            url.includes('auth/verify-otp') ||
+                            url.includes('auth/login') ||
+                            url.includes('auth/register') ||
+                            url.includes('auth/logout');
+
+        if (status === 401 && !isAuthRoute && !this.isHandling401) {
+          this.isHandling401 = true;
+          logger.warn('[ApiService] HTTP 401 Unauthorized received. Triggering session cleanup/logout...');
+          if (this.onUnauthorizedCallback) {
+            try {
+              await this.onUnauthorizedCallback();
+            } catch (cbError: any) {
+              logger.error('[ApiService] Unauthorized callback error:', { error: cbError.message });
+            }
+          }
         }
 
         return Promise.reject(error);
@@ -125,7 +172,7 @@ class ApiService {
       entityStore.persist();
       mapEngine.triggerNotify();
 
-      mutationQueueService.add('createOrder', { tempId, data });
+      mutationQueueService.add('createOrder', { tempId, data }, data?.idempotencyKey);
       return { data: mockOrder, status: 201 };
     }
     return this.api.post('orders', data);
@@ -189,6 +236,7 @@ class ApiService {
   };
 
   cancelApplication = (id: string) => this.api.delete('orders/' + id + '/apply');
+  cancelOrderAsExecutor = (id: string, reason: string) => this.api.post('orders/' + id + '/executor-cancel', { reason });
   acceptApplication = (applicationId: string) => this.api.post('orders/applications/' + applicationId + '/accept');
   markApplicationViewed = (applicationId: string) => this.api.patch('orders/applications/' + applicationId + '/view');
   startOrder = (id: string) => this.api.post('orders/' + id + '/start');
@@ -252,16 +300,16 @@ class ApiService {
   getChatMessages = (chatId: string, cursor?: string) => this.api.get('chats/' + chatId + '/messages', { params: { cursor } });
   getOrCreateChat = (orderId: string, executorId: string) => this.api.post('chats', { orderId, executorId });
 
-  sendMessage = async (chatId: string, text: string) => {
+  sendMessage = async (chatId: string, text: string, clientMessageId?: string) => {
     const { networkService } = require('./NetworkService');
     if (!networkService.isOnline()) {
       logger.info('[ApiService] Offline detected for sendMessage. Queueing...');
       const { mutationQueueService } = require('./MutationQueueService');
 
-      mutationQueueService.add('sendMessage', { chatId, text });
+      mutationQueueService.add('sendMessage', { chatId, text, clientMessageId }, clientMessageId);
       return { data: { success: true }, status: 201 };
     }
-    return this.api.post('chats/' + chatId + '/messages', { text });
+    return this.api.post('chats/' + chatId + '/messages', { text, clientMessageId });
   };
 
   markChatAsRead = (chatId: string) => this.api.patch('chats/' + chatId + '/read');
@@ -274,6 +322,14 @@ class ApiService {
 
   // Subscriptions
   activateSubscription = (days: number) => this.api.post('subscriptions/activate', { days });
+
+
+  // Assistant Notes
+  getAssistantNotes = (includeArchived?: boolean) => this.api.get("assistant/notes", { params: { includeArchived } });
+  getAssistantNote = (id: string) => this.api.get("assistant/notes/" + id);
+  createAssistantNote = (data: { title: string; rawText?: string; structuredData?: any }) => this.api.post("assistant/notes", data);
+  updateAssistantNote = (id: string, data: { title?: string; rawText?: string; structuredData?: any }) => this.api.patch("assistant/notes/" + id, data);
+  archiveAssistantNote = (id: string) => this.api.post("assistant/notes/" + id + "/archive");
 
   getBaseUrl = () => this.baseURL;
 }

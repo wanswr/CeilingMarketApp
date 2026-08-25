@@ -1,3 +1,4 @@
+import { maskPhoneNumbers } from '../utils/security';
 import { useClientStore } from '../store/client.store';
 import AppIcon from '../components/AppIcon';
 import React, { useState, useEffect, useRef } from 'react';
@@ -317,6 +318,8 @@ export default function CreateOrderScreen({ navigation }: any) {
         try {
           await mapEngine.createOrder({
             ...form,
+            title: form.title ? maskPhoneNumbers(form.title) : "",
+            details: form.details ? maskPhoneNumbers(form.details) : "",
             latitude: coordinates.latitude,
             longitude: coordinates.longitude,
             price: Number(form.price),

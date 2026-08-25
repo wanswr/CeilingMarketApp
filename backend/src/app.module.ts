@@ -13,6 +13,8 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
+import { AiModule } from './modules/ai/ai.module';
 import { NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { LoggerMiddleware } from './modules/logger/logger.middleware';
 
@@ -34,6 +36,8 @@ import { LoggerMiddleware } from './modules/logger/logger.middleware';
     NotificationsModule,
     CategoriesModule,
     AdminModule,
+    AssistantModule,
+    AiModule,
   ],
   providers: [
     {

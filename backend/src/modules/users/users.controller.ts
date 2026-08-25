@@ -1,3 +1,4 @@
+import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { Controller, Get, Patch, Body, UseGuards, Req, Param, Post, Delete, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -60,13 +61,9 @@ export class UsersController {
   @Get(':id/portfolio')
   getPortfolio(
     @Param('id') id: string,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string
+    @Query() query: PaginationQueryDto
   ) {
-    return this.usersService.getPortfolio(id, {
-      skip: skip !== undefined ? Number(skip) : undefined,
-      take: take !== undefined ? Number(take) : undefined
-    });
+    return this.usersService.getPortfolio(id, query);
   }
 
   @UseGuards(JwtAuthGuard)

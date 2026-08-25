@@ -1,3 +1,19 @@
+export function isValidCoordinate(latitude: any, longitude: any): boolean {
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    return false;
+  }
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return false;
+  }
+  if (latitude < -90 || latitude > 90) {
+    return false;
+  }
+  if (longitude < -180 || longitude > 180) {
+    return false;
+  }
+  return true;
+}
+
 import { Order } from '../types'
 import { apiService } from './ApiService'
 import { requestRouter } from './RequestRouter'
@@ -93,9 +109,7 @@ class MapEngine {
   constructor() {
       this.initPersistence();
 
-      // V11: Defer subscription to avoid require cycles during module definition
       setTimeout(() => {
-          // V9: Reactive architecture - Engine listens to Camera
           mapViewportStore.subscribe((region) => {
               this.updateSocketRoom(region);
               this.triggerMapUpdate(region);
@@ -104,14 +118,16 @@ class MapEngine {
   }
 
   updateSocketRoom(region: any, force: boolean = false) {
-      if (!region) return;
+      if (!region || !isValidCoordinate(region.latitude, region.longitude)) {
+          logger.warn("[MapEngine] updateSocketRoom bypassed - invalid coordinates", { region });
+          return;
+      }
       const activeRole = useClientStore.getState().activeRole;
       if (!activeRole) {
           logger.info('[MapEngine] updateSocketRoom bypassed - no active role');
           return;
       }
 
-      // Grid is 0.1 degree (approx 10km)
       const lat = Math.floor(region.latitude * 10) / 10;
       const lng = Math.floor(region.longitude * 10) / 10;
       const key = `${lat}:${lng}`;
@@ -120,8 +136,6 @@ class MapEngine {
           const { socketService } = require('./SocketService');
           const socket = socketService.getSocket();
           if (socket?.connected) {
-              // Join a 3x3 grid around current center
-              // The first join in the batch has 'clear: true' to wipe previous geo rooms
               let first = true;
               for (let i = -1; i <= 1; i++) {
                   for (let j = -1; j <= 1; j++) {
@@ -198,6 +212,10 @@ class MapEngine {
 
     const requestId = Math.random().toString(36).substring(7);
     const viewRegion = region || mapViewportStore.getRegion();
+    if (!viewRegion || !isValidCoordinate(viewRegion.latitude, viewRegion.longitude)) {
+      logger.warn("SYNC_BYPASS", { requestId, reason: "invalid_coordinates", viewRegion });
+      return;
+    }
     const viewportHash = viewRegion ? `${viewRegion.latitude.toFixed(4)}_${viewRegion.longitude.toFixed(4)}_${viewRegion.latitudeDelta.toFixed(4)}` : 'none';
     const previousViewportHash = this.lastSyncRegion ? `${this.lastSyncRegion.latitude.toFixed(4)}_${this.lastSyncRegion.longitude.toFixed(4)}_${this.lastSyncRegion.latitudeDelta.toFixed(4)}` : 'none';
 
@@ -231,7 +249,7 @@ class MapEngine {
       let cursorId: string | undefined = undefined;
       let allCreated: any[] = [];
       let pagesFetched = 0;
-      const maxPages = 4; // Max 1000 orders total
+      const maxPages = 4;
       let source = 'cache';
 
       while (pagesFetched < maxPages) {
@@ -381,7 +399,6 @@ class MapEngine {
             return false;
         }
 
-        // Filter by date
         if (this.dateFilter && this.dateFilter !== 'all') {
           const orderDate = new Date(order.date);
           const now = new Date();
@@ -406,10 +423,8 @@ class MapEngine {
         );
 
         if (activeRole === 'EMPLOYER') {
-            // Employer mode: only show my own orders as employer
             return isMineAsEmployer;
         } else {
-            // Worker mode: show public orders OR my own orders as executor
             const isPublic = order.status === 'PUBLISHED' || order.status === 'HAS_RESPONSES';
             return isPublic || (isMineAsWorker && (order.status === 'CLAIMED' || order.status === 'IN_PROGRESS'));
         }
@@ -494,17 +509,10 @@ class MapEngine {
 
   setRole = async (role: 'WORKER' | 'EMPLOYER') => {
     const res = await this.apiService.setRole(role);
-
-    // Invalidate request router cache
     this.requestRouter.clear();
-
-    // Clean up cached spatial/other role orders from EntityStore
     this.entityStore.clearSpatialOrders();
-
-    // Update local user with new role/profile details
     this.entityStore.setUser({ ...res.data, isMe: true });
 
-    // Force socket room update depending on the new role
     const region = mapViewportStore.getRegion();
     if (role === 'EMPLOYER') {
         const { socketService } = require('./SocketService');
@@ -521,7 +529,6 @@ class MapEngine {
         this.updateSocketRoom(region, true);
     }
 
-    // Force a fresh sync of the map using the new role's context
     this.lastSyncRegion = null;
     this.syncMap(true);
 
@@ -583,15 +590,20 @@ class MapEngine {
   };
   acceptApplication = async (applicationId: string) => {
     const res = await this.apiService.acceptApplication(applicationId);
-    const orderId = res.data?.orderId || res.data?.order?.id;
+    const updatedOrder = res.data?.order;
+    const orderId = updatedOrder?.id || res.data?.orderId;
     if (orderId) {
         this.requestRouter.invalidate(`order:${orderId}`);
         try {
             const { socketService } = require('./SocketService');
-            const orderStatus = res.data?.order?.status || res.data?.status || 'CLAIMED';
+            const orderStatus = updatedOrder?.status || 'CLAIMED';
             socketService.registerLocalMutation('order.status.changed', orderId, 'none', orderStatus);
         } catch (e) {}
-        await this.syncOrder(orderId, true);
+        if (updatedOrder) {
+            this.entityStore.setOrder(updatedOrder, 'api_accept');
+        } else {
+            await this.syncOrder(orderId, true);
+        }
         this.triggerNotify();
     }
     return res;

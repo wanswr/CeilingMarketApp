@@ -1,3 +1,4 @@
+import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { Controller, Get, Post, Body, Param, UseGuards, Req, Patch, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ChatsService } from './chats.service';
@@ -13,13 +14,9 @@ export class ChatsController {
   @Get()
   async getMyChats(
     @Req() req: any,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string
+    @Query() query: PaginationQueryDto
   ) {
-    return this.chatsService.getMyChats(req.user.id, {
-      skip: skip !== undefined ? Number(skip) : undefined,
-      take: take !== undefined ? Number(take) : undefined
-    });
+    return this.chatsService.getMyChats(req.user.id, query);
   }
 
   @Post()
@@ -46,7 +43,7 @@ export class ChatsController {
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   @Post(':id/messages')
   async sendMessage(@Param('id') id: string, @Body() body: SendMessageDto, @Req() req: any) {
-    return this.chatsService.sendMessage(id, req.user.id, body.text);
+    return this.chatsService.sendMessage(id, req.user.id, body.text, body.clientMessageId);
   }
 
   @Patch(':id/read')

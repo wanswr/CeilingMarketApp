@@ -1,3 +1,4 @@
+import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { Controller, Get, Post, Body, Query, Param, Patch, Delete, UseGuards, Req, UsePipes, ValidationPipe } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { OrderSpatialService } from './order-spatial.service';
@@ -8,8 +9,9 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { GetOrdersSpatialDto } from './dto/get-orders-spatial.dto';
 import { ParseOrderTextDto } from './dto/parse-order-text.dto';
 import { FindAllOrdersDto } from './dto/find-all-orders.dto';
+import { CancelExecutorOrderDto } from './dto/cancel-executor-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 
 @Controller('orders')
 export class OrdersController {
@@ -22,17 +24,12 @@ export class OrdersController {
   @Get('my')
   findMyOrders(
     @Req() req: any,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string
+    @Query() query: PaginationQueryDto
   ) {
-    return this.ordersService.findMyOrders(req.user.id, {
-      skip: skip !== undefined ? Number(skip) : undefined,
-      take: take !== undefined ? Number(take) : undefined
-    });
+    return this.ordersService.findMyOrders(req.user.id, query);
   }
 
-
-
+  @SkipThrottle()
   @UseGuards(JwtAuthGuard)
   @Get('spatial')
   getSpatialOrders(@Query() query: GetOrdersSpatialDto, @Req() req: any) {
@@ -90,6 +87,17 @@ export class OrdersController {
     @Req() req: any
   ) {
     return this.ordersService.apply(id, req.user.id, dto.price, dto.idempotencyKey);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/executor-cancel')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+  cancelByExecutor(
+    @Param('id') id: string,
+    @Body() dto: CancelExecutorOrderDto,
+    @Req() req: any
+  ) {
+    return this.ordersService.cancelByExecutor(id, req.user.id, dto.reason);
   }
 
   @UseGuards(JwtAuthGuard)

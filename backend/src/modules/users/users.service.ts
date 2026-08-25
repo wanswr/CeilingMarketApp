@@ -17,6 +17,20 @@ export class UsersService {
     return Math.max(0, Math.min(100, score));
   }
 
+    async assertUserCanMutate(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isBlocked: true, deletedAt: true }
+    });
+    if (!user || user.deletedAt) {
+      throw new ForbiddenException("User account is deleted or non-existent");
+    }
+    if (user.isBlocked) {
+      throw new ForbiddenException("Blocked users cannot perform this action");
+    }
+    return user;
+  }
+
   constructor(
     private prisma: PrismaService,
     private readonly subscriptionService: SubscriptionService,
@@ -43,7 +57,7 @@ export class UsersService {
         isTrialUsed: true,
         createdAt: true,
         updatedAt: true,
-        subscription: true,
+        subscriptions: { include: { category: true } },
         portfolioItems: true,
         activeCategoryId: true,
         activeCategory: { select: { id: true, slug: true, name: true } },
@@ -53,7 +67,7 @@ export class UsersService {
 
     let categoryLocked = false;
     if (user.activeCategoryId) {
-      categoryLocked = await this.subscriptionService.checkActiveSubscription(id);
+      categoryLocked = await this.subscriptionService.checkActiveSubscription(id, user.activeCategoryId || undefined);
     }
 
     return {
@@ -81,12 +95,17 @@ export class UsersService {
         ordersCount: true,
         isVerified: true,
         portfolioItems: true,
+        isBlocked: true,
         deletedAt: true,
         activeCategory: { select: { id: true, slug: true, name: true } },
       }
     });
-    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
-    const { deletedAt, ...publicProfile } = user;
+
+    if (!user || user.deletedAt || user.isBlocked) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+
+    const { deletedAt, isBlocked, ...publicProfile } = user;
     return {
       ...publicProfile,
       trustScore: this.calculateTrustScore({
@@ -144,13 +163,26 @@ export class UsersService {
   }
 
   async getPortfolio(userId: string, params?: { skip?: number; take?: number }) {
-    const skip = params?.skip !== undefined ? Number(params.skip) : undefined;
-    const take = Math.min(params?.take !== undefined ? Number(params.take) : 50, 100);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isBlocked: true, deletedAt: true }
+    });
+
+    if (!user || user.deletedAt || user.isBlocked) {
+      throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    const rawSkip = params?.skip !== undefined ? Number(params.skip) : 0;
+    const skip = Math.max(0, isNaN(rawSkip) ? 0 : rawSkip);
+
+    const rawTake = params?.take !== undefined ? Number(params.take) : 50;
+    const clampedTake = isNaN(rawTake) ? 50 : Math.max(1, Math.min(rawTake, 100));
+
     return this.prisma.portfolioItem.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       skip,
-      take
+      take: clampedTake
     });
   }
 
@@ -195,7 +227,7 @@ export class UsersService {
     }
 
     if (user.activeCategoryId && user.activeCategoryId !== categoryId) {
-      const hasActiveSub = await this.subscriptionService.checkActiveSubscription(userId);
+      const hasActiveSub = await this.subscriptionService.checkActiveSubscription(userId, user.activeCategoryId || undefined);
       if (hasActiveSub) {
         throw new ForbiddenException(
           'Cannot change direction while subscription is active'
@@ -220,8 +252,14 @@ export class UsersService {
 
   async deleteProfile(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user || user.deletedAt) throw new NotFoundException(`User with ID ${id} not found`);
+    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
 
+    // Idempotency: if already requested deletion, preserve original deletion date
+    if (user.deletedAt) {
+      return { success: true, deletedAt: user.deletedAt };
+    }
+
+    // 1. Guard against active orders
     const activeOrdersCount = await this.prisma.order.count({
       where: {
         OR: [
@@ -233,10 +271,34 @@ export class UsersService {
     });
 
     if (activeOrdersCount > 0) {
-      throw new ConflictException('Нельзя удалить аккаунт при наличии активных заказов в работе');
+      throw new ConflictException('Cannot delete account with active orders in progress');
     }
 
-    await this.prisma.user.update({
+    // 2. Guard against active disputes
+    const activeDisputesCount = await this.prisma.dispute.count({
+      where: {
+        OR: [{ openedById: id }, { respondentId: id }],
+        status: { in: ['OPEN', 'IN_REVIEW', 'UNDER_REVIEW', 'WAITING_FOR_PARTY', 'APPEALED'] }
+      }
+    });
+
+    if (activeDisputesCount > 0) {
+      throw new ConflictException('Cannot delete account with active disputes');
+    }
+
+    // 3. Guard against pending payments
+    const pendingPaymentsCount = await this.prisma.payment.count({
+      where: {
+        userId: id,
+        status: { in: ['PENDING', 'PROCESSING'] }
+      }
+    });
+
+    if (pendingPaymentsCount > 0) {
+      throw new ConflictException('Cannot delete account with pending financial obligations');
+    }
+
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data: {
         name: 'Удалённый пользователь',
@@ -250,13 +312,76 @@ export class UsersService {
         deletedAt: new Date(),
       },
     });
-    return { success: true };
+
+    // Revoke all active sessions
+    await this.prisma.session.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+
+    return { success: true, deletedAt: updatedUser.deletedAt };
+  }
+
+    async restoreProfile(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
+
+    if (!user.deletedAt) {
+      return { success: true, message: "Account is already active" };
+    }
+
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const elapsed = Date.now() - user.deletedAt.getTime();
+
+    if (elapsed > thirtyDaysMs) {
+      throw new ConflictException("Account recovery period of 30 days has expired");
+    }
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        deletedAt: null,
+      },
+    });
+
+    return { success: true, message: "Account successfully restored" };
+  }
+
+  async permanentDeleteExpiredAccounts() {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const expiredUsers = await this.prisma.user.findMany({
+      where: {
+        deletedAt: {
+          lt: thirtyDaysAgo
+        }
+      },
+      select: { id: true }
+    });
+
+    let count = 0;
+    for (const u of expiredUsers) {
+      // Soft-anonymize PII for retention compliance while preserving historical Orders/Reviews/Disputes
+      await this.prisma.user.update({
+        where: { id: u.id },
+        data: {
+          name: "Anonymized User",
+          phone: `anonymized_${u.id}`,
+          instagram: null,
+          telegram: null,
+          pushToken: null,
+        }
+      });
+      count++;
+    }
+
+    return { count };
   }
 
   async getDashboard(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { activeCategory: true, subscription: true }
+      include: { activeCategory: true, subscriptions: true }
     });
     if (!user || user.deletedAt) throw new NotFoundException('User not found');
 
@@ -373,7 +498,7 @@ export class UsersService {
         stats: {
           completedOrders: user.completedOrders,
           experience: user.experience,
-          subscriptionActive: user.subscription?.isActive && user.subscription.activeUntil > new Date()
+          subscriptionActive: await this.subscriptionService.checkActiveSubscription(userId, user.activeCategoryId || undefined)
         },
         actionRequired: {
           activeJobs,

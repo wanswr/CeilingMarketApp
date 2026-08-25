@@ -74,14 +74,29 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.disconnect();
         return;
       }
-      const decoded = jwt.verify(token, secret);
-      const userId = (decoded as any).id;
+      const decoded = jwt.verify(token, secret) as any;
+      const userId = decoded.id;
 
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (!user || user.deletedAt) {
-        this.logger.warn('WS_AUTH_FAILED', `User does not exist or is soft-deleted: ${userId}`);
+      if (!user || user.deletedAt || user.isBlocked) {
+        this.logger.warn('WS_AUTH_FAILED', `User does not exist, soft-deleted, or blocked: ${userId}`);
         client.disconnect();
         return;
+      }
+
+      if (decoded.sessionVersion !== undefined && decoded.sessionVersion !== user.sessionVersion) {
+        this.logger.warn('WS_AUTH_FAILED', `Session version mismatch for user ${userId}: expected ${user.sessionVersion}, got ${decoded.sessionVersion}`);
+        client.disconnect();
+        return;
+      }
+
+      if (decoded.sessionId) {
+        const session = await this.prisma.session.findUnique({ where: { id: decoded.sessionId } });
+        if (!session || session.revokedAt || new Date(session.expiresAt) < new Date()) {
+          this.logger.warn('WS_AUTH_FAILED', `Session invalid, revoked, or expired for user ${userId}, sessionId ${decoded.sessionId}`);
+          client.disconnect();
+          return;
+        }
       }
 
       (client as any).user = decoded;

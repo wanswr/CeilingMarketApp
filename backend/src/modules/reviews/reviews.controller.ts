@@ -1,3 +1,4 @@
+import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { Controller, Post, Body, UseGuards, Req, Get, Param, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ReviewsService } from './reviews.service';
@@ -23,22 +24,15 @@ export class ReviewsController {
 
   @UseGuards(JwtAuthGuard)
   @Get('my')
-  async getMy(@Req() req: any, @Query('skip') skip?: string, @Query('take') take?: string) {
-    return this.reviewsService.getMyReviews(req.user.id, {
-      skip: skip !== undefined ? Number(skip) : undefined,
-      take: take !== undefined ? Number(take) : undefined
-    });
+  async getMy(@Req() req: any, @Query() query: PaginationQueryDto) {
+    return this.reviewsService.getMyReviews(req.user.id, query);
   }
 
   @Get('master/:id')
   async getMasterReviews(
     @Param('id') id: string,
-    @Query('skip') skip?: string,
-    @Query('take') take?: string
+    @Query() query: PaginationQueryDto
   ) {
-    return this.reviewsService.getMasterReviews(id, {
-      skip: skip !== undefined ? Number(skip) : undefined,
-      take: take !== undefined ? Number(take) : undefined
-    });
+    return this.reviewsService.getMasterReviews(id, query);
   }
 }

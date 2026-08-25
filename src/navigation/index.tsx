@@ -18,6 +18,9 @@ import ChatDetailScreen from '../screens/ChatDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CategorySelectionScreen from '../screens/CategorySelectionScreen';
 import CreateOrderScreen from '../screens/CreateOrderScreen';
+import AssistantScreen from '../screens/assistant/AssistantScreen';
+import AssistantNoteEditorScreen from '../screens/assistant/AssistantNoteEditorScreen';
+import AssistantNoteDetailScreen from '../screens/assistant/AssistantNoteDetailScreen';
 
 const Stack = createStackNavigator();
 
@@ -56,6 +59,11 @@ export default function Navigation() {
           <Stack.Screen name="ChatDetail" component={ChatDetailScreen} options={{headerShown: false}} />
           <Stack.Screen name="Profile" component={ProfileScreen} options={{headerShown: true, title: 'Профиль'}} />
           <Stack.Screen name="CategorySelection" component={CategorySelectionScreen} />
+          <Stack.Screen name="Assistant" component={AssistantScreen} />
+          <Stack.Screen name="AssistantNoteEditor" component={AssistantNoteEditorScreen} />
+          <Stack.Screen name="AssistantNoteDetail" component={AssistantNoteDetailScreen} />
+        <Stack.Screen name="AssistantNoteTable" component={AssistantNoteTableScreen} />
+        <Stack.Screen name="AssistantOnboarding" component={AssistantOnboardingScreen} />
         </>
       )}
     </Stack.Navigator>

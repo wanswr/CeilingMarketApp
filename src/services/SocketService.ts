@@ -1,3 +1,4 @@
+import { SOCKET_URL } from '../constants/config';
 import { useClientStore } from '../store/client.store';
 import { io, Socket } from 'socket.io-client'
 import * as SecureStore from 'expo-secure-store';
@@ -81,16 +82,12 @@ class SocketService {
     });
   }
 
-  async connect(url: string, source: string = 'unknown') {
-    let socketUrl = url;
-    try {
-      const parsedUrl = new URL(url);
-      if (parsedUrl.pathname.startsWith('/api')) {
-        parsedUrl.pathname = parsedUrl.pathname.replace(/^\/api\/?/, '');
-      }
-      socketUrl = parsedUrl.toString();
-    } catch (e) {
-      socketUrl = url.replace('/api/', '');
+  async connect(customUrl?: string, source: string = 'unknown') {
+    const socketUrl = (customUrl && customUrl.trim() !== '') ? customUrl.trim() : SOCKET_URL;
+
+    if (!socketUrl) {
+      logger.warn('[WebSocket] SOCKET_URL environment variable is missing and no default fallback exists in production.');
+      return;
     }
     const currentUser = entityStore.getCurrentUser();
     const userId = (currentUser as any)?.id || currentUser?.uid || 'anonymous';

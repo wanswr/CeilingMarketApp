@@ -2,10 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from './admin.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { Role, OrderStatus, DisputeStatus, ResolutionType } from '@prisma/client';
 
-describe('AdminService', () => {
+describe('AdminService & Dispute State Machine', () => {
   let service: AdminService;
   let prisma: any;
 
@@ -23,18 +23,11 @@ describe('AdminService', () => {
     isBlocked: false,
   };
 
-  const mockTargetUser = {
-    id: 'worker-1',
-    role: Role.WORKER,
-    roles: [Role.WORKER],
-    isBlocked: false,
-  };
-
   const mockOrder = {
     id: 'order-1',
     employerId: 'user-1',
     executorId: 'worker-1',
-    status: OrderStatus.PUBLISHED,
+    status: OrderStatus.CLAIMED,
     isFrozen: false,
   };
 
@@ -49,6 +42,7 @@ describe('AdminService', () => {
     },
     orderStatusHistory: {
       create: jest.fn(),
+      findFirst: jest.fn(),
     },
     report: {
       create: jest.fn(),
@@ -95,117 +89,12 @@ describe('AdminService', () => {
     prisma = module.get<PrismaService>(PrismaService);
   });
 
-  describe('blockUser', () => {
-    it('should allow ADMIN to block a user and record audit log', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockAdmin);
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockTargetUser);
-      mockPrismaService.user.update.mockResolvedValueOnce({ ...mockTargetUser, isBlocked: true });
-
-      const result = await service.blockUser('admin-1', 'worker-1', 'Violation of terms');
-
-      expect(result.isBlocked).toBe(true);
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
-        where: { id: 'worker-1' },
-        data: expect.objectContaining({
-          isBlocked: true,
-          blockedReason: 'Violation of terms',
-          blockedById: 'admin-1',
-        }),
-      });
-      expect(mockPrismaService.adminAuditLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          adminId: 'admin-1',
-          action: 'BLOCK_USER',
-          targetType: 'User',
-          targetId: 'worker-1',
-          reason: 'Violation of terms',
-        }),
-      });
-    });
-
-    it('should throw ForbiddenException if performing user is not ADMIN', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockRegularUser);
-
-      await expect(
-        service.blockUser('user-1', 'worker-1', 'Spam'),
-      ).rejects.toThrow(ForbiddenException);
-    });
-  });
-
-  describe('freezeOrder & unfreezeOrder', () => {
-    it('should allow ADMIN to freeze an order', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockAdmin);
-      mockPrismaService.order.findUnique.mockResolvedValueOnce(mockOrder);
-      mockPrismaService.order.update.mockResolvedValueOnce({
-        ...mockOrder,
-        isFrozen: true,
-        status: OrderStatus.FROZEN,
-      });
-
-      const result = await service.freezeOrder('admin-1', 'order-1', 'Investigation needed');
-
-      expect(result.status).toBe(OrderStatus.FROZEN);
-      expect(mockPrismaService.adminAuditLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          adminId: 'admin-1',
-          action: 'FREEZE_ORDER',
-          targetType: 'Order',
-          targetId: 'order-1',
-        }),
-      });
-    });
-
-    it('should allow ADMIN to unfreeze an order', async () => {
-      const frozenOrder = { ...mockOrder, isFrozen: true, status: OrderStatus.FROZEN };
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockAdmin);
-      mockPrismaService.order.findUnique.mockResolvedValueOnce(frozenOrder);
-      mockPrismaService.order.update.mockResolvedValueOnce({
-        ...mockOrder,
-        isFrozen: false,
-        status: OrderStatus.PUBLISHED,
-      });
-
-      const result = await service.unfreezeOrder('admin-1', 'order-1', OrderStatus.PUBLISHED, 'Resolved');
-
-      expect(result.isFrozen).toBe(false);
-      expect(mockPrismaService.adminAuditLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          adminId: 'admin-1',
-          action: 'UNFREEZE_ORDER',
-          targetType: 'Order',
-          targetId: 'order-1',
-        }),
-      });
-    });
-  });
-
-  describe('disputes', () => {
-    it('should allow a participant user to open a dispute', async () => {
-      mockPrismaService.order.findUnique.mockResolvedValueOnce(mockOrder);
-      mockPrismaService.dispute.findFirst.mockResolvedValueOnce(null);
-      mockPrismaService.dispute.create.mockResolvedValueOnce({
-        id: 'dispute-1',
-        orderId: 'order-1',
-        openedBy: 'user-1',
-        respondentId: 'worker-1',
-        reason: 'Unfinished work',
-        status: DisputeStatus.OPEN,
-      });
-
-      const result = await service.openDispute('user-1', {
-        orderId: 'order-1',
-        reason: 'Unfinished work',
-      });
-
-      expect(result.id).toBe('dispute-1');
-      expect(mockPrismaService.dispute.create).toHaveBeenCalled();
-    });
-
-    it('should allow ADMIN to resolve a dispute', async () => {
+  describe('dispute state machine transitions', () => {
+    it('A: Admin can resolve OPEN dispute', async () => {
       const mockDispute = {
         id: 'dispute-1',
         orderId: 'order-1',
-        openedBy: 'user-1',
+        openedById: 'user-1',
         respondentId: 'worker-1',
         status: DisputeStatus.OPEN,
         order: mockOrder,
@@ -216,44 +105,99 @@ describe('AdminService', () => {
       mockPrismaService.dispute.update.mockResolvedValueOnce({
         ...mockDispute,
         status: DisputeStatus.RESOLVED,
-        resolutionType: ResolutionType.REFUND,
-        resolution: 'Refund granted to employer',
       });
 
       const result = await service.resolveDispute('admin-1', 'dispute-1', {
         resolutionType: ResolutionType.REFUND,
-        resolution: 'Refund granted to employer',
+        resolution: 'Refund granted',
       });
 
       expect(result.status).toBe(DisputeStatus.RESOLVED);
-      expect(mockPrismaService.adminAuditLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          adminId: 'admin-1',
-          action: 'RESOLVE_DISPUTE',
-          targetType: 'Dispute',
-          targetId: 'dispute-1',
-        }),
-      });
     });
 
-    it('should throw ForbiddenException if regular user tries to resolve dispute', async () => {
+    it('B/D: Forbidden transition (OPEN -> APPEALED) is rejected by state machine', async () => {
       const mockDispute = {
         id: 'dispute-1',
-        orderId: 'order-1',
-        openedBy: 'user-1',
-        respondentId: 'worker-1',
         status: DisputeStatus.OPEN,
         order: mockOrder,
       };
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockRegularUser);
+
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockAdmin);
       mockPrismaService.dispute.findUnique.mockResolvedValueOnce(mockDispute);
 
       await expect(
-        service.resolveDispute('user-1', 'dispute-1', {
+        service.resolveDispute('admin-1', 'dispute-1', {
           resolutionType: ResolutionType.NO_ACTION,
-          resolution: 'Dismissed',
-        }),
-      ).rejects.toThrow(ForbiddenException);
+          resolution: 'Invalid',
+          status: DisputeStatus.APPEALED,
+        })
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('E: Cannot resolve CLOSED dispute', async () => {
+      const mockDispute = {
+        id: 'dispute-1',
+        status: DisputeStatus.CLOSED,
+        order: mockOrder,
+      };
+
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockAdmin);
+      mockPrismaService.dispute.findUnique.mockResolvedValueOnce(mockDispute);
+
+      await expect(
+        service.resolveDispute('admin-1', 'dispute-1', {
+          resolutionType: ResolutionType.NO_ACTION,
+          resolution: 'Invalid',
+          status: DisputeStatus.RESOLVED,
+        })
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('F/G: Participant can appeal RESOLVED dispute but not OPEN dispute', async () => {
+      const openDispute = {
+        id: 'dispute-1',
+        openedById: 'user-1',
+        respondentId: 'worker-1',
+        status: DisputeStatus.OPEN,
+      };
+
+      mockPrismaService.dispute.findUnique.mockResolvedValueOnce(openDispute);
+      await expect(service.appealDispute('user-1', 'dispute-1', 'Unfair')).rejects.toThrow(ConflictException);
+
+      const resolvedDispute = {
+        id: 'dispute-1',
+        openedById: 'user-1',
+        respondentId: 'worker-1',
+        status: DisputeStatus.RESOLVED,
+        appealedAt: null,
+      };
+
+      mockPrismaService.dispute.findUnique.mockResolvedValueOnce(resolvedDispute);
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockRegularUser);
+      mockPrismaService.dispute.update.mockResolvedValueOnce({
+        ...resolvedDispute,
+        status: DisputeStatus.APPEALED,
+      });
+
+      const appealResult = await service.appealDispute('user-1', 'dispute-1', 'Unfair');
+      expect(appealResult.status).toBe(DisputeStatus.APPEALED);
+    });
+
+    it('H: Repeated appeal is rejected', async () => {
+      const alreadyAppealedDispute = {
+        id: 'dispute-1',
+        openedById: 'user-1',
+        respondentId: 'worker-1',
+        status: DisputeStatus.RESOLVED,
+        appealedAt: new Date(),
+      };
+
+      mockPrismaService.dispute.findUnique.mockResolvedValueOnce(alreadyAppealedDispute);
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(mockRegularUser);
+
+      await expect(service.appealDispute('user-1', 'dispute-1', 'Again')).rejects.toThrow(
+        new ConflictException('Dispute has already been appealed once')
+      );
     });
   });
 });

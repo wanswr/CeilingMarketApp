@@ -160,3 +160,29 @@ describe('MapEngine - syncMap pagination', () => {
     expect(uniqueIds.size).toBe(500);
   });
 });
+
+import { isValidCoordinate } from './MapEngine';
+
+describe('isValidCoordinate helper', () => {
+  it('should return true for valid coordinates', () => {
+    expect(isValidCoordinate(55.75, 37.61)).toBe(true);
+    expect(isValidCoordinate(0, 0)).toBe(true);
+    expect(isValidCoordinate(-90, -180)).toBe(true);
+    expect(isValidCoordinate(90, 180)).toBe(true);
+  });
+
+  it('should return false for invalid coordinates (out of range)', () => {
+    expect(isValidCoordinate(91, 37.61)).toBe(false);
+    expect(isValidCoordinate(-91, 37.61)).toBe(false);
+    expect(isValidCoordinate(55.75, 181)).toBe(false);
+    expect(isValidCoordinate(55.75, -181)).toBe(false);
+  });
+
+  it('should return false for non-finite or non-number coordinates', () => {
+    expect(isValidCoordinate(NaN, 37.61)).toBe(false);
+    expect(isValidCoordinate(55.75, Infinity)).toBe(false);
+    expect(isValidCoordinate(-Infinity, 37.61)).toBe(false);
+    expect(isValidCoordinate('55.75', 37.61)).toBe(false);
+    expect(isValidCoordinate(null, undefined)).toBe(false);
+  });
+});

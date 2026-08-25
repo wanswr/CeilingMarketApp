@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { OrderStatus, Prisma, Role } from '@prisma/client';
+import { OrderStatus, ApplicationStatus, Prisma, Role } from '@prisma/client';
 import { ORDER_STATE_MACHINE } from './order-state-machine';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { ChatsService } from '../chats/chats.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { OrderParserService } from './order-parser.service';
 import { OrderSpatialService } from './order-spatial.service';
 import { randomUUID } from 'crypto';
@@ -16,6 +17,7 @@ export class OrdersService {
     private gateway: AppGateway,
     private logger: LoggerService,
     private chats: ChatsService,
+    private notificationsService: NotificationsService,
     private orderParserService: OrderParserService,
     private orderSpatialService: OrderSpatialService,
   ) {
@@ -43,7 +45,7 @@ export class OrdersService {
   }
 
   private async logStatusHistory(tx: any, orderId: string, oldStatus: OrderStatus, newStatus: OrderStatus, changedById?: string) {
-    const targetStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED];
+    const targetStatuses: OrderStatus[] = [OrderStatus.CLAIMED, OrderStatus.IN_PROGRESS, OrderStatus.COMPLETED, OrderStatus.PUBLISHED, OrderStatus.HAS_RESPONSES];
     if (targetStatuses.includes(newStatus)) {
       await tx.orderStatusHistory.create({
         data: {
@@ -246,8 +248,6 @@ export class OrdersService {
     return order;
   }
 
-
-
   async findOne(id: string, requesterId?: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
@@ -305,8 +305,51 @@ export class OrdersService {
 
   async update(id: string, dto: any, userId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException();
-    if (order.employerId !== userId) throw new ForbiddenException();
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.employerId !== userId) throw new ForbiddenException('Only the employer can modify this order');
+
+    if (order.isFrozen || order.status === OrderStatus.FROZEN) {
+      throw new ForbiddenException('Order is frozen and cannot be modified');
+    }
+
+    const currentStatus: any = order.status;
+
+    if ([OrderStatus.COMPLETED, OrderStatus.REVIEWED, OrderStatus.CANCELLED].includes(currentStatus)) {
+      throw new ConflictException(`Cannot edit order in ${order.status} status`);
+    }
+
+    if (currentStatus === OrderStatus.CLAIMED) {
+      const isCriticalFieldUpdated =
+        dto.price !== undefined ||
+        dto.address !== undefined ||
+        dto.latitude !== undefined ||
+        dto.longitude !== undefined ||
+        dto.date !== undefined ||
+        dto.categoryId !== undefined ||
+        dto.workType !== undefined;
+
+      if (isCriticalFieldUpdated) {
+        throw new ConflictException('Cannot modify critical terms (price, address, date, category, workType) after worker is assigned');
+      }
+    }
+
+    if (currentStatus === OrderStatus.IN_PROGRESS) {
+      const isAnyFieldUpdated =
+        dto.price !== undefined ||
+        dto.address !== undefined ||
+        dto.latitude !== undefined ||
+        dto.longitude !== undefined ||
+        dto.date !== undefined ||
+        dto.categoryId !== undefined ||
+        dto.workType !== undefined ||
+        dto.title !== undefined ||
+        dto.details !== undefined ||
+        dto.images !== undefined;
+
+      if (isAnyFieldUpdated) {
+        throw new ConflictException('Cannot modify order terms or content while work is in progress');
+      }
+    }
 
     if (dto.status && dto.status !== order.status) {
       this.validateTransition(order, dto.status, userId, false);
@@ -332,31 +375,146 @@ export class OrdersService {
     return result;
   }
 
-  async remove(id: string, userId: string) {
-    const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order || order.employerId !== userId) throw new ForbiddenException();
+  async cancelByExecutor(orderId: string, executorId: string, reason: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        executor: { select: { id: true, name: true } },
+        employer: { select: { id: true, name: true } },
+      },
+    });
 
-    // Fetch chat IDs before deleting
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.executorId !== executorId) {
+      throw new ForbiddenException('Only the assigned executor can cancel participation for this order');
+    }
+
+    if (order.status !== OrderStatus.CLAIMED) {
+      throw new ConflictException(`Cannot cancel participation when order is in ${order.status} status`);
+    }
+
+    const remainingActiveAppsCount = await this.prisma.application.count({
+      where: {
+        orderId,
+        executorId: { not: executorId },
+        status: { in: [ApplicationStatus.PENDING, ApplicationStatus.VIEWED] },
+      },
+    });
+
+    const targetStatus = remainingActiveAppsCount > 0 ? OrderStatus.HAS_RESPONSES : OrderStatus.PUBLISHED;
+
+    this.validateTransition(order, targetStatus, executorId, false);
+
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      await tx.application.updateMany({
+        where: {
+          orderId,
+          executorId,
+          status: ApplicationStatus.ACCEPTED,
+        },
+        data: {
+          status: ApplicationStatus.CANCELLED_BY_EXECUTOR,
+        },
+      });
+
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: targetStatus,
+          executorId: null,
+          claimedAt: null,
+        },
+        include: {
+          employer: { select: { id: true, name: true, rating: true, avatar: true } },
+        },
+      });
+
+      await this.logStatusHistory(tx, orderId, OrderStatus.CLAIMED, targetStatus, executorId);
+
+      return updated;
+    });
+
+    const executorName = order.executor?.name || 'Исполнитель';
+    await this.notificationsService.create(order.employerId, {
+      type: 'EXECUTOR_CANCELLED',
+      title: 'Исполнитель отказался от заказа',
+      message: `Исполнитель ${executorName} отказался от выполнения заказа "${order.title}". Причина: ${reason}`
+    });
+
+    this.logger.info('ORDER_EXECUTOR_CANCELLED', `Executor ${executorId} cancelled participation for order ${orderId}. Reason: ${reason}`, { orderId, executorId, reason });
+    await this.broadcast('order.status.changed', updatedOrder, executorId);
+
+    return updatedOrder;
+  }
+
+  async remove(id: string, userId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: {
+        disputes: {
+          where: {
+            status: { in: ["OPEN", "IN_REVIEW", "WAITING_FOR_PARTY", "APPEALED"] }
+          }
+        },
+        payments: {
+          where: { status: "COMPLETED" }
+        }
+      }
+    });
+
+    if (!order) throw new NotFoundException("Order not found");
+    if (order.employerId !== userId) throw new ForbiddenException("Only employer can remove order");
+
+    if (order.status === OrderStatus.CANCELLED) {
+      return { id, status: OrderStatus.CANCELLED };
+    }
+
+    if (order.disputes && order.disputes.length > 0) {
+      throw new ConflictException("Cannot cancel order with an active dispute");
+    }
+
+    if (order.payments && order.payments.length > 0) {
+      throw new ConflictException("Cannot cancel order with completed payment obligation");
+    }
+
+    this.validateTransition(order, OrderStatus.CANCELLED, userId, false);
+
     const chats = await this.prisma.chat.findMany({
-        where: { orderId: id },
-        select: { id: true }
+      where: { orderId: id },
+      select: { id: true }
     });
     const chatIds = chats.map(c => c.id);
 
-    await this.prisma.order.delete({ where: { id } });
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.order.update({
+        where: { id },
+        data: { status: OrderStatus.CANCELLED }
+      });
 
-    await this.broadcast('order.deleted', {
-        id,
-        employerId: order.employerId,
-        executorId: order.executorId,
-        chatIds
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: id,
+          oldStatus: order.status,
+          newStatus: OrderStatus.CANCELLED,
+          changedById: userId
+        }
+      });
+
+      return result;
+    });
+
+    await this.broadcast("order.status.changed", updatedOrder, userId);
+    await this.broadcast("order.deleted", {
+      id,
+      employerId: order.employerId,
+      executorId: order.executorId,
+      chatIds
     }, userId);
 
-    return { id };
+    return { id, status: OrderStatus.CANCELLED };
   }
 
   async apply(orderId: string, executorId: string, price?: number, idempotencyKey?: string) {
-    // Validate executor role (must be WORKER to apply)
     const executor = await this.prisma.user.findUnique({ where: { id: executorId } });
     if (!executor || executor.deletedAt) {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
@@ -369,10 +527,53 @@ export class OrdersService {
         throw new ForbiddenException('Only workers are allowed to apply to orders');
     }
 
-    // Verify subscription status on backend
-    const sub = await this.prisma.subscription.findUnique({ where: { userId: executorId } });
-    if (!sub || !sub.isActive || new Date(sub.activeUntil) < new Date()) {
-        throw new ForbiddenException('Требуется активная подписка для отклика');
+    const targetOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!targetOrder) throw new NotFoundException('Order not found');
+
+    const orderCategoryId = targetOrder.categoryId || executor.activeCategoryId;
+    if (orderCategoryId) {
+      const sub = await this.prisma.subscription.findUnique({
+        where: {
+          userId_categoryId: {
+            userId: executorId,
+            categoryId: orderCategoryId,
+          },
+        },
+      });
+
+      const isSubActive = sub && sub.isActive && new Date(sub.activeUntil) > new Date();
+
+      if (!isSubActive) {
+        if (!executor.freeCategoryUsed) {
+          const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          await this.prisma.$transaction(async (tx) => {
+            await tx.user.update({
+              where: { id: executorId },
+              data: { freeCategoryUsed: true },
+            });
+            await tx.subscription.upsert({
+              where: {
+                userId_categoryId: {
+                  userId: executorId,
+                  categoryId: orderCategoryId,
+                },
+              },
+              update: {
+                isActive: true,
+                activeUntil: until,
+              },
+              create: {
+                userId: executorId,
+                categoryId: orderCategoryId,
+                isActive: true,
+                activeUntil: until,
+              },
+            });
+          });
+        } else {
+          throw new ForbiddenException('Требуется активная подписка на категорию заказа для отклика');
+        }
+      }
     }
 
     if (idempotencyKey) {
@@ -393,19 +594,15 @@ export class OrdersService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-        // Read actual status from database INSIDE the transaction
         const order = await tx.order.findUnique({ where: { id: orderId } });
         if (!order) throw new NotFoundException('Order not found');
 
-        // Check if the order status is open for applications
         if (order.status !== OrderStatus.PUBLISHED && order.status !== OrderStatus.HAS_RESPONSES) {
             throw new ConflictException('Order is no longer open for applications');
         }
 
-        // Row-level lock on parent Order row to eliminate concurrent application race conditions
         await tx.$executeRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
 
-        // Limit maximum applications to 10
         const appCount = await tx.application.count({
           where: { orderId }
         });
@@ -472,7 +669,6 @@ export class OrdersService {
          throw new ConflictException('Executor account is deleted');
      }
 
-     // Conflict Check: Is order already claimed or in progress?
      this.validateTransition(app.order, OrderStatus.CLAIMED, userId, true);
 
      const result = await this.prisma.$transaction(async (tx) => {
@@ -493,7 +689,11 @@ export class OrdersService {
          }
 
          const updatedOrder = await tx.order.findUnique({
-             where: { id: app.orderId }
+             where: { id: app.orderId },
+             include: {
+                 employer: { select: { id: true, name: true, rating: true, avatar: true } },
+                 executor: { select: { id: true, name: true, rating: true, avatar: true } },
+             }
          });
 
          if (!updatedOrder) {
@@ -507,7 +707,6 @@ export class OrdersService {
              data: { status: 'ACCEPTED' }
          });
 
-         // V12: Auto-reject all other applications for this order
          await tx.application.updateMany({
              where: {
                  orderId: app.orderId,
@@ -516,15 +715,14 @@ export class OrdersService {
              data: { status: 'REJECTED' }
          });
 
-         // Auto-create chat
-         await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId, tx);
+         const chat = await this.chats.getOrCreateChat(app.orderId, app.executorId, app.order.employerId, tx);
 
-         return updatedOrder;
+         return { order: updatedOrder, chat };
      });
 
-     this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.id}`, { orderId: result.id, userId });
-     await this.broadcast('order.status.changed', result, userId);
-     await this.broadcast('application.accepted', { orderId: result.id, executorId: app.executorId }, userId);
+     this.logger.info('ORDER_ACCEPTED', `Application accepted for order ${result.order.id}`, { orderId: result.order.id, userId });
+     await this.broadcast('order.status.changed', result.order, userId);
+     await this.broadcast('application.accepted', { orderId: result.order.id, executorId: app.executorId }, userId);
      return result;
   }
 
@@ -617,7 +815,6 @@ export class OrdersService {
       where: { orderId_executorId: { orderId, executorId } }
     });
     if (!app) {
-        // Idempotent: already cancelled or not found
         return { success: true };
     }
 
@@ -625,7 +822,6 @@ export class OrdersService {
       throw new ForbiddenException('Нельзя отменить уже принятую заявку — используйте отмену заказа');
     }
     if (app.status === 'REJECTED') {
-      // уже отклонена, ничего не делать, вернуть success как для idempotent-случая
       return { success: true };
     }
 
@@ -643,7 +839,6 @@ export class OrdersService {
           where: { id: app.id }
         });
       } catch (err: any) {
-        // Already deleted by a parallel process
         return null;
       }
 
@@ -713,9 +908,22 @@ export class OrdersService {
 
     this.validateTransition(order, OrderStatus.DISPUTE, userId, false);
 
-    const result = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.DISPUTE }
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.DISPUTE }
+      });
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId,
+          oldStatus: order.status,
+          newStatus: OrderStatus.DISPUTE,
+          changedById: userId
+        }
+      });
+
+      return updated;
     });
 
     this.logger.info('ORDER_DISPUTED', `Dispute opened by user ${userId} for reason: ${reason}`, { orderId, userId });

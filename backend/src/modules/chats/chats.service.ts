@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
@@ -23,28 +23,42 @@ export class ChatsService {
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException("Order not found");
     }
 
-    // Caller must be either the employer or the executor
-    if (order.employerId !== userId && executorId !== userId) {
-      throw new ForbiddenException('You are not authorized to start this chat');
+    const isEmployer = order.employerId === userId;
+    const isAssignedExecutor = order.executorId !== null && order.executorId === userId;
+
+    if (!isEmployer && !isAssignedExecutor) {
+      throw new ForbiddenException("You are not authorized to access chat for this order");
     }
 
-    // Chat before apply is permitted, so the application check (hasApplied) is removed.
+    if (!order.executorId || executorId !== order.executorId) {
+      throw new ForbiddenException("Chat is only permitted with the assigned executor of the order");
+    }
+
+    const executorApp = order.applications?.find(app => app.executorId === order.executorId);
+    if (!executorApp || executorApp.status !== "ACCEPTED") {
+      throw new ForbiddenException("Chat is only permitted when executor application is ACCEPTED");
+    }
+
+    const executor = await db.user.findUnique({ where: { id: order.executorId } });
+    if (!executor || executor.deletedAt) {
+      throw new NotFoundException("Executor not found");
+    }
 
     const chat = await db.chat.upsert({
       where: {
-        orderId_executorId: { orderId, executorId }
+        orderId_executorId: { orderId, executorId: order.executorId }
       },
       update: {},
       create: {
         orderId,
-        executorId,
-        employerId: order.employerId, // Always use the order's actual employer
+        executorId: order.executorId,
+        employerId: order.employerId,
       },
       include: {
-        messages: { orderBy: { createdAt: 'asc' }, take: 50 },
+        messages: { orderBy: { createdAt: "asc" }, take: 50 },
         order: true,
         employer: { select: { id: true, name: true, avatar: true } },
         executor: { select: { id: true, name: true, avatar: true } },
@@ -55,7 +69,7 @@ export class ChatsService {
       chat.messages = [];
     }
 
-    this.logger.info('CHAT_CREATED', `Chat initialized for order ${orderId}`, { orderId, userId });
+    this.logger.info("CHAT_CREATED", `Chat initialized for order ${orderId}`, { orderId, userId });
     return chat;
   }
 
@@ -68,21 +82,18 @@ export class ChatsService {
   detectContacts(text: string): boolean {
     if (!text) return false;
 
-    // Normalize: lowercase and strip spaces, dashes, parentheses and pluses to detect hidden phone numbers
     const normalized = text.toLowerCase().replace(/[\s\-\(\)\+]/g, '');
 
-    // Pattern for phone numbers (7 to 11 contiguous digits)
     const phoneRegex = /\d{7,11}/;
     if (phoneRegex.test(normalized)) return true;
 
-    // Pattern for keywords / URLs / social platforms
     const contactKeywords = /(https?:\/\/[^\s]+|wa\.me|t\.me|instagram\.com|vk\.com|telegram|whatsapp|телеграм|ватсап|viber|вайбер|телефон|номер|связь)/i;
     if (contactKeywords.test(text)) return true;
 
     return false;
   }
 
-  async sendMessage(chatId: string, senderId: string, text: string) {
+  async sendMessage(chatId: string, senderId: string, text: string, clientMessageId?: string) {
     const sender = await this.prisma.user.findUnique({ where: { id: senderId } });
     if (!sender || sender.deletedAt) throw new ForbiddenException('User account is deleted');
 
@@ -95,24 +106,68 @@ export class ChatsService {
       throw new ForbiddenException('Not a member of this chat');
     }
 
-    const sanitizedText = this.sanitizeText(text, 4000);
-
-    const [message] = await this.prisma.$transaction([
-      this.prisma.message.create({
-        data: {
-          chatId,
-          senderId,
-          text: sanitizedText,
+    if (clientMessageId) {
+      const existingMessage = await this.prisma.message.findUnique({
+        where: {
+          chatId_clientMessageId: {
+            chatId,
+            clientMessageId,
+          },
         },
         include: {
-          sender: { select: { id: true, name: true, avatar: true } }
+          sender: { select: { id: true, name: true, avatar: true } },
+        },
+      });
+
+      if (existingMessage) {
+        this.logger.info('CHAT_MESSAGE_IDEMPOTENT_HIT', 'Message already sent with clientMessageId, returning existing', { chatId, clientMessageId });
+        const hasContacts = this.detectContacts(existingMessage.text);
+        return { ...existingMessage, hasContacts };
+      }
+    }
+
+    const sanitizedText = this.sanitizeText(text, 4000);
+
+    let message: any;
+    try {
+      [message] = await this.prisma.$transaction([
+        this.prisma.message.create({
+          data: {
+            chatId,
+            senderId,
+            text: sanitizedText,
+            clientMessageId,
+          },
+          include: {
+            sender: { select: { id: true, name: true, avatar: true } }
+          }
+        }),
+        this.prisma.chat.update({
+          where: { id: chatId },
+          data: { updatedAt: new Date() }
+        })
+      ]);
+    } catch (error: any) {
+      if (clientMessageId && error.code === 'P2002') {
+        const duplicate = await this.prisma.message.findUnique({
+          where: {
+            chatId_clientMessageId: {
+              chatId,
+              clientMessageId,
+            },
+          },
+          include: {
+            sender: { select: { id: true, name: true, avatar: true } },
+          },
+        });
+        if (duplicate) {
+          this.logger.info('CHAT_MESSAGE_IDEMPOTENT_RACE_HIT', 'Duplicate message created by parallel request, returning existing', { chatId, clientMessageId });
+          const hasContacts = this.detectContacts(duplicate.text);
+          return { ...duplicate, hasContacts };
         }
-      }),
-      this.prisma.chat.update({
-        where: { id: chatId },
-        data: { updatedAt: new Date() }
-      })
-    ]);
+      }
+      throw error;
+    }
 
     const hasContacts = this.detectContacts(sanitizedText);
     const messageWithContacts = { ...message, hasContacts };

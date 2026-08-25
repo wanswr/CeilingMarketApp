@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AppGateway } from '../gateway/app.gateway';
 import { LoggerService } from '../logger/logger.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { OrderStatus, ApplicationStatus } from '@prisma/client';
 
 describe('ChatsService', () => {
   let service: ChatsService;
@@ -14,6 +15,10 @@ describe('ChatsService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      upsert: jest.fn(),
+    },
+    order: {
+      findUnique: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
@@ -68,6 +73,133 @@ describe('ChatsService', () => {
     jest.clearAllMocks();
   });
 
+  describe('getOrCreateChat - Strict Order + Application Authorization Cases', () => {
+    const mockOrderAccepted = {
+      id: 'order-1',
+      employerId: 'employer-A',
+      executorId: 'worker-A',
+      status: OrderStatus.CLAIMED,
+      applications: [
+        { id: 'app-1', executorId: 'worker-A', status: ApplicationStatus.ACCEPTED }
+      ]
+    };
+
+    const mockWorkerA = { id: 'worker-A', deletedAt: null };
+
+    it('employer -> allowed', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderAccepted);
+      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerA);
+      mockPrismaService.chat.upsert.mockResolvedValue({
+        id: 'chat-1',
+        orderId: 'order-1',
+        employerId: 'employer-A',
+        executorId: 'worker-A',
+        messages: []
+      });
+
+      const chat = await service.getOrCreateChat('order-1', 'worker-A', 'employer-A');
+      expect(chat.id).toBe('chat-1');
+      expect(mockPrismaService.chat.upsert).toHaveBeenCalled();
+    });
+
+    it('assigned executor + ACCEPTED -> allowed', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderAccepted);
+      mockPrismaService.user.findUnique.mockResolvedValue(mockWorkerA);
+      mockPrismaService.chat.upsert.mockResolvedValue({
+        id: 'chat-1',
+        orderId: 'order-1',
+        employerId: 'employer-A',
+        executorId: 'worker-A',
+        messages: []
+      });
+
+      const chat = await service.getOrCreateChat('order-1', 'worker-A', 'worker-A');
+      expect(chat.id).toBe('chat-1');
+      expect(mockPrismaService.chat.upsert).toHaveBeenCalled();
+    });
+
+    it('executor + PENDING -> 403 Forbidden', async () => {
+      const mockOrderPending = {
+        ...mockOrderAccepted,
+        applications: [{ id: 'app-1', executorId: 'worker-A', status: ApplicationStatus.PENDING }]
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderPending);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('Chat is only permitted when executor application is ACCEPTED'));
+    });
+
+    it('executor + VIEWED -> 403 Forbidden', async () => {
+      const mockOrderViewed = {
+        ...mockOrderAccepted,
+        applications: [{ id: 'app-1', executorId: 'worker-A', status: ApplicationStatus.VIEWED }]
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderViewed);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('Chat is only permitted when executor application is ACCEPTED'));
+    });
+
+    it('executor + REJECTED -> 403 Forbidden', async () => {
+      const mockOrderRejected = {
+        ...mockOrderAccepted,
+        applications: [{ id: 'app-1', executorId: 'worker-A', status: ApplicationStatus.REJECTED }]
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderRejected);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('Chat is only permitted when executor application is ACCEPTED'));
+    });
+
+    it('executor with application, but not assigned -> 403 Forbidden', async () => {
+      const mockOrderUnassigned = {
+        ...mockOrderAccepted,
+        executorId: null,
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderUnassigned);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('You are not authorized to access chat for this order'));
+    });
+
+    it('user with no relation to order -> 403 Forbidden', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderAccepted);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-A', 'stranger-user')
+      ).rejects.toThrow(new ForbiddenException('You are not authorized to access chat for this order'));
+    });
+
+    it('substituted executorId in body -> 403 Forbidden', async () => {
+      mockPrismaService.order.findUnique.mockResolvedValue(mockOrderAccepted);
+
+      await expect(
+        service.getOrCreateChat('order-1', 'worker-substituted', 'employer-A')
+      ).rejects.toThrow(new ForbiddenException('Chat is only permitted with the assigned executor of the order'));
+    });
+
+    it('foreign orderId + own executorId -> 403 Forbidden', async () => {
+      const mockForeignOrder = {
+        id: 'foreign-order',
+        employerId: 'employer-B',
+        executorId: 'worker-B',
+        status: OrderStatus.CLAIMED,
+        applications: [
+          { id: 'app-2', executorId: 'worker-B', status: ApplicationStatus.ACCEPTED }
+        ]
+      };
+      mockPrismaService.order.findUnique.mockResolvedValue(mockForeignOrder);
+
+      await expect(
+        service.getOrCreateChat('foreign-order', 'worker-A', 'worker-A')
+      ).rejects.toThrow(new ForbiddenException('You are not authorized to access chat for this order'));
+    });
+  });
+
   describe('getMessages', () => {
     it('should paginate messages using descending cursor query and reverse to chronological order', async () => {
       const chatId = 'chat-1';
@@ -81,7 +213,7 @@ describe('ChatsService', () => {
       ];
 
       mockPrismaService.chat.findUnique.mockResolvedValue(chat);
-      mockPrismaService.message.findMany.mockResolvedValue(mockMessages); // takeLimit+1 is 4 items
+      mockPrismaService.message.findMany.mockResolvedValue(mockMessages);
 
       const result = await service.getMessages(chatId, userId, undefined, 3);
 
@@ -95,7 +227,6 @@ describe('ChatsService', () => {
         include: { sender: { select: { id: true, name: true, avatar: true } } },
       });
 
-      // It sliced and reversed messages: M1 to M3 reversed chronologically -> msg-2, msg-3, msg-4 -> wait, oldest sliced is msg-1, so reversed sliced is msg-2, msg-3, msg-4.
       expect(result.messages).toHaveLength(3);
       expect(result.messages[0].id).toBe('msg-2');
       expect(result.messages[2].id).toBe('msg-4');
@@ -206,6 +337,145 @@ describe('ChatsService', () => {
       expect(service.detectContacts('Напиши в ватсап wa.me/79123456789')).toBe(true);
       expect(service.detectContacts('Ссылка на вк vk.com/profile')).toBe(true);
       expect(service.detectContacts('Мой инстаграм instagram.com/ceiling')).toBe(true);
+    });
+  });
+});
+
+describe('ChatsService.sendMessage Idempotency', () => {
+  let service: ChatsService;
+  let mockPrisma: any;
+  let mockGateway: any;
+
+  beforeEach(() => {
+    mockPrisma = {
+      user: {
+        findUnique: jest.fn(),
+      },
+      chat: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      message: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+      },
+      $transaction: jest.fn(),
+    };
+
+    mockGateway = {
+      server: {
+        to: jest.fn().mockReturnValue({
+          emit: jest.fn(),
+        }),
+      },
+    };
+
+    const mockLogger = {
+      setService: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+
+    service = new ChatsService(
+      mockPrisma as any,
+      mockGateway as any,
+      mockLogger as any,
+    );
+  });
+
+  it('creates new Message when new clientMessageId is supplied', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
+    mockPrisma.chat.findUnique.mockResolvedValue({ id: 'chat-1', employerId: 'user-1', executorId: 'user-2' });
+    mockPrisma.message.findUnique.mockResolvedValue(null);
+
+    const mockCreatedMessage = {
+      id: 'msg-1',
+      chatId: 'chat-1',
+      senderId: 'user-1',
+      text: 'Hello world',
+      clientMessageId: 'client-uuid-1',
+      createdAt: new Date(),
+    };
+
+    mockPrisma.$transaction.mockResolvedValue([mockCreatedMessage, {}]);
+
+    const result = await service.sendMessage('chat-1', 'user-1', 'Hello world', 'client-uuid-1');
+
+    expect(result.id).toBe('msg-1');
+    expect(mockPrisma.message.findUnique).toHaveBeenCalledWith({
+      where: {
+        chatId_clientMessageId: {
+          chatId: 'chat-1',
+          clientMessageId: 'client-uuid-1',
+        },
+      },
+      include: expect.any(Object),
+    });
+    expect(mockGateway.server.to).toHaveBeenCalledWith('chat:chat-1');
+  });
+
+  it('returns existing Message idempotently on duplicate retry with same clientMessageId and skips duplicate WebSocket broadcast', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
+    mockPrisma.chat.findUnique.mockResolvedValue({ id: 'chat-1', employerId: 'user-1', executorId: 'user-2' });
+
+    const existingMessage = {
+      id: 'msg-1',
+      chatId: 'chat-1',
+      senderId: 'user-1',
+      text: 'Hello world',
+      clientMessageId: 'client-uuid-1',
+      createdAt: new Date(),
+    };
+
+    mockPrisma.message.findUnique.mockResolvedValue(existingMessage);
+
+    const result = await service.sendMessage('chat-1', 'user-1', 'Hello world', 'client-uuid-1');
+
+    expect(result.id).toBe('msg-1');
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockGateway.server.to).not.toHaveBeenCalled();
+  });
+
+  it('creates two distinct messages when same text is sent with different clientMessageIds', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
+    mockPrisma.chat.findUnique.mockResolvedValue({ id: 'chat-1', employerId: 'user-1', executorId: 'user-2' });
+    mockPrisma.message.findUnique.mockResolvedValue(null);
+
+    const msg1 = { id: 'msg-1', chatId: 'chat-1', text: 'Repeat text', clientMessageId: 'uuid-1' };
+    const msg2 = { id: 'msg-2', chatId: 'chat-1', text: 'Repeat text', clientMessageId: 'uuid-2' };
+
+    mockPrisma.$transaction
+      .mockResolvedValueOnce([msg1, {}])
+      .mockResolvedValueOnce([msg2, {}]);
+
+    const res1 = await service.sendMessage('chat-1', 'user-1', 'Repeat text', 'uuid-1');
+    const res2 = await service.sendMessage('chat-1', 'user-1', 'Repeat text', 'uuid-2');
+
+    expect(res1.id).toBe('msg-1');
+    expect(res2.id).toBe('msg-2');
+    expect(res1.id).not.toBe(res2.id);
+  });
+
+  it('allows same clientMessageId across different chats (composite unique key test)', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', deletedAt: null });
+    mockPrisma.chat.findUnique.mockResolvedValue({ id: 'chat-2', employerId: 'user-1', executorId: 'user-2' });
+    mockPrisma.message.findUnique.mockResolvedValue(null);
+
+    const msgInChat2 = { id: 'msg-20', chatId: 'chat-2', text: 'Hello', clientMessageId: 'client-uuid-1' };
+    mockPrisma.$transaction.mockResolvedValue([msgInChat2, {}]);
+
+    const result = await service.sendMessage('chat-2', 'user-1', 'Hello', 'client-uuid-1');
+
+    expect(result.id).toBe('msg-20');
+    expect(mockPrisma.message.findUnique).toHaveBeenCalledWith({
+      where: {
+        chatId_clientMessageId: {
+          chatId: 'chat-2',
+          clientMessageId: 'client-uuid-1',
+        },
+      },
+      include: expect.any(Object),
     });
   });
 });
