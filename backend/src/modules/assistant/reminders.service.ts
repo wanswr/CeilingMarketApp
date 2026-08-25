@@ -71,20 +71,36 @@ export class RemindersService {
       }
     }
 
-    const reminder = await this.prisma.assistantReminder.create({
-      data: {
-        userId,
-        noteId: dto.noteId || null,
-        title: dto.title,
-        description: dto.description || null,
-        scheduledAt: scheduledDate,
-        status: AssistantReminderStatus.SCHEDULED,
-        sourceTaskId: dto.sourceTaskId || null,
-        sourceDateId: dto.sourceDateId || null,
-        notificationId: dto.notificationId || null,
-        idempotencyKey: dto.idempotencyKey || null,
-      },
-    });
+    try {
+      const reminder = await this.prisma.assistantReminder.create({
+        data: {
+          userId,
+          noteId: dto.noteId || null,
+          title: dto.title,
+          description: dto.description || null,
+          scheduledAt: scheduledDate,
+          status: AssistantReminderStatus.SCHEDULED,
+          sourceTaskId: dto.sourceTaskId || null,
+          sourceDateId: dto.sourceDateId || null,
+          notificationId: dto.notificationId || null,
+          idempotencyKey: dto.idempotencyKey || null,
+        },
+      });
+
+      this.logger.info('REMINDER_CREATED', `Created reminder ${reminder.id}`, { userId });
+      return reminder;
+    } catch (error: any) {
+      if (error?.code === 'P2002' && dto.idempotencyKey) {
+        const existingKey = await this.prisma.assistantReminder.findFirst({
+          where: { userId, idempotencyKey: dto.idempotencyKey },
+        });
+        if (existingKey) {
+          this.logger.info('REMINDER_IDEMPOTENCY_CONCURRENT_MATCH', `Caught duplicate unique index for key ${dto.idempotencyKey}`);
+          return existingKey;
+        }
+      }
+      throw error;
+    }
 
     this.logger.info('REMINDER_CREATED', `Created reminder ${reminder.id}`, { userId });
     return reminder;

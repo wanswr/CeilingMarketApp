@@ -244,9 +244,10 @@ export class AiService {
         throw new Error('Empty response content from OpenAI analysis model');
       }
 
-      const parsed: AssistantNoteStructuredOutput = JSON.parse(rawJson);
+      const parsed = JSON.parse(rawJson);
+      const validated = validateStructuredOutput(parsed);
       this.logger.log(`Successfully analyzed assistant note with model ${model}`);
-      return parsed;
+      return validated;
     } catch (error: any) {
       const safeErrorMessage =
         error.response?.data?.error?.message || error.message || 'Unknown analysis error';
@@ -288,4 +289,119 @@ export interface AssistantNoteEditProposalOutput {
   summary: string;
   operations: AssistantNoteEditOperation[];
   uncertainties?: AssistantNoteStructuredUncertainty[];
+}
+
+
+export function validateStructuredOutput(data: any): AssistantNoteStructuredOutput {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new BadRequestException('INVALID_AI_OUTPUT: Root must be an object');
+  }
+
+  const titleSuggestion = typeof data.titleSuggestion === 'string' ? data.titleSuggestion.trim() : 'Заметка';
+  const summary = typeof data.summary === 'string' ? data.summary.trim() : '';
+
+  const ALLOWED_SUGGESTED_ACTIONS = new Set([
+    'SAVE',
+    'CREATE_TABLE',
+    'CREATE_REMINDER',
+    'CREATE_ORDER_DRAFT',
+    'EDIT_NOTE',
+    'ASK_CLARIFICATION',
+  ]);
+
+  const validatedSections: AssistantNoteStructuredSection[] = [];
+  if (Array.isArray(data.sections)) {
+    data.sections.forEach((sec: any) => {
+      if (sec && typeof sec === 'object' && typeof sec.name === 'string') {
+        const validatedItems: AssistantNoteStructuredItem[] = [];
+        if (Array.isArray(sec.items)) {
+          sec.items.forEach((item: any) => {
+            if (item && typeof item === 'object' && typeof item.name === 'string') {
+              const qty = typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? item.quantity : null;
+              const conf = typeof item.confidence === 'number' && Number.isFinite(item.confidence) && item.confidence >= 0 && item.confidence <= 1 ? item.confidence : null;
+              validatedItems.push({
+                name: item.name.trim(),
+                quantity: qty,
+                unit: typeof item.unit === 'string' ? item.unit.trim() : null,
+                category: typeof item.category === 'string' ? item.category.trim() : null,
+                sourceText: typeof item.sourceText === 'string' ? item.sourceText.trim() : null,
+                confidence: conf,
+              });
+            }
+          });
+        }
+        validatedSections.push({
+          name: sec.name.trim(),
+          items: validatedItems,
+        });
+      }
+    });
+  }
+
+  const validatedTasks: AssistantNoteStructuredTask[] = [];
+  if (Array.isArray(data.tasks)) {
+    data.tasks.forEach((t: any) => {
+      if (t && typeof t === 'object' && typeof t.text === 'string') {
+        const conf = typeof t.confidence === 'number' && Number.isFinite(t.confidence) && t.confidence >= 0 && t.confidence <= 1 ? t.confidence : null;
+        validatedTasks.push({
+          text: t.text.trim(),
+          dateText: typeof t.dateText === 'string' ? t.dateText.trim() : null,
+          confidence: conf,
+        });
+      }
+    });
+  }
+
+  const validatedDates: AssistantNoteStructuredDate[] = [];
+  if (Array.isArray(data.dates)) {
+    data.dates.forEach((d: any) => {
+      if (d && typeof d === 'object' && typeof d.text === 'string') {
+        const conf = typeof d.confidence === 'number' && Number.isFinite(d.confidence) && d.confidence >= 0 && d.confidence <= 1 ? d.confidence : null;
+        validatedDates.push({
+          text: d.text.trim(),
+          resolvedDate: typeof d.resolvedDate === 'string' ? d.resolvedDate.trim() : null,
+          confidence: conf,
+        });
+      }
+    });
+  }
+
+  const validatedUncertainties: AssistantNoteStructuredUncertainty[] = [];
+  if (Array.isArray(data.uncertainties)) {
+    data.uncertainties.forEach((unc: any) => {
+      if (unc && typeof unc === 'object' && typeof unc.question === 'string') {
+        validatedUncertainties.push({
+          question: unc.question.trim(),
+          sourceText: typeof unc.sourceText === 'string' ? unc.sourceText.trim() : null,
+        });
+      }
+    });
+  }
+
+  const validatedActions: AssistantNoteSuggestedAction[] = [];
+  if (Array.isArray(data.suggestedActions)) {
+    data.suggestedActions.forEach((act: any) => {
+      if (
+        act &&
+        typeof act === 'object' &&
+        typeof act.type === 'string' &&
+        ALLOWED_SUGGESTED_ACTIONS.has(act.type)
+      ) {
+        validatedActions.push({
+          type: act.type as any,
+          reason: typeof act.reason === 'string' ? act.reason.trim() : '',
+        });
+      }
+    });
+  }
+
+  return {
+    titleSuggestion,
+    summary,
+    sections: validatedSections,
+    tasks: validatedTasks,
+    dates: validatedDates,
+    uncertainties: validatedUncertainties,
+    suggestedActions: validatedActions,
+  };
 }

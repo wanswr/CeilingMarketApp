@@ -433,17 +433,17 @@ export class AssistantService {
         { userId, noteId, attachmentId },
       );
     } catch (error: any) {
-      const safeError = error.message || 'Transcription failed';
+      const safeErrorCode = error.message === 'OPENAI_NOT_CONFIGURED' ? 'OPENAI_NOT_CONFIGURED' : 'TRANSCRIPTION_FAILED';
       this.logger.error(
         'ASSISTANT_TRANSCRIPTION_FAILED',
-        `Transcription failed for attachment ${attachmentId}: ${safeError}`,
+        `Transcription failed for attachment ${attachmentId}: ${error.message}`,
       );
 
       await this.prisma.assistantNoteAttachment.update({
         where: { id: attachmentId },
         data: {
           transcriptionStatus: AssistantNoteTranscriptionStatus.FAILED,
-          transcriptionError: safeError,
+          transcriptionError: safeErrorCode,
         },
       });
     }
@@ -621,30 +621,91 @@ export class AssistantService {
     const currentStructured = this.ensureStableIds(note.structuredData || {});
     const operations: any[] = (proposal.operations as any[]) || [];
 
-    // Apply delta operations onto structuredData
-    operations.forEach((op) => {
-      if (op.operation === 'UPDATE_ITEM' && op.targetId) {
+    // Hardened operation allowlist & field validation
+    const ALLOWED_OPERATIONS = new Set([
+      'UPDATE_ITEM',
+      'ADD_ITEM',
+      'REMOVE_ITEM',
+      'ADD_TASK',
+      'UPDATE_TASK',
+      'REMOVE_TASK',
+      'ADD_DATE',
+      'UPDATE_DATE',
+      'UPDATE_TITLE',
+    ]);
+
+    const ALLOWED_ITEM_FIELDS = new Set([
+      'name',
+      'quantity',
+      'unit',
+      'category',
+      'comment',
+      'confidence',
+    ]);
+
+    const FORBIDDEN_FIELDS = new Set(['id', 'sourceText', '__proto__', 'constructor', 'prototype']);
+
+    operations.forEach((op: any, index: number) => {
+      if (!op || typeof op !== 'object' || !ALLOWED_OPERATIONS.has(op.operation)) {
+        throw new BadRequestException(`UNSUPPORTED_OPERATION: Operation at index ${index} is invalid or not allowed`);
+      }
+
+      if (op.operation === 'UPDATE_ITEM') {
+        if (!op.targetId || typeof op.targetId !== 'string') {
+          throw new BadRequestException(`INVALID_TARGET_ID: Target ID required for UPDATE_ITEM at index ${index}`);
+        }
+
+        let itemFound = false;
         if (Array.isArray(currentStructured.sections)) {
           currentStructured.sections.forEach((sec: any) => {
             if (Array.isArray(sec.items)) {
               sec.items.forEach((item: any) => {
                 if (item.id === op.targetId) {
-                  if (op.field && op.newValue !== undefined) {
+                  itemFound = true;
+                  if (op.field) {
+                    if (FORBIDDEN_FIELDS.has(op.field) || !ALLOWED_ITEM_FIELDS.has(op.field)) {
+                      throw new BadRequestException(`FORBIDDEN_FIELD: Field '${op.field}' is not editable`);
+                    }
+                    if (op.field === 'quantity') {
+                      const qty = op.newValue;
+                      if (qty !== null && (typeof qty !== 'number' || !Number.isFinite(qty) || qty < 0)) {
+                        throw new BadRequestException(`INVALID_QUANTITY: Invalid quantity value for ${op.field}`);
+                      }
+                    }
                     item[op.field] = op.newValue;
-                  } else if (op.item) {
-                    Object.assign(item, op.item);
+                  } else if (op.item && typeof op.item === 'object') {
+                    Object.keys(op.item).forEach((key) => {
+                      if (ALLOWED_ITEM_FIELDS.has(key) && !FORBIDDEN_FIELDS.has(key)) {
+                        item[key] = op.item[key];
+                      }
+                    });
                   }
                 }
               });
             }
           });
         }
+
+        if (!itemFound) {
+          throw new BadRequestException(`TARGET_ITEM_NOT_FOUND: Item with ID '${op.targetId}' not found`);
+        }
       } else if (op.operation === 'ADD_ITEM') {
-        const newItem = op.item || { name: 'Новая позиция' };
-        if (!newItem.id) newItem.id = uuidv4();
+        const rawItem = op.item || {};
+        if (typeof rawItem.name !== 'string' || !rawItem.name.trim()) {
+          throw new BadRequestException(`INVALID_ITEM_NAME: Item name required for ADD_ITEM at index ${index}`);
+        }
+
+        const newItem: any = {
+          id: uuidv4(),
+          name: rawItem.name.trim(),
+          quantity: typeof rawItem.quantity === 'number' && Number.isFinite(rawItem.quantity) ? rawItem.quantity : null,
+          unit: typeof rawItem.unit === 'string' ? rawItem.unit.trim() : null,
+          category: typeof rawItem.category === 'string' ? rawItem.category.trim() : null,
+          confidence: typeof rawItem.confidence === 'number' && Number.isFinite(rawItem.confidence) ? rawItem.confidence : null,
+        };
 
         if (!currentStructured.sections) currentStructured.sections = [];
-        const targetSecName = op.section || 'Общее';
+        const targetSecName = typeof op.section === 'string' && op.section.trim() ? op.section.trim() : 'Общее';
         let section = currentStructured.sections.find((s: any) => s.name === targetSecName);
         if (!section) {
           section = { id: uuidv4(), name: targetSecName, items: [] };
@@ -652,7 +713,10 @@ export class AssistantService {
         }
         if (!Array.isArray(section.items)) section.items = [];
         section.items.push(newItem);
-      } else if (op.operation === 'REMOVE_ITEM' && op.targetId) {
+      } else if (op.operation === 'REMOVE_ITEM') {
+        if (!op.targetId || typeof op.targetId !== 'string') {
+          throw new BadRequestException(`INVALID_TARGET_ID: Target ID required for REMOVE_ITEM at index ${index}`);
+        }
         if (Array.isArray(currentStructured.sections)) {
           currentStructured.sections.forEach((sec: any) => {
             if (Array.isArray(sec.items)) {
@@ -660,12 +724,21 @@ export class AssistantService {
             }
           });
         }
-      } else if (op.operation === 'ADD_TASK' && op.task) {
+      } else if (op.operation === 'ADD_TASK') {
+        const rawTask = op.task || {};
+        if (typeof rawTask.text !== 'string' || !rawTask.text.trim()) {
+          throw new BadRequestException(`INVALID_TASK_TEXT: Task text required at index ${index}`);
+        }
         if (!currentStructured.tasks) currentStructured.tasks = [];
-        const newTask = { ...op.task, id: uuidv4() };
-        currentStructured.tasks.push(newTask);
-      } else if (op.operation === 'UPDATE_TITLE' && op.title) {
-        currentStructured.titleSuggestion = op.title;
+        currentStructured.tasks.push({
+          id: uuidv4(),
+          text: rawTask.text.trim(),
+          dateText: typeof rawTask.dateText === 'string' ? rawTask.dateText.trim() : null,
+        });
+      } else if (op.operation === 'UPDATE_TITLE') {
+        if (typeof op.title === 'string' && op.title.trim()) {
+          currentStructured.titleSuggestion = op.title.trim();
+        }
       }
     });
 

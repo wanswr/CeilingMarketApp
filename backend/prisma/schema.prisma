@@ -72,4 +72,5 @@ model AssistantReminder {
   @@index([userId])
   @@index([noteId])
   @@index([idempotencyKey])
+  @@unique([userId, idempotencyKey])
 }
