@@ -1,4 +1,5 @@
 import { AssistantNoteStatus } from '@prisma/client';
+import { AssistantNoteStatus } from '@prisma/client';
 import { IsEnum } from 'class-validator';
 import { AssistantNoteStatus } from '@prisma/client';
 import { IsString, IsOptional, MaxLength, IsObject, IsEnum } from 'class-validator';
@@ -18,6 +19,10 @@ export class UpdateAssistantNoteDto {
   @IsOptional()
   @IsObject()
   structuredData?: Record<string, any>;
+
+  @IsOptional()
+  @IsEnum(AssistantNoteStatus)
+  status?: AssistantNoteStatus;
 
   @IsOptional()
   @IsEnum(AssistantNoteStatus)
