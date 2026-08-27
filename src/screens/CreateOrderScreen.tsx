@@ -137,6 +137,18 @@ export default function CreateOrderScreen({ navigation }: any) {
   }, []);
 
   useEffect(() => {
+    if (route.params?.prefill) {
+      const p = route.params.prefill;
+      setForm(f => ({
+        ...f,
+        title: p.title !== undefined ? p.title : f.title,
+        details: p.details !== undefined ? p.details : f.details,
+        address: p.address !== undefined ? p.address : f.address,
+        date: p.date ? new Date(p.date) : f.date,
+        categoryId: p.categoryId !== undefined ? p.categoryId : f.categoryId,
+      }));
+    }
+
     if (route.params?.latitude && route.params?.longitude) {
         const { latitude, longitude } = route.params;
         setCoordinates({ latitude, longitude });
@@ -324,7 +336,8 @@ export default function CreateOrderScreen({ navigation }: any) {
             longitude: coordinates.longitude,
             price: Number(form.price),
             images: images,
-            idempotencyKey: idempotencyKeyRef.current
+            idempotencyKey: idempotencyKeyRef.current,
+            sourceNoteId: route.params?.sourceNoteId
           });
 
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

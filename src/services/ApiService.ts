@@ -325,11 +325,100 @@ class ApiService {
 
 
   // Assistant Notes
-  getAssistantNotes = (includeArchived?: boolean) => this.api.get("assistant/notes", { params: { includeArchived } });
-  getAssistantNote = (id: string) => this.api.get("assistant/notes/" + id);
-  createAssistantNote = (data: { title: string; rawText?: string; structuredData?: any }) => this.api.post("assistant/notes", data);
-  updateAssistantNote = (id: string, data: { title?: string; rawText?: string; structuredData?: any }) => this.api.patch("assistant/notes/" + id, data);
-  archiveAssistantNote = (id: string) => this.api.post("assistant/notes/" + id + "/archive");
+  getAssistantNotes = async (includeArchived?: boolean) => {
+    const res = await this.api.get("assistant/notes", { params: { includeArchived } });
+    return res.data;
+  };
+
+  getAssistantNote = async (id: string) => {
+    const res = await this.api.get("assistant/notes/" + id);
+    return res.data;
+  };
+
+  createAssistantNote = async (data: { title: string; rawText?: string; structuredData?: any }) => {
+    const res = await this.api.post("assistant/notes", data);
+    return res.data;
+  };
+
+  updateAssistantNote = async (id: string, data: { title?: string; rawText?: string; structuredData?: any }) => {
+    const res = await this.api.patch("assistant/notes/" + id, data);
+    return res.data;
+  };
+
+  archiveAssistantNote = async (id: string) => {
+    const res = await this.api.post("assistant/notes/" + id + "/archive");
+    return res.data;
+  };
+
+  uploadNoteAudio = async (id: string, uri: string, durationMs?: number) => {
+    const formData = new FormData();
+    const filename = uri.split("/").pop() || "recording.m4a";
+    formData.append("file", {
+      uri,
+      name: filename,
+      type: "audio/m4a",
+    } as any);
+    if (durationMs !== undefined) {
+      formData.append("durationMs", String(durationMs));
+    }
+    const res = await this.api.post("assistant/notes/" + id + "/audio", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  };
+
+  transcribeNoteAudio = async (id: string, attachmentId: string) => {
+    const res = await this.api.post("assistant/notes/" + id + "/audio/" + attachmentId + "/transcribe");
+    return res.data;
+  };
+
+  analyzeAssistantNote = async (id: string) => {
+    const res = await this.api.post("assistant/notes/" + id + "/analyze");
+    return res.data;
+  };
+
+  proposeAssistantNoteEdit = async (id: string, rawInput: string) => {
+    const res = await this.api.post("assistant/notes/" + id + "/propose-edit", { rawInput });
+    return res.data;
+  };
+
+  applyAssistantNoteEdit = async (id: string, proposalId: string) => {
+    const res = await this.api.post("assistant/notes/" + id + "/apply-edit", { proposalId });
+    return res.data;
+  };
+
+  getReminders = async (noteId?: string) => {
+    const res = await this.api.get("assistant/reminders", { params: { noteId } });
+    return res.data;
+  };
+
+  createReminder = async (data: {
+    title: string;
+    scheduledAt: string;
+    noteId?: string;
+    description?: string;
+    sourceTaskId?: string;
+    sourceDateId?: string;
+    idempotencyKey?: string;
+  }) => {
+    const res = await this.api.post("assistant/reminders", data);
+    return res.data;
+  };
+
+  updateReminder = async (id: string, data: { title?: string; description?: string; scheduledAt?: string; notificationId?: string }) => {
+    const res = await this.api.patch("assistant/reminders/" + id, data);
+    return res.data;
+  };
+
+  completeReminder = async (id: string) => {
+    const res = await this.api.post("assistant/reminders/" + id + "/complete");
+    return res.data;
+  };
+
+  cancelReminder = async (id: string) => {
+    const res = await this.api.post("assistant/reminders/" + id + "/cancel");
+    return res.data;
+  };
 
   getBaseUrl = () => this.baseURL;
 }

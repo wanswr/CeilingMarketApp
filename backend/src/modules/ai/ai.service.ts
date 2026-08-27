@@ -68,13 +68,12 @@ export class AiService {
     private readonly configService: ConfigService,
     private readonly logger: LoggerService,
   ) {
-    this.logger.setContext('AiService');
-  }
+      }
 
   async transcribeAudio(filePath: string): Promise<string> {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
-      this.logger.error('OPENAI_API_KEY is not configured in environment');
+      this.logger.error('AI_ERROR', 'OPENAI_API_KEY is not configured in environment');
       throw new BadRequestException('OPENAI_NOT_CONFIGURED');
     }
 
@@ -83,7 +82,7 @@ export class AiService {
       : path.join(process.cwd(), filePath);
 
     if (!fs.existsSync(absolutePath)) {
-      this.logger.error(`Audio file not found at path: ${absolutePath}`);
+      this.logger.error('AI_ERROR', `Audio file not found at path: ${absolutePath}`);
       throw new BadRequestException('AUDIO_FILE_NOT_FOUND');
     }
 
@@ -112,12 +111,12 @@ export class AiService {
         throw new Error('Empty response from OpenAI transcription service');
       }
 
-      this.logger.log(`Successfully transcribed audio file: ${filePath}`);
+      this.logger.info('AI_SERVICE', `Successfully transcribed audio file: ${filePath}`);
       return response.data.text.trim();
     } catch (error: any) {
       const safeErrorMessage =
         error.response?.data?.error?.message || error.message || 'Unknown transcription error';
-      this.logger.error(`OpenAI Transcription failure: ${safeErrorMessage}`);
+      this.logger.error('AI_ERROR', `OpenAI Transcription failure: ${safeErrorMessage}`);
 
       if (safeErrorMessage === 'OPENAI_NOT_CONFIGURED') {
         throw new BadRequestException('OPENAI_NOT_CONFIGURED');
@@ -134,7 +133,7 @@ export class AiService {
   ): Promise<AssistantNoteStructuredOutput> {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
-      this.logger.error('OPENAI_API_KEY is not configured in environment');
+      this.logger.error('AI_ERROR', 'OPENAI_API_KEY is not configured in environment');
       throw new BadRequestException('OPENAI_NOT_CONFIGURED');
     }
 
@@ -246,12 +245,12 @@ export class AiService {
 
       const parsed = JSON.parse(rawJson);
       const validated = validateStructuredOutput(parsed);
-      this.logger.log(`Successfully analyzed assistant note with model ${model}`);
+      this.logger.info('AI_SERVICE', `Successfully analyzed assistant note with model ${model}`);
       return validated;
     } catch (error: any) {
       const safeErrorMessage =
         error.response?.data?.error?.message || error.message || 'Unknown analysis error';
-      this.logger.error(`OpenAI Note Analysis failure: ${safeErrorMessage}`);
+      this.logger.error('AI_ERROR', `OpenAI Note Analysis failure: ${safeErrorMessage}`);
 
       if (safeErrorMessage === 'OPENAI_NOT_CONFIGURED') {
         throw new BadRequestException('OPENAI_NOT_CONFIGURED');
@@ -289,9 +288,308 @@ export interface AssistantNoteEditProposalOutput {
   summary: string;
   operations: AssistantNoteEditOperation[];
   uncertainties?: AssistantNoteStructuredUncertainty[];
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<{ operations: any[]; uncertainties?: any[]; summary?: string }> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
 }
-
-
 export function validateStructuredOutput(data: any): AssistantNoteStructuredOutput {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new BadRequestException('INVALID_AI_OUTPUT: Root must be an object');
@@ -393,15 +691,206 @@ export function validateStructuredOutput(data: any): AssistantNoteStructuredOutp
         });
       }
     });
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<{ operations: any[]; uncertainties?: any[]; summary?: string }> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
   }
 
-  return {
-    titleSuggestion,
-    summary,
-    sections: validatedSections,
-    tasks: validatedTasks,
-    dates: validatedDates,
-    uncertainties: validatedUncertainties,
-    suggestedActions: validatedActions,
-  };
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<{ operations: any[]; uncertainties?: any[]; summary?: string }> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: ['OpenAI API key missing'],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<{ operations: any[]; uncertainties?: any[]; summary?: string }> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
+
+  async proposeNoteEdit(
+    noteTitle: string,
+    currentData: any,
+    editInstruction: string,
+  ): Promise<any> {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        operations: [],
+        uncertainties: [{ code: 'NO_API_KEY', message: 'OpenAI API key missing' }],
+        summary: 'AI editing not configured',
+      };
+    }
+
+    try {
+      const prompt = `Current note title: "${noteTitle}".\nCurrent structured data: ${JSON.stringify(currentData, null, 2)}.\nUser edit instruction: "${editInstruction}".\nGenerate operations to update structured data.`;
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_ANALYSIS_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an AI assistant updating structured construction estimate notes.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new Error('Empty response from OpenAI');
+      return JSON.parse(content);
+    } catch (error: any) {
+      this.logger.error('PROPOSE_NOTE_EDIT_FAILED', 'Failed to generate note edit proposal', { error: error.message });
+      throw error;
+    }
+  }
 }

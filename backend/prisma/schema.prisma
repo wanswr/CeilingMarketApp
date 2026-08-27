@@ -1,3 +1,590 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  WORKER
+  EMPLOYER
+  ADMIN
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  HAS_RESPONSES
+  CLAIMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTE
+  REVIEWED
+  FROZEN
+}
+
+enum ApplicationStatus {
+  PENDING
+  VIEWED
+  ACCEPTED
+  REJECTED
+  CANCELLED_BY_EXECUTOR
+}
+
+enum WorkType {
+  FROZE
+  INSTALLATION
+  SERVICE
+  REPAIR
+  OTHER
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+model User {
+  id               String    @id @default(uuid())
+  phone            String    @unique
+  name             String?
+  role             Role?
+  roles            Role[]    @default([WORKER, EMPLOYER])
+  avatar           String?
+  rating           Float?
+  experience       Int?      @default(0)
+  ordersCount      Int       @default(0)
+  completedOrders  Int       @default(0)
+  instagram        String?
+  telegram         String?
+  isVerified       Boolean   @default(false)
+  phoneVerified    Boolean   @default(false)
+  isTrialUsed      Boolean   @default(false)
+  pushToken        String?
+  deletedAt        DateTime?
+  activeCategoryId String?
+  activeCategory   Category? @relation("UserActiveCategory", fields: [activeCategoryId], references: [id])
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  sessionVersion Int             @default(1)
+  sessions       Session[]
+  deviceSessions DeviceSession[]
+
+  // Moderation / Block fields
+  isBlocked     Boolean   @default(false)
+  blockedAt     DateTime?
+  blockedReason String?
+  blockedById   String?
+  blockedBy     User?     @relation("UserBlockedBy", fields: [blockedById], references: [id], onDelete: SetNull)
+  blockedUsers  User[]    @relation("UserBlockedBy")
+
+  adminProfile              Admin?
+  orders                    Order[]                     @relation("EmployerOrders")
+  assignedOrders            Order[]                     @relation("ExecutorOrders")
+  applications              Application[]
+  employerChats             Chat[]                      @relation("EmployerChats")
+  executorChats             Chat[]                      @relation("ExecutorChats")
+  messages                  Message[]
+  freeCategoryUsed          Boolean                     @default(false)
+  subscriptions             Subscription[]
+  authoredReviews           Review[]                    @relation("AuthoredReviews")
+  receivedReviews           Review[]                    @relation("TargetedReviews")
+  portfolioItems            PortfolioItem[]
+  notifications             Notification[]
+  reportsCreated            Report[]                    @relation("ReportReporter")
+  reportsAgainst            Report[]                    @relation("ReportTargetUser")
+  reportsResolved           Report[]                    @relation("ReportResolvedBy")
+  disputesOpened            Dispute[]                   @relation("DisputeOpenedBy")
+  disputesRespondent        Dispute[]                   @relation("DisputeRespondent")
+  disputesAssigned          Dispute[]                   @relation("DisputeAdmin")
+  disputesAppealed          Dispute[]                   @relation("DisputeAppealedBy")
+  disputesAppealResolved    Dispute[]                   @relation("DisputeAppealResolvedBy")
+  adminAuditLogs            AdminAuditLog[]
+  auditLogs                 AuditLog[]
+  payments                  Payment[]
+  notificationPreference    NotificationPreference?
+  verificationEvidence      UserVerificationEvidence[]
+  AssistantNote             AssistantNote[]
+  AssistantNoteEditProposal AssistantNoteEditProposal[]
+  AssistantReminder         AssistantReminder[]
+
+  @@index([role])
+  @@index([rating])
+}
+
+model Admin {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Order {
+  id             String      @id @default(uuid())
+  employerId     String
+  executorId     String?
+  title          String
+  address        String
+  latitude       Float
+  longitude      Float
+  date           DateTime
+  workType       WorkType    @default(INSTALLATION)
+  price          Float
+  details        String?
+  status         OrderStatus @default(PUBLISHED)
+  images         String[]
+  isPinned       Boolean     @default(false)
+  idempotencyKey String?     @unique
+  claimedAt      DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  // Freeze metadata
+  isFrozen         Boolean      @default(false)
+  frozenFromStatus OrderStatus?
+  frozenAt         DateTime?
+  frozenReason     String?
+
+  employer            User                 @relation("EmployerOrders", fields: [employerId], references: [id], onDelete: Cascade)
+  executor            User?                @relation("ExecutorOrders", fields: [executorId], references: [id], onDelete: SetNull)
+  applications        Application[]
+  chats               Chat[]
+  reviews             Review[]
+  categoryId          String?
+  category            Category?            @relation(fields: [categoryId], references: [id])
+  statusHistory       OrderStatusHistory[]
+  photos              OrderPhoto[]
+  disputes            Dispute[]
+  payments            Payment[]
+  assistantSourceNote AssistantNote?
+
+  @@index([status, latitude, longitude])
+  @@index([latitude])
+  @@index([longitude])
+  @@index([status])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([employerId])
+  @@index([executorId])
+}
+
+model PortfolioItem {
+  id          String   @id @default(uuid())
+  userId      String
+  imageUrl    String
+  description String?
+  workType    WorkType @default(INSTALLATION)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+model Chat {
+  id         String   @id @default(uuid())
+  orderId    String
+  employerId String
+  executorId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  employer User      @relation("EmployerChats", fields: [employerId], references: [id], onDelete: Cascade)
+  executor User      @relation("ExecutorChats", fields: [executorId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([orderId, executorId])
+}
+
+model Message {
+  id              String        @id @default(uuid())
+  chatId          String
+  senderId        String
+  clientMessageId String?
+  text            String
+  isRead          Boolean       @default(false)
+  type            MessageType   @default(TEXT)
+  status          MessageStatus @default(SENT)
+  fileUrl         String?
+  createdAt       DateTime      @default(now())
+
+  chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, clientMessageId])
+  @@index([chatId, createdAt])
+}
+
+model Application {
+  id             String            @id @default(uuid())
+  orderId        String
+  executorId     String
+  price          Float?
+  status         ApplicationStatus @default(PENDING)
+  idempotencyKey String?           @unique
+  createdAt      DateTime          @default(now())
+
+  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  executor User  @relation(fields: [executorId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, executorId])
+  @@index([executorId])
+}
+
+model Subscription {
+  id          String   @id @default(uuid())
+  userId      String
+  categoryId  String
+  activeUntil DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([userId])
+  @@index([categoryId])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  orderId   String
+  authorId  String
+  targetId  String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author User  @relation("AuthoredReviews", fields: [authorId], references: [id], onDelete: Cascade)
+  target User  @relation("TargetedReviews", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, authorId])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  orders        Order[]
+  masters       User[]         @relation("UserActiveCategory")
+  subscriptions Subscription[]
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(uuid())
+  orderId     String
+  oldStatus   OrderStatus
+  newStatus   OrderStatus
+  changedById String?
+  createdAt   DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  VOICE
+  FILE
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+model OrderPhoto {
+  id        String   @id @default(uuid())
+  orderId   String
+  url       String
+  type      String // "before" | "after"
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+enum ReportStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_REVIEW
+  UNDER_REVIEW
+  WAITING_FOR_PARTY
+  RESOLVED
+  REJECTED
+  APPEALED
+  CLOSED
+}
+
+enum ResolutionType {
+  NO_ACTION
+  REFUND
+  PARTIAL_REFUND
+  COMPENSATION
+  WARNING
+  USER_BLOCK
+  ORDER_FREEZE
+  DISPUTE_REJECTED
+}
+
+model Report {
+  id            String       @id @default(uuid())
+  reporterId    String
+  targetUserId  String?
+  targetOrderId String?
+  reason        String
+  description   String?
+  status        ReportStatus @default(OPEN)
+  resolvedById  String?
+  resolution    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  reporter   User  @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetUser User? @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  resolvedBy User? @relation("ReportResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([reporterId])
+  @@index([targetUserId])
+  @@index([status])
+}
+
+model Dispute {
+  id                 String          @id @default(uuid())
+  orderId            String
+  openedById         String
+  respondentId       String
+  reason             String
+  description        String?
+  status             DisputeStatus   @default(OPEN)
+  assignedAdminId    String?
+  resolutionType     ResolutionType?
+  resolution         String?
+  appealReason       String?
+  appealedById       String?
+  appealedAt         DateTime?
+  appealResolvedById String?
+  appealResult       String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  resolvedAt         DateTime?
+
+  order            Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  openedBy         User  @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Cascade)
+  respondent       User  @relation("DisputeRespondent", fields: [respondentId], references: [id], onDelete: Cascade)
+  assignedAdmin    User? @relation("DisputeAdmin", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  appealedBy       User? @relation("DisputeAppealedBy", fields: [appealedById], references: [id], onDelete: SetNull)
+  appealResolvedBy User? @relation("DisputeAppealResolvedBy", fields: [appealResolvedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([openedById])
+  @@index([status])
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Session {
+  id                String    @id @default(uuid())
+  userId            String
+  sessionToken      String?   @unique
+  deviceSessionId   String?
+  deviceFingerprint String?
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime  @default(now())
+  lastActiveAt      DateTime  @default(now())
+  lastUsedAt        DateTime  @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([revokedAt])
+}
+
+model DeviceSession {
+  id                String    @id @default(uuid())
+  userId            String
+  deviceFingerprint String
+  platform          String?
+  deviceName        String?
+  lastSeenAt        DateTime  @default(now())
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceFingerprint])
+  @@index([userId])
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  orderId           String
+  userId            String?
+  amount            Float
+  currency          String   @default("RUB")
+  status            String   @default("PENDING")
+  provider          String?
+  providerPaymentId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([userId])
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorUserId  String?
+  actorAdminId String?
+  action       String
+  entityType   String
+  entityId     String
+  metadata     Json?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([actorAdminId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model NotificationPreference {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  pushEnabled           Boolean  @default(true)
+  orderNotifications    Boolean  @default(true)
+  chatNotifications     Boolean  @default(true)
+  disputeNotifications  Boolean  @default(true)
+  securityNotifications Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserVerificationEvidence {
+  id                String             @id @default(uuid())
+  userId            String
+  type              String
+  status            VerificationStatus @default(PENDING)
+  provider          String?
+  providerReference String?
+  verifiedAt        DateTime?
+  expiresAt         DateTime?
+  metadata          Json?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model SecurityLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  phone     String?
+  event     String
+  ipAddress String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([phone])
+  @@index([event])
+  @@index([createdAt])
+}
+
+// ==========================================
+// ASSISTANT MODULE ENUMS & MODELS
+// ==========================================
+
+enum AssistantNoteStatus {
+  DRAFT
+  STRUCTURED
+  ARCHIVED
+}
+
+enum AssistantNoteRevisionSource {
+  TEXT
+  VOICE
+  AI_PATCH
+  MANUAL
+}
+
+enum AssistantNoteAttachmentType {
+  AUDIO
+}
 
 enum AssistantNoteTranscriptionStatus {
   PENDING
@@ -22,31 +609,95 @@ enum AssistantNoteEditProposalStatus {
   STALE
 }
 
-model AssistantNoteEditProposal {
-  id          String                            @id @default(uuid())
-  noteId      String
-  userId      String
-  baseVersion Int
-  inputType   String                            @default("TEXT")
-  rawInput    String
-  operations  Json
-  uncertainties Json?
-  summary     String?
-  status      AssistantNoteEditProposalStatus   @default(PENDING)
-  createdAt   DateTime                          @default(now())
-  appliedAt   DateTime?
-
-  note        AssistantNote                     @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  user        User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([noteId])
-  @@index([userId])
-}
-
 enum AssistantReminderStatus {
   SCHEDULED
   COMPLETED
   CANCELLED
+}
+
+model AssistantNote {
+  id                String                      @id @default(uuid())
+  userId            String
+  title             String
+  rawText           String?
+  structuredData    Json?
+  status            AssistantNoteStatus         @default(DRAFT)
+  version           Int                         @default(1)
+  analysisStatus    AssistantNoteAnalysisStatus @default(IDLE)
+  analysisInputHash String?
+  analyzedAt        DateTime?
+  analysisModel     String?
+  analysisError     String?
+  convertedOrderId  String?                     @unique
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+  archivedAt        DateTime?
+
+  user           User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments    AssistantNoteAttachment[]
+  revisions      AssistantNoteRevision[]
+  editProposals  AssistantNoteEditProposal[]
+  reminders      AssistantReminder[]
+  convertedOrder Order?                      @relation(fields: [convertedOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AssistantNoteRevision {
+  id           String                      @id @default(uuid())
+  noteId       String
+  source       AssistantNoteRevisionSource @default(MANUAL)
+  rawInput     String?
+  previousData Json?
+  newData      Json?
+  createdAt    DateTime                    @default(now())
+
+  note AssistantNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@index([createdAt])
+}
+
+model AssistantNoteAttachment {
+  id                  String                           @id @default(uuid())
+  noteId              String
+  type                AssistantNoteAttachmentType      @default(AUDIO)
+  fileUrl             String
+  fileName            String?
+  fileSize            Int
+  mimeType            String
+  durationMs          Int?
+  transcriptionStatus AssistantNoteTranscriptionStatus @default(PENDING)
+  transcriptionText   String?
+  transcriptionError  String?
+  createdAt           DateTime                         @default(now())
+
+  note AssistantNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+}
+
+model AssistantNoteEditProposal {
+  id            String                          @id @default(uuid())
+  noteId        String
+  userId        String
+  baseVersion   Int
+  inputType     String                          @default("TEXT")
+  rawInput      String
+  operations    Json
+  uncertainties Json?
+  summary       String?
+  status        AssistantNoteEditProposalStatus @default(PENDING)
+  createdAt     DateTime                        @default(now())
+  appliedAt     DateTime?
+
+  note AssistantNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@index([userId])
 }
 
 model AssistantReminder {
@@ -66,11 +717,11 @@ model AssistantReminder {
   completedAt    DateTime?
   cancelledAt    DateTime?
 
-  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  note           AssistantNote?          @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note AssistantNote? @relation(fields: [noteId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, idempotencyKey])
   @@index([userId])
   @@index([noteId])
   @@index([idempotencyKey])
-  @@unique([userId, idempotencyKey])
 }

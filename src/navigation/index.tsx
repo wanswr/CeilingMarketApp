@@ -18,9 +18,11 @@ import ChatDetailScreen from '../screens/ChatDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CategorySelectionScreen from '../screens/CategorySelectionScreen';
 import CreateOrderScreen from '../screens/CreateOrderScreen';
-import AssistantScreen from '../screens/assistant/AssistantScreen';
+import { AssistantScreen } from '../screens/assistant/AssistantScreen';
 import AssistantNoteEditorScreen from '../screens/assistant/AssistantNoteEditorScreen';
-import AssistantNoteDetailScreen from '../screens/assistant/AssistantNoteDetailScreen';
+import { AssistantNoteDetailScreen } from '../screens/assistant/AssistantNoteDetailScreen';
+import { AssistantNoteTableScreen } from '../screens/assistant/AssistantNoteTableScreen';
+import { AssistantOnboardingScreen } from '../screens/assistant/AssistantOnboardingScreen';
 
 const Stack = createStackNavigator();
 
